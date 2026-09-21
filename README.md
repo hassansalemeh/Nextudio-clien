@@ -46,3 +46,9 @@ which returns:
 ```json
 { "status": "ok" }
 ```
+
+## Production
+
+See [docs/DEPLOY-GODADDY.md](docs/DEPLOY-GODADDY.md). `npm run package` (from the repository root) builds everything and creates
+`deploy/nextudio-control-<date>.zip`, the folder to upload. On the host: `npm start` runs the server, `npm run check` tests the
+host (database, PDF engine), `npm run backup` / `npm run restore` protect the data. The database is PostgreSQL on Supabase.

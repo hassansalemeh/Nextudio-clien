@@ -1,0 +1,13 @@
+# Keep secrets, dependencies, build output and private data OUT of the Docker build
+.git
+**/node_modules
+**/dist
+deploy
+backups
+*.zip
+**/.env
+**/.env.local
+**/*.log
+.vscode
+.idea
+supabase/.temp

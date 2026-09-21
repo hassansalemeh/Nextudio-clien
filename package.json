@@ -4,6 +4,7 @@
   "description": "Internal management system for an architecture company.",
   "main": "index.js",
   "scripts": {
+    "package": "node scripts/package-godaddy.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

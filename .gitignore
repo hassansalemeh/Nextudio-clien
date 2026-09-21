@@ -3,3 +3,7 @@ dist/
 .env
 *.log
 supabase/.temp/
+
+# deployment output and database backups (private)
+deploy/
+backups/
