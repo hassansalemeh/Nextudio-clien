@@ -11,6 +11,7 @@ import InvoiceDetailPage from './pages/InvoiceDetailPage'
 import InvoicesPage from './pages/InvoicesPage'
 import LoginPage from './pages/LoginPage'
 import PaymentsPage from './pages/PaymentsPage'
+import PendingWorkEntriesPage from './pages/PendingWorkEntriesPage'
 import MyWorkPage from './pages/MyWorkPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
 import ProjectFinancialSummaryPage from './pages/ProjectFinancialSummaryPage'
@@ -79,6 +80,9 @@ function App() {
           <NavLink to="/time-tracking" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             Time Tracking
           </NavLink>
+          <NavLink to="/pending-work" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+            Pending Work
+          </NavLink>
           <NavLink to="/estimates" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
             Estimates
           </NavLink>
@@ -110,6 +114,7 @@ function App() {
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
           <Route path="/assignments" element={<AssignWorkPage />} />
           <Route path="/time-tracking" element={<TimeTrackingPage />} />
+          <Route path="/pending-work" element={<PendingWorkEntriesPage />} />
           <Route path="/estimates" element={<EstimatesPage />} />
           <Route path="/estimates/:id" element={<EstimateEditorPage />} />
           <Route path="/estimates/:id/preview" element={<DocumentPreviewPage kind="estimate" />} />

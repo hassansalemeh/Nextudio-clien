@@ -208,6 +208,7 @@ function TimeReview() {
                   <th>Start</th>
                   <th>End</th>
                   <th>Duration</th>
+                  <th>Status</th>
                   <th></th>
                 </tr>
               </thead>
@@ -219,6 +220,20 @@ function TimeReview() {
                     <td>{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
                     <td>{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
                     <td>
+                      {entry.status && entry.status !== 'approved' && (
+                        <span
+                          className={`status-badge status-${entry.status}`}
+                          title={
+                            entry.status === 'pending'
+                              ? 'Waiting for approval; not yet counted in hours or labor cost'
+                              : 'Rejected; never counted in hours or labor cost'
+                          }
+                        >
+                          {entry.status === 'pending' ? 'Pending' : 'Rejected'}
+                        </span>
+                      )}
+                    </td>
+                    <td>
                       <button
                         type="button"
                         className="btn-sm btn-ghost"
@@ -229,7 +244,7 @@ function TimeReview() {
                     </td>
                   </tr>,
                   editing?.kind === 'entries' && editing.id === entry.id ? (
-                    editRow(`${entry.id}-edit`, 5)
+                    editRow(`${entry.id}-edit`, 6)
                   ) : null,
                 ])}
               </tbody>

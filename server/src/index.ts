@@ -176,6 +176,19 @@ app.get('/api/projects', async (_req, res) => {
   }
 })
 
+// Employee-safe project list for "Add Work Manually": names only, no client, fee or financial data,
+// and only projects that are actually open for new work.
+app.get('/api/projects/active-names', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name FROM projects WHERE status IN ('planning', 'in_progress') ORDER BY name`
+    )
+    res.json(result.rows)
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch projects' })
+  }
+})
+
 app.post('/api/projects', async (req, res) => {
   const client_id = req.body.client_id
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : ''
@@ -611,7 +624,7 @@ app.get('/api/time/day', async (req, res) => {
     )
     const entries = await pool.query(
       `SELECT time_entries.id, time_entries.project_id, projects.name AS project_name,
-              time_entries.started_at, time_entries.ended_at, time_entries.description
+              time_entries.started_at, time_entries.ended_at, time_entries.description, time_entries.status
        FROM time_entries JOIN projects ON projects.id = time_entries.project_id
        WHERE time_entries.employee_id = $1 AND time_entries.started_at >= $2 AND time_entries.started_at < $3
        ORDER BY time_entries.started_at`,
@@ -694,8 +707,11 @@ app.post('/api/time/start', async (req, res) => {
   }
 })
 
-// Manual entry: the employee forgot to start or stop the timer. It is saved exactly like a finished timer entry
-// (same table, same frozen hourly rate), so hours, project totals and labor cost all pick it up automatically.
+// Manual entry: the employee forgot to start or stop the timer, or worked on a project before the admin
+// assigned it. An entry on an already-assigned project is saved exactly like a finished timer entry (same
+// table, same frozen hourly rate), so hours, project totals and labor cost all pick it up automatically.
+// An entry on a project the employee isn't assigned to is saved as 'pending' instead: it is held for admin
+// review and excluded from every hours/cost total until approved (see recordedTimeByProjectEmployee).
 app.post('/api/time/manual', async (req, res) => {
   // an employee can only ever add time for themselves
   const employee_id = resolveEmployeeId(req, req.body.employee_id)
@@ -722,22 +738,33 @@ app.post('/api/time/manual', async (req, res) => {
     if (dayHours < 23 || dayHours > 25) throw new HttpError(400, 'Invalid date')
     if (startAt < dayStart || endAt > dayEnd) throw new HttpError(400, 'The start and end times must be on the selected date')
 
-    await withTransaction(async (client) => {
+    const entryStatus = await withTransaction(async (client) => {
       const now = (await client.query('SELECT clock_timestamp() AS now')).rows[0].now as Date
       if (endAt > now) throw new HttpError(400, 'Work cannot be added in the future')
 
-      // only projects assigned to this employee on the selected date
+      // Projects assigned to this employee on the selected date save normally. A project they are not
+      // assigned to is still allowed, as long as it exists and is open for work, but is held as 'pending'
+      // until an admin approves it (see /api/pending-work-entries below) — it bypasses only this check.
       const assigned = await client.query(
         `SELECT 1 FROM work_assignments
          WHERE employee_id = $1 AND project_id = $2 AND start_date <= $3 AND end_date >= $3 LIMIT 1`,
         [employee_id, project_id, date]
       )
-      if (assigned.rows.length === 0) throw new HttpError(400, 'This project was not assigned to you on that date')
+      let status: 'approved' | 'pending' = 'approved'
+      if (assigned.rows.length === 0) {
+        const project = await client.query(`SELECT status FROM projects WHERE id = $1`, [project_id])
+        if (project.rows.length === 0) throw new HttpError(400, 'Project does not exist')
+        if (!['planning', 'in_progress'].includes(project.rows[0].status)) {
+          throw new HttpError(400, 'Choose an active project')
+        }
+        status = 'pending'
+      }
 
       // never overlap another entry, including a project timer that is running right now
+      // (a rejected entry never really happened, so it doesn't block a new submission)
       const overlap = await client.query(
         `SELECT ended_at FROM time_entries
-         WHERE employee_id = $1 AND tstzrange(started_at, ended_at) && tstzrange($2, $3) LIMIT 1`,
+         WHERE employee_id = $1 AND status <> 'rejected' AND tstzrange(started_at, ended_at) && tstzrange($2, $3) LIMIT 1`,
         [employee_id, startAt, endAt]
       )
       if (overlap.rows.length > 0) {
@@ -768,12 +795,13 @@ app.post('/api/time/manual', async (req, res) => {
       const rate = hourlyRateFromSalary(Number(salary.rows[0].monthly_salary))
 
       await client.query(
-        `INSERT INTO time_entries (employee_id, project_id, started_at, ended_at, hourly_rate_snapshot, description, source)
-         VALUES ($1, $2, $3, $4, $5, $6, 'manual')`,
-        [employee_id, project_id, startAt, endAt, rate, description]
+        `INSERT INTO time_entries (employee_id, project_id, started_at, ended_at, hourly_rate_snapshot, description, source, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'manual', $7)`,
+        [employee_id, project_id, startAt, endAt, rate, description, status]
       )
+      return status
     })
-    res.status(201).json({ ok: true })
+    res.status(201).json({ ok: true, status: entryStatus })
   } catch (err) {
     sendTimeError(res, err, 'Failed to add the work entry')
   }
@@ -871,6 +899,90 @@ app.patch('/api/time/sessions/:id', async (req, res) => {
   }
 })
 
+// ---- Admin: manual work entries waiting for approval (projects the employee wasn't assigned to yet) ----
+
+app.get('/api/pending-work-entries', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT time_entries.id, time_entries.employee_id, employees.full_name AS employee_name,
+              time_entries.project_id, projects.name AS project_name,
+              time_entries.started_at, time_entries.ended_at, time_entries.description, time_entries.status
+       FROM time_entries
+       JOIN employees ON employees.id = time_entries.employee_id
+       JOIN projects ON projects.id = time_entries.project_id
+       WHERE time_entries.status IN ('pending', 'rejected')
+       ORDER BY (time_entries.status = 'pending') DESC, time_entries.started_at DESC`
+    )
+    res.json(result.rows)
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch pending work entries' })
+  }
+})
+
+app.post('/api/pending-work-entries/:id/reject', async (req, res) => {
+  try {
+    // kept in history as 'rejected', never deleted; only a still-pending request can be rejected
+    const result = await pool.query(
+      `UPDATE time_entries SET status = 'rejected' WHERE id = $1 AND status = 'pending' RETURNING id`,
+      [req.params.id]
+    )
+    if (result.rowCount === 0) {
+      return res.status(400).json({ error: 'This request was already reviewed' })
+    }
+    res.json({ ok: true })
+  } catch {
+    res.status(500).json({ error: 'Failed to reject the work entry' })
+  }
+})
+
+// Approves a pending entry and, unless the employee is already assigned to the project on that date,
+// creates the matching work assignment in the same transaction — never an approved entry with no assignment.
+app.post('/api/pending-work-entries/:id/approve', async (req, res) => {
+  const start_date = typeof req.body.start_date === 'string' ? req.body.start_date.trim() : ''
+  const end_date = typeof req.body.end_date === 'string' ? req.body.end_date.trim() : ''
+  const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
+
+  try {
+    await withTransaction(async (client) => {
+      const entryResult = await client.query(
+        `SELECT id, employee_id, project_id, started_at, to_char(started_at, 'YYYY-MM-DD') AS entry_date, status
+         FROM time_entries WHERE id = $1 FOR UPDATE`,
+        [req.params.id]
+      )
+      if (entryResult.rows.length === 0) throw new HttpError(404, 'Work entry not found')
+      const entry = entryResult.rows[0]
+      if (entry.status !== 'pending') throw new HttpError(400, 'This request was already reviewed')
+
+      const covered = await client.query(
+        `SELECT 1 FROM work_assignments
+         WHERE employee_id = $1 AND project_id = $2 AND start_date <= $3 AND end_date >= $3 LIMIT 1`,
+        [entry.employee_id, entry.project_id, entry.entry_date]
+      )
+
+      if (covered.rows.length === 0) {
+        // Not covered yet: create the assignment now, exactly as "Assign Work" would
+        if (!isIsoDate(start_date)) throw new HttpError(400, 'Assignment start date is required')
+        if (!isIsoDate(end_date)) throw new HttpError(400, 'Assignment end date is required')
+        if (end_date < start_date) throw new HttpError(400, 'End date cannot be before start date')
+        if (!description) throw new HttpError(400, 'Task description is required')
+        if (start_date > entry.entry_date || end_date < entry.entry_date) {
+          throw new HttpError(400, 'This assignment does not cover the selected date')
+        }
+        await client.query(
+          `INSERT INTO work_assignments (project_id, employee_id, start_date, end_date, description)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [entry.project_id, entry.employee_id, start_date, end_date, description]
+        )
+      }
+
+      await client.query(`UPDATE time_entries SET status = 'approved' WHERE id = $1`, [entry.id])
+    })
+    res.json({ ok: true })
+  } catch (err) {
+    sendTimeError(res, err, 'Failed to approve the work entry')
+  }
+})
+
 // ---- Admin: project details and edits ----
 
 // ---- Project money: the single place labor cost and revenue are calculated ----
@@ -878,13 +990,14 @@ app.patch('/api/time/sessions/:id', async (req, res) => {
 
 // Real recorded time per (project, employee). Running entries count up to now; cost uses each entry's frozen rate.
 // Pass a project id for one project, or nothing for all projects.
+// A 'pending' entry (unassigned project, awaiting admin approval) and a 'rejected' one never count here.
 async function recordedTimeByProjectEmployee(projectId?: string) {
   const result = await pool.query(
     `SELECT project_id, employee_id,
             sum(extract(epoch FROM (coalesce(ended_at, now()) - started_at))) / 3600 AS hours,
             sum(extract(epoch FROM (coalesce(ended_at, now()) - started_at)) / 3600 * hourly_rate_snapshot) AS cost
      FROM time_entries
-     ${projectId ? 'WHERE project_id = $1' : ''}
+     WHERE status = 'approved' ${projectId ? 'AND project_id = $1' : ''}
      GROUP BY project_id, employee_id`,
     projectId ? [projectId] : []
   )
@@ -984,11 +1097,11 @@ app.get('/api/dashboard', async (req, res) => {
        FROM time_entries
        JOIN employees ON employees.id = time_entries.employee_id
        JOIN projects ON projects.id = time_entries.project_id
-       WHERE time_entries.ended_at IS NULL ORDER BY time_entries.started_at`
+       WHERE time_entries.ended_at IS NULL AND time_entries.status = 'approved' ORDER BY time_entries.started_at`
     )
     const hoursToday = await pool.query(
       `SELECT coalesce(sum(extract(epoch FROM (coalesce(ended_at, now()) - started_at))), 0) / 3600 AS hours
-       FROM time_entries WHERE started_at >= $1 AND started_at < $2`,
+       FROM time_entries WHERE started_at >= $1 AND started_at < $2 AND status = 'approved'`,
       [dayFrom, dayTo]
     )
 
@@ -1050,7 +1163,7 @@ app.get('/api/projects/:projectId', async (req, res) => {
        WHERE id IN (
          SELECT employee_id FROM project_assignments WHERE project_id = $1 AND is_active = true
          UNION SELECT employee_id FROM work_assignments WHERE project_id = $1
-         UNION SELECT employee_id FROM time_entries WHERE project_id = $1
+         UNION SELECT employee_id FROM time_entries WHERE project_id = $1 AND status = 'approved'
        )
        ORDER BY full_name`,
       [projectId]

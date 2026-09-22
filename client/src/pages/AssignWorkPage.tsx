@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CheckIcon, CloseIcon, PencilIcon } from '../components/icons'
+import { localDateString } from '../timeUtils'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -136,7 +137,8 @@ function AssignWorkPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to assign employee')
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.error || 'Failed to assign employee')
       }
 
       const newAssignment = await response.json()
@@ -145,8 +147,8 @@ function AssignWorkPage() {
         return [...withoutExisting, newAssignment].sort((a, b) => a.employee_name.localeCompare(b.employee_name))
       })
       setEmployeeToAssign('')
-    } catch {
-      setAssignmentsError('Could not assign employee.')
+    } catch (err) {
+      setAssignmentsError(err instanceof Error ? err.message : 'Could not assign employee.')
     }
   }
 
@@ -274,6 +276,10 @@ function AssignWorkPage() {
         <>
           <div className="card">
             <h2>Assigned Employees</h2>
+            <p className="empty-state">
+              This is project team membership — it does not by itself cover any specific date. An employee can only
+              start a timer or add manual work for a date covered by a Work Assignment below.
+            </p>
             <form onSubmit={handleAssignSubmit}>
               <div className="form-grid">
                 <label className="form-field">
@@ -390,7 +396,18 @@ function AssignWorkPage() {
                     <tr key={workAssignment.id}>
                       <td>{workAssignment.employee_name}</td>
                       <td>{workAssignment.start_date}</td>
-                      <td>{workAssignment.end_date}</td>
+                      <td>
+                        {workAssignment.end_date}
+                        {workAssignment.end_date < localDateString() && (
+                          <span
+                            className="status-badge status-on_hold"
+                            style={{ marginLeft: '0.5rem' }}
+                            title="This assignment no longer covers today. The employee cannot start a timer or add manual work on this project unless it is extended."
+                          >
+                            Ended
+                          </span>
+                        )}
+                      </td>
                       <td style={{ whiteSpace: 'pre-wrap' }}>{workAssignment.description}</td>
                       <td>
                         <button type="button" className="btn-sm btn-ghost" onClick={() => startEdit(workAssignment)}>

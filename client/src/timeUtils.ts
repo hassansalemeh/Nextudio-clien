@@ -11,6 +11,7 @@ export type TimeEntry = {
   started_at: string
   ended_at: string | null
   description?: string | null
+  status?: 'approved' | 'pending' | 'rejected'
 }
 
 export type DayData = {

@@ -129,6 +129,7 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
 // Deny by default: employees may only call the routes listed here. Everything else is admin-only.
 const EMPLOYEE_ROUTES = new Set([
   'GET /work-assignments',
+  'GET /projects/active-names',
   'GET /time/status',
   'GET /time/day',
   'POST /time/clock-in',

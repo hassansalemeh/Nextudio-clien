@@ -13,6 +13,11 @@ type TodayAssignment = {
   end_date: string
 }
 
+type ActiveProject = {
+  id: string
+  name: string
+}
+
 type Status = {
   session: TimeSession | null
   active_entry: { id: string; project_id: string; project_name: string; started_at: string } | null
@@ -27,9 +32,11 @@ function MyWorkPage() {
   const [busy, setBusy] = useState(false)
   const [, setTick] = useState(0)
 
-  // "Add Work Manually": for time the employee forgot to record with the timer
+  // "Add Work Manually": for time the employee forgot to record with the timer, or work on a project
+  // before it was assigned to them (that goes to an admin for approval instead of being rejected)
   const [workDate, setWorkDate] = useState(localDateString())
   const [dateAssignments, setDateAssignments] = useState<TodayAssignment[]>([])
+  const [activeProjects, setActiveProjects] = useState<ActiveProject[]>([])
   const [manualProject, setManualProject] = useState('')
   const [manualStart, setManualStart] = useState('')
   const [manualEnd, setManualEnd] = useState('')
@@ -62,14 +69,22 @@ function MyWorkPage() {
     reload()
   }, [reload])
 
-  // Projects assigned to the employee on the selected date (the only ones that can be chosen)
+  // All other active projects: choosing one here (not assigned to the employee on this date) is still
+  // allowed, but the entry waits for an admin's approval instead of being saved right away.
+  useEffect(() => {
+    fetch(`${API_URL}/api/projects/active-names`)
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then(setActiveProjects)
+      .catch(() => setActiveProjects([]))
+  }, [])
+
+  // Projects assigned to the employee on the selected date (these save normally; anything else is pending)
   useEffect(() => {
     if (!workDate) return
     fetch(`${API_URL}/api/work-assignments?date=${workDate}`)
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: TodayAssignment[]) => {
         setDateAssignments(data)
-        setManualProject((current) => (data.some((a) => String(a.project_id) === current) ? current : ''))
       })
       .catch(() => setDateAssignments([]))
   }, [workDate])
@@ -129,14 +144,18 @@ function MyWorkPage() {
           description: manualDescription,
         }),
       })
+      const data = await response.json().catch(() => null)
       if (!response.ok) {
-        const data = await response.json().catch(() => null)
         throw new Error(data?.error || 'Could not add the work entry.')
       }
       setManualStart('')
       setManualEnd('')
       setManualDescription('')
-      setManualDone('Work entry added.')
+      setManualDone(
+        data?.status === 'pending'
+          ? 'Submitted — waiting for admin approval.'
+          : 'Work entry added.'
+      )
       await reload()
     } catch (err) {
       setManualError(err instanceof Error ? err.message : 'Could not add the work entry.')
@@ -147,6 +166,12 @@ function MyWorkPage() {
 
   const clockedIn = status.session !== null
   const active = status.active_entry
+
+  // Project dropdown for "Add Work Manually": projects assigned to the employee on this date save normally;
+  // any other active project is still offered, but that entry will need an admin's approval
+  const assignedProjects = new Map(dateAssignments.map((a) => [String(a.project_id), a.project_name]))
+  const otherActiveProjects = activeProjects.filter((project) => !assignedProjects.has(String(project.id)))
+  const manualProjectIsAssigned = assignedProjects.has(manualProject)
 
   return (
     <>
@@ -261,12 +286,27 @@ function MyWorkPage() {
             <label className="form-field">
               Project
               <select value={manualProject} onChange={(e) => setManualProject(e.target.value)}>
-                <option value="">{dateAssignments.length === 0 ? 'No project assigned on this date' : 'Select a project'}</option>
-                {[...new Map(dateAssignments.map((a) => [String(a.project_id), a.project_name])).entries()].map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                ))}
+                <option value="">
+                  {assignedProjects.size === 0 && otherActiveProjects.length === 0 ? 'No active projects' : 'Select a project'}
+                </option>
+                {assignedProjects.size > 0 && (
+                  <optgroup label="Assigned to you on this date">
+                    {[...assignedProjects.entries()].map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {otherActiveProjects.length > 0 && (
+                  <optgroup label="Other active projects">
+                    {otherActiveProjects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
             <label className="form-field">
@@ -288,6 +328,12 @@ function MyWorkPage() {
               />
             </label>
           </div>
+          {manualProject && !manualProjectIsAssigned && (
+            <p className="empty-state">
+              You are not assigned to this project on this date yet — this entry will be sent to an admin for
+              approval and won't count toward hours until then.
+            </p>
+          )}
           <button type="submit" className="btn-primary" disabled={manualBusy}>
             Add Work Entry
           </button>
@@ -309,6 +355,7 @@ function MyWorkPage() {
                 <th>Start</th>
                 <th>End</th>
                 <th>Duration</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -319,6 +366,12 @@ function MyWorkPage() {
                   <td>{formatTime(entry.started_at)}</td>
                   <td>{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
                   <td>{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
+                  <td>
+                    {entry.status === 'pending' && (
+                      <span className="status-badge status-pending">Waiting for approval</span>
+                    )}
+                    {entry.status === 'rejected' && <span className="status-badge status-rejected">Rejected</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
