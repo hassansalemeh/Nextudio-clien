@@ -238,7 +238,7 @@ function MyWorkPage() {
                 return (
                   <tr key={assignment.id}>
                     <td>{assignment.project_name}</td>
-                    <td style={{ whiteSpace: 'pre-wrap' }}>{assignment.description}</td>
+                    <td className="col-wrap">{assignment.description}</td>
                     <td>{assignment.start_date}</td>
                     <td>{assignment.end_date}</td>
                     <td>
@@ -362,7 +362,7 @@ function MyWorkPage() {
               {today.entries.map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.project_name}</td>
-                  <td style={{ whiteSpace: 'pre-wrap' }}>{entry.description || '—'}</td>
+                  <td className="col-wrap">{entry.description || '—'}</td>
                   <td>{formatTime(entry.started_at)}</td>
                   <td>{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
                   <td>{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>

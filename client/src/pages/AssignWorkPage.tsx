@@ -392,7 +392,7 @@ function AssignWorkPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {workAssignments.map((workAssignment) => [
+                  {workAssignments.map((workAssignment) => (
                     <tr key={workAssignment.id}>
                       <td>{workAssignment.employee_name}</td>
                       <td>{workAssignment.start_date}</td>
@@ -408,70 +408,73 @@ function AssignWorkPage() {
                           </span>
                         )}
                       </td>
-                      <td style={{ whiteSpace: 'pre-wrap' }}>{workAssignment.description}</td>
+                      <td className="col-wrap">{workAssignment.description}</td>
                       <td>
                         <button type="button" className="btn-sm btn-ghost" onClick={() => startEdit(workAssignment)}>
 <PencilIcon /> Edit
 </button>
                       </td>
-                    </tr>,
-                    editingId === workAssignment.id && (
-                      <tr key={`${workAssignment.id}-edit`}>
-                        <td colSpan={5}>
-                          <div className="form-grid">
-                            <label className="form-field">
-                              Project
-                              <select value={edit.project_id} onChange={(e) => setEdit({ ...edit, project_id: e.target.value })}>
-                                {projects.map((project) => (
-                                  <option key={project.id} value={project.id}>
-                                    {project.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="form-field">
-                              Employee
-                              <select value={edit.employee_id} onChange={(e) => setEdit({ ...edit, employee_id: e.target.value })}>
-                                {allEmployees.map((employee) => (
-                                  <option key={employee.id} value={employee.id}>
-                                    {employee.full_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="form-field">
-                              Start Date
-                              <input type="date" value={edit.start_date} onChange={(e) => setEdit({ ...edit, start_date: e.target.value })} />
-                            </label>
-                            <label className="form-field">
-                              End Date
-                              <input
-                                type="date"
-                                value={edit.end_date}
-                                min={edit.start_date || undefined}
-                                onChange={(e) => setEdit({ ...edit, end_date: e.target.value })}
-                              />
-                            </label>
-                          </div>
-                          <div className="form-grid">
-                            <label className="form-field">
-                              Task Description
-                              <textarea value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
-                            </label>
-                          </div>
-                          <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
-<CheckIcon /> Save
-</button>
-                          <button type="button" className="btn-sm btn-ghost" onClick={() => setEditingId(null)}>
-<CloseIcon /> Cancel
-</button>
-                          {editError && <p className="error-message">{editError}</p>}
-                        </td>
-                      </tr>
-                    ),
-                  ])}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
+            )}
+
+            {/* Kept outside the table on purpose: a whole form doesn't belong inside a horizontally-scrolling
+                table row — it would force every column wider to match it and could scroll off-screen. */}
+            {editingId && (
+              <div className="edit-panel">
+                <div className="form-grid">
+                  <label className="form-field">
+                    Project
+                    <select value={edit.project_id} onChange={(e) => setEdit({ ...edit, project_id: e.target.value })}>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-field">
+                    Employee
+                    <select value={edit.employee_id} onChange={(e) => setEdit({ ...edit, employee_id: e.target.value })}>
+                      {allEmployees.map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-field">
+                    Start Date
+                    <input type="date" value={edit.start_date} onChange={(e) => setEdit({ ...edit, start_date: e.target.value })} />
+                  </label>
+                  <label className="form-field">
+                    End Date
+                    <input
+                      type="date"
+                      value={edit.end_date}
+                      min={edit.start_date || undefined}
+                      onChange={(e) => setEdit({ ...edit, end_date: e.target.value })}
+                    />
+                  </label>
+                </div>
+                <div className="form-grid">
+                  <label className="form-field">
+                    Task Description
+                    <textarea value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
+                  </label>
+                </div>
+                <div className="edit-actions">
+                  <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
+                    <CheckIcon /> Save
+                  </button>
+                  <button type="button" className="btn-sm btn-ghost" onClick={() => setEditingId(null)}>
+                    <CloseIcon /> Cancel
+                  </button>
+                </div>
+                {editError && <p className="error-message">{editError}</p>}
+              </div>
             )}
           </div>
         </>

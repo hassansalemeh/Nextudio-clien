@@ -77,6 +77,12 @@ export const MailIcon = (p: IconProps) => (
   </Svg>
 )
 
+export const MenuIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6h18M3 12h18M3 18h18" />
+  </Svg>
+)
+
 export const LogoutIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

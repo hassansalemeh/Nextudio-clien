@@ -24,6 +24,7 @@ main {
 /* Header / nav */
 
 .app-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 1.5rem;
@@ -31,6 +32,41 @@ main {
   margin-bottom: 2rem;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+}
+
+.header-logout {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.employee-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin-left: auto;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+  background: rgba(15, 17, 23, 0.4);
 }
 
 .app-header .app-title {
@@ -43,6 +79,41 @@ main {
   display: flex;
   flex-wrap: wrap;
   gap: 0.15rem;
+}
+
+@media (max-width: 900px) {
+  .menu-toggle {
+    display: inline-flex;
+  }
+
+  .app-header nav {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 999;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0;
+    max-height: calc(100dvh - 4rem);
+    overflow-y: auto;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    padding: 0.5rem;
+    /* hidden by default; JS toggles .nav-open (kept in the DOM so a link click always closes it via the route effect) */
+    display: none;
+  }
+
+  .app-header nav.nav-open {
+    display: flex;
+  }
+
+  .nav-link {
+    padding: 0.85rem 0.75rem;
+    font-size: 1rem;
+    border-radius: 8px;
+  }
 }
 
 .nav-link {
@@ -242,9 +313,10 @@ main {
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 480px) {
   .app-header {
-    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
   }
 }
 
@@ -1223,4 +1295,329 @@ main {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--color-text-muted);
+}
+
+/* ==========================================================================
+   Responsive: desktop / laptop / tablet / phone.
+   Strategy: a table that gets too wide for its card scrolls horizontally
+   *inside that card* (the page itself never scrolls sideways); the two most
+   complex tables (quotation line items, pending work entries) become
+   stacked cards instead of a squeezed table. Multi-column forms collapse to
+   one column on narrow screens. Modals always fit the viewport and scroll
+   vertically. The sidebar nav becomes a hamburger menu below 900px.
+   ========================================================================== */
+
+/* Nothing on the page scrolls sideways; a wide table scrolls inside its own card instead */
+html,
+body {
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+main {
+  min-width: 0;
+}
+
+/* A card containing a data table scrolls that table horizontally within its own borders,
+   instead of stretching the page. (`:has` is supported by every browser this app targets.) */
+.card:has(.data-table),
+.card:has(.doc-items) {
+  overflow-x: auto;
+}
+
+/* Cells keep their natural (single-line) width so columns stay readable; a table that's too wide for its
+   card scrolls as a whole (see :has() above) instead of every column being squeezed and its words broken
+   mid-letter. A cell that deliberately wraps (e.g. a description with style={whiteSpace:'pre-wrap'}) still
+   does, since an inline style always wins over this. */
+.data-table td,
+.data-table th {
+  white-space: nowrap;
+}
+
+/* A cell that deliberately wraps a description (pre-wrap, to keep the admin's line breaks) must not be
+   squeezed down to a sliver by the nowrap columns next to it — that just turns a few lines of text into
+   dozens. Giving it a floor width means the table (and so the card's horizontal scroll) grows instead. */
+.data-table td.col-wrap {
+  white-space: pre-wrap;
+  min-width: 12rem;
+}
+
+/* The "edit this row" form (Work Assignments, Review Hours) renders as its own block below the table,
+   not inside a table row — a whole form never belongs inside a horizontally-scrolling table cell, since it
+   would force every column wider to match it and could scroll off screen. */
+.edit-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.edit-panel .form-grid:last-of-type {
+  margin-bottom: 0.75rem;
+}
+
+/* Long unbroken text (emails, descriptions, long names) wraps instead of forcing the page wider */
+.doc-hint,
+.terms-view .terms-text,
+.empty-state,
+.stat-note {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Modals: always fit the viewport, scroll vertically if the content is tall ---------- */
+
+.modal {
+  max-width: min(26rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.modal-wide {
+  max-width: min(40rem, calc(100vw - 2rem));
+}
+
+.modal-actions {
+  flex-wrap: wrap;
+}
+
+/* ---------- Pending Work Entries: Employee | Project | Date | Start | End | Duration | Description | Status | actions ---------- */
+
+@media (max-width: 760px) {
+  .pending-table,
+  .pending-table thead,
+  .pending-table tbody,
+  .pending-table tr,
+  .pending-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .pending-table thead {
+    display: none;
+  }
+
+  .pending-table tbody tr {
+    margin-bottom: 1rem;
+    padding: 0.85rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+  }
+
+  .pending-table tbody td {
+    border-bottom: none;
+    padding: 0.3rem 0;
+    text-align: left !important;
+    white-space: normal !important;
+  }
+
+  .pending-table tbody td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.15rem;
+  }
+
+  .pending-table tbody td:last-child {
+    padding-top: 0.6rem;
+  }
+
+  .pending-table .edit-actions {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---------- Estimate line items: a full table is too narrow on a phone; stack each item as a card ---------- */
+
+@media (max-width: 680px) {
+  .doc-items,
+  .doc-items thead,
+  .doc-items tbody,
+  .doc-items tr,
+  .doc-items td,
+  .doc-items thead th:nth-child(3),
+  .doc-items tbody td:nth-child(3) {
+    display: block;
+    width: 100%;
+  }
+
+  .doc-items thead {
+    display: none;
+  }
+
+  .doc-items tbody tr {
+    margin-bottom: 1rem;
+    padding: 0.85rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+  }
+
+  .doc-items tbody td {
+    border-bottom: none;
+    padding: 0.35rem 0;
+  }
+
+  .doc-item-main {
+    width: 100%;
+  }
+
+  .doc-item-num {
+    text-align: left;
+  }
+
+  .doc-items tbody td:nth-child(2)::before,
+  .doc-items tbody td:nth-child(3)::before,
+  .doc-items tbody td:nth-child(4)::before,
+  .doc-amount::before {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.2rem;
+  }
+
+  .doc-items tbody td:nth-child(2)::before {
+    content: 'Quantity';
+  }
+
+  .doc-items tbody td:nth-child(3)::before {
+    content: 'Unit';
+  }
+
+  .doc-items tbody td:nth-child(4)::before {
+    content: 'Unit Price';
+  }
+
+  .doc-amount {
+    text-align: left;
+    padding-top: 0.35rem !important;
+  }
+
+  .doc-amount::before {
+    content: 'Amount';
+  }
+
+  .doc-item-actions {
+    padding-top: 0.6rem !important;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.3rem;
+  }
+}
+
+/* ---------- General layout, forms, buttons, dashboard on tablet/phone ---------- */
+
+@media (max-width: 640px) {
+  .doc-topbar {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+  }
+
+  .doc-topbar h1 {
+    font-size: 1.35rem;
+  }
+
+  .doc-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .doc-bottombar {
+    align-items: stretch;
+  }
+
+  .doc-bottombar .doc-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  main {
+    padding: 0 1rem 2.5rem;
+  }
+
+  .card {
+    padding: 1.1rem;
+  }
+
+  .doc-sheet,
+  .doc-panel-body {
+    padding: 1rem;
+  }
+
+  /* Every labeled field gets its own full-width row: nothing can overlap */
+  .doc-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-fields label {
+    text-align: left;
+    padding-top: 0;
+  }
+
+  .doc-title-input,
+  .doc-summary-input,
+  .doc-address {
+    text-align: left;
+  }
+
+  /* Totals stack one per row instead of two narrow columns fighting for space */
+  .doc-totals,
+  .inv-totals {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+    text-align: left;
+  }
+
+  .doc-totals > *,
+  .inv-totals > * {
+    grid-column: 1 !important;
+  }
+
+  .doc-total-row {
+    justify-content: space-between;
+  }
+
+  .doc-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 0.95rem;
+  }
+
+  .doc-preview-frame {
+    height: 70dvh;
+  }
+
+  /* Comfortable tap targets */
+  .btn-primary,
+  .btn-pill,
+  .btn-outline,
+  .btn-convert,
+  .btn-danger {
+    padding: 0.65rem 1.15rem;
+  }
+
+  .btn-sm {
+    padding: 0.45rem 0.9rem;
+    font-size: 0.88rem;
+  }
+
+  .stat-value {
+    font-size: 1.4rem;
+  }
+
+  .stat-value.small {
+    font-size: 1.2rem;
+  }
 }

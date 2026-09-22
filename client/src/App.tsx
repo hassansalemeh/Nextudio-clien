@@ -1,6 +1,7 @@
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth'
-import { LogoutIcon } from './components/icons'
+import { LogoutIcon, MenuIcon, CloseIcon } from './components/icons'
 import ClientsPage from './pages/ClientsPage'
 import DashboardPage from './pages/DashboardPage'
 import DocumentPreviewPage from './pages/DocumentPreviewPage'
@@ -20,8 +21,29 @@ import AssignWorkPage from './pages/AssignWorkPage'
 import TimeTrackingPage from './pages/TimeTrackingPage'
 // import FinancePage from './pages/FinancePage'
 
+const NAV_LINKS = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/clients', label: 'Clients' },
+  { to: '/employees', label: 'Employees' },
+  { to: '/projects', label: 'Projects' },
+  { to: '/assignments', label: 'Assignments' },
+  { to: '/time-tracking', label: 'Time Tracking' },
+  { to: '/pending-work', label: 'Pending Work' },
+  { to: '/estimates', label: 'Estimates' },
+  { to: '/invoices', label: 'Invoices' },
+  { to: '/payments', label: 'Payments' },
+  { to: '/financial-summary', label: 'Financial Summary' },
+]
+
 function App() {
   const { user, loading, logout } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
+
+  // Close the mobile menu whenever the route changes (a link was followed, or the browser back/forward was used)
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [location.pathname])
 
   if (loading) {
     return null
@@ -41,8 +63,8 @@ function App() {
       <>
         <header className="app-header">
           <img className="app-logo" src="/nextudio-logo.webp" alt="Nextudio architects" />
-          <span className="nav-link">{user.employeeName}</span>
-          <button type="button" className="btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={logout}>
+          <span className="nav-link employee-name">{user.employeeName}</span>
+          <button type="button" className="btn-sm btn-ghost header-logout" onClick={logout}>
             <LogoutIcon /> Log out
           </button>
         </header>
@@ -61,48 +83,27 @@ function App() {
     <>
       <header className="app-header">
         <img className="app-logo" src="/nextudio-logo.webp" alt="Nextudio architects" />
-        <nav>
-          <NavLink to="/dashboard" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Dashboard
-          </NavLink>
-          <NavLink to="/clients" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Clients
-          </NavLink>
-          <NavLink to="/employees" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Employees
-          </NavLink>
-          <NavLink to="/projects" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Projects
-          </NavLink>
-          <NavLink to="/assignments" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Assignments
-          </NavLink>
-          <NavLink to="/time-tracking" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Time Tracking
-          </NavLink>
-          <NavLink to="/pending-work" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Pending Work
-          </NavLink>
-          <NavLink to="/estimates" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Estimates
-          </NavLink>
-          <NavLink to="/invoices" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Invoices
-          </NavLink>
-          <NavLink to="/payments" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Payments
-          </NavLink>
-          <NavLink to="/financial-summary" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Financial Summary
-          </NavLink>
-          {/* <NavLink to="/finance" className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-            Finance
-          </NavLink> */}
+        <button
+          type="button"
+          className="menu-toggle"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {menuOpen ? <CloseIcon /> : <MenuIcon />}
+        </button>
+        <nav className={menuOpen ? 'nav-open' : ''}>
+          {NAV_LINKS.map((link) => (
+            <NavLink key={link.to} to={link.to} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
+              {link.label}
+            </NavLink>
+          ))}
         </nav>
-        <button type="button" className="btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={logout}>
+        <button type="button" className="btn-sm btn-ghost header-logout" onClick={logout}>
           <LogoutIcon /> Log out
         </button>
       </header>
+      {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
 
       <main>
         <Routes>

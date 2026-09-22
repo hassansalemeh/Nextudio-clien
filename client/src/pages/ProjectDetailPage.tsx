@@ -205,7 +205,7 @@ function ProjectDetailPage() {
                 <tr key={employee.employee_id}>
                   <td>{employee.full_name}</td>
                   <td>{employee.position}</td>
-                  <td>
+                  <td className="col-wrap">
                     {employee.assignments.length === 0
                       ? '—'
                       : employee.assignments.map((assignment, index) => (

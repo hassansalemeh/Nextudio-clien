@@ -105,17 +105,17 @@ function PendingWorkEntriesPage() {
   function row(entry: PendingEntry) {
     return (
       <tr key={entry.id}>
-        <td>{entry.employee_name}</td>
-        <td>{entry.project_name}</td>
-        <td>{localDateString(new Date(entry.started_at))}</td>
-        <td>{formatTime(entry.started_at)}</td>
-        <td>{formatTime(entry.ended_at)}</td>
-        <td>{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
-        <td style={{ whiteSpace: 'pre-wrap' }}>{entry.description}</td>
-        <td>
+        <td data-label="Employee">{entry.employee_name}</td>
+        <td data-label="Project">{entry.project_name}</td>
+        <td data-label="Date">{localDateString(new Date(entry.started_at))}</td>
+        <td data-label="Start">{formatTime(entry.started_at)}</td>
+        <td data-label="End">{formatTime(entry.ended_at)}</td>
+        <td data-label="Duration">{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
+        <td data-label="Description" className="col-wrap">{entry.description}</td>
+        <td data-label="Status">
           <span className={`status-badge status-${entry.status}`}>{entry.status === 'pending' ? 'Pending' : 'Rejected'}</span>
         </td>
-        <td>
+        <td data-label="">
           {entry.status === 'pending' && (
             <div className="edit-actions">
               <button
@@ -150,7 +150,7 @@ function PendingWorkEntriesPage() {
         {entries.length === 0 ? (
           <p className="empty-state">Nothing waiting for review.</p>
         ) : (
-          <table className="data-table">
+          <table className="data-table pending-table">
             <thead>
               <tr>
                 <th>Employee</th>

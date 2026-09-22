@@ -93,38 +93,38 @@ function TimeReview() {
     setEditing({ kind, id, start: toLocalInput(start), end: toLocalInput(end) })
   }
 
-  function editRow(key: string, colSpan: number) {
+  // Kept outside the table on purpose: a whole form doesn't belong inside a horizontally-scrolling table
+  // row — it would force every column wider to match it and could scroll off-screen.
+  function editPanel() {
     return (
-      <tr key={key}>
-        <td colSpan={colSpan}>
-          <div className="form-grid">
-            <label className="form-field">
-              Start
-              <input
-                type="datetime-local"
-                value={editing!.start}
-                onChange={(e) => setEditing({ ...editing!, start: e.target.value })}
-              />
-            </label>
-            <label className="form-field">
-              End (leave empty if still running)
-              <input
-                type="datetime-local"
-                value={editing!.end}
-                onChange={(e) => setEditing({ ...editing!, end: e.target.value })}
-              />
-            </label>
-          </div>
-          <div className="edit-actions">
-            <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
-              <CheckIcon /> Save
-            </button>
-            <button type="button" className="btn-sm btn-ghost" onClick={() => setEditing(null)}>
-              <CloseIcon /> Cancel
-            </button>
-          </div>
-        </td>
-      </tr>
+      <div className="edit-panel">
+        <div className="form-grid">
+          <label className="form-field">
+            Start
+            <input
+              type="datetime-local"
+              value={editing!.start}
+              onChange={(e) => setEditing({ ...editing!, start: e.target.value })}
+            />
+          </label>
+          <label className="form-field">
+            End (leave empty if still running)
+            <input
+              type="datetime-local"
+              value={editing!.end}
+              onChange={(e) => setEditing({ ...editing!, end: e.target.value })}
+            />
+          </label>
+        </div>
+        <div className="edit-actions">
+          <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
+            <CheckIcon /> Save
+          </button>
+          <button type="button" className="btn-sm btn-ghost" onClick={() => setEditing(null)}>
+            <CloseIcon /> Cancel
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -174,7 +174,7 @@ function TimeReview() {
                 </tr>
               </thead>
               <tbody>
-                {data.sessions.flatMap((session) => [
+                {data.sessions.map((session) => (
                   <tr key={session.id}>
                     <td>{formatTime(session.clock_in)}</td>
                     <td>{session.clock_out ? formatTime(session.clock_out) : 'still clocked in'}</td>
@@ -188,14 +188,12 @@ function TimeReview() {
                         <PencilIcon /> Edit
                       </button>
                     </td>
-                  </tr>,
-                  editing?.kind === 'sessions' && editing.id === session.id ? (
-                    editRow(`${session.id}-edit`, 4)
-                  ) : null,
-                ])}
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
+          {editing?.kind === 'sessions' && editPanel()}
 
           <h3>Project Time</h3>
           {data.entries.length === 0 ? (
@@ -213,7 +211,7 @@ function TimeReview() {
                 </tr>
               </thead>
               <tbody>
-                {data.entries.flatMap((entry) => [
+                {data.entries.map((entry) => (
                   <tr key={entry.id}>
                     <td>{entry.project_name}</td>
                     <td>{formatTime(entry.started_at)}</td>
@@ -242,14 +240,12 @@ function TimeReview() {
                         <PencilIcon /> Edit
                       </button>
                     </td>
-                  </tr>,
-                  editing?.kind === 'entries' && editing.id === entry.id ? (
-                    editRow(`${entry.id}-edit`, 6)
-                  ) : null,
-                ])}
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
+          {editing?.kind === 'entries' && editPanel()}
 
           <h3>Totals</h3>
           <p>

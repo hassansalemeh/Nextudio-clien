@@ -202,7 +202,7 @@ function InvoiceDetailPage() {
           <tbody>
             {invoice.items.map((item) => (
               <tr key={item.id}>
-                <td>
+                <td className="col-wrap">
                   <strong>{item.name}</strong>
                   {item.description && <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}>{item.description}</div>}
                 </td>
