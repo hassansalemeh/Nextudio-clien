@@ -9,6 +9,7 @@ import { hourlyRateFromSalary } from './config'
 import { pool } from './db'
 import { HttpError, describeError, isIsoDate, roundMoney, withTransaction } from './http'
 import { registerDocumentRoutes } from './documents'
+import { registerEstimateEmailRoutes } from './estimateEmail'
 import { registerEstimateRoutes } from './estimates'
 import { listInvoices, registerInvoiceRoutes } from './invoices'
 import { registerPaymentRoutes } from './payments'
@@ -64,6 +65,7 @@ app.get('/api/health', async (_req, res) => {
 // Login routes, then authentication + role checks for every other /api route
 registerAuth(app)
 registerEstimateRoutes(app)
+registerEstimateEmailRoutes(app)
 registerInvoiceRoutes(app)
 registerPaymentRoutes(app)
 registerDocumentRoutes(app)
@@ -1147,7 +1149,7 @@ app.get('/api/projects/:projectId', async (req, res) => {
   try {
     const projectResult = await pool.query(
       `SELECT projects.id, projects.client_id, clients.name AS client_name, projects.name,
-              projects.description, projects.total_fee, projects.fee_status, projects.source_estimate_id,
+              projects.description, projects.location, projects.total_fee, projects.fee_status, projects.source_estimate_id,
               to_char(projects.start_date, 'YYYY-MM-DD') AS start_date, projects.status
        FROM projects JOIN clients ON clients.id = projects.client_id
        WHERE projects.id = $1`,

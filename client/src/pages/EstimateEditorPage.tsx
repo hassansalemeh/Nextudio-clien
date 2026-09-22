@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { COMPANY } from '../companyProfile'
 import { useConfirm } from '../components/ConfirmDialog'
-import { InvoiceIcon } from '../components/icons'
+import { InvoiceIcon, MailIcon } from '../components/icons'
+import SendEstimateEmailDialog from '../components/SendEstimateEmailDialog'
 import { localDateString } from '../timeUtils'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -11,6 +12,7 @@ type Client = {
   id: string
   name: string
   contact_name: string | null
+  email: string | null
 }
 
 type Project = {
@@ -95,6 +97,8 @@ function emptyForm() {
     discount_type: 'fixed',
     discount_value: '',
     project_id: '',
+    project_location: '',
+    introduction: '',
   }
 }
 
@@ -105,9 +109,11 @@ function EstimateEditorPage() {
   const confirm = useConfirm()
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   // /estimates/new and /estimates/:id are the same route, so saving a new estimate does not remount the editor
   const isNew = id === 'new'
   const justSavedId = useRef<string | null>(null)
+  const [emailOpen, setEmailOpen] = useState(false)
 
   const [form, setForm] = useState(emptyForm())
   const [items, setItems] = useState<ItemForm[]>([])
@@ -166,6 +172,8 @@ function EstimateEditorPage() {
       discount_type: estimate.discount_type,
       discount_value: Number(estimate.discount_value) ? String(Number(estimate.discount_value)) : '',
       project_id: estimate.project_id ?? '',
+      project_location: estimate.project_location ?? '',
+      introduction: estimate.introduction ?? '',
     })
     setItems(
       estimate.items.map((item: any) => ({
@@ -203,6 +211,16 @@ function EstimateEditorPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load estimate.'))
       .finally(() => setLoading(false))
   }, [id, isNew])
+
+  // The Preview page's "Send by Email" button links here with ?send=1 so the dialog opens automatically
+  useEffect(() => {
+    if (isNew || loading) return
+    if (searchParams.get('send') === '1') {
+      setEmailOpen(true)
+      searchParams.delete('send')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [isNew, loading, searchParams, setSearchParams])
 
   const locked = !isNew && form.status === 'approved'
 
@@ -359,6 +377,11 @@ function EstimateEditorPage() {
       <button type="button" className="btn-outline" disabled={busy} onClick={locked ? () => navigate(`/estimates/${id}/preview`) : handlePreview}>
         Preview
       </button>
+      {!isNew && (
+        <button type="button" className="btn-outline" disabled={busy} onClick={() => setEmailOpen(true)}>
+          <MailIcon /> Send by Email
+        </button>
+      )}
       {!locked && (
         <button type="button" className="btn-pill" disabled={busy} onClick={handleSave}>
           Save and continue
@@ -528,6 +551,17 @@ function EstimateEditorPage() {
                 <div className="doc-hint">Pick an existing project to confirm it with this estimate's total.</div>
               </div>
 
+              <label htmlFor="est-location">Project Location</label>
+              <div>
+                <input
+                  id="est-location"
+                  value={form.project_location}
+                  placeholder="e.g. Beirut, Lebanon"
+                  onChange={(e) => update('project_location', e.target.value)}
+                />
+                <div className="doc-hint">Where the project is, separate from the client's address. Carries into the invoice and project.</div>
+              </div>
+
               <label htmlFor="est-status">Status</label>
               <select id="est-status" value={form.status} onChange={(e) => handleStatusChange(e.target.value)}>
                 {STATUS_OPTIONS.map((option) => (
@@ -536,6 +570,23 @@ function EstimateEditorPage() {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="doc-notes tall">
+            <label htmlFor="est-introduction">Introduction</label>
+            <textarea
+              id="est-introduction"
+              value={form.introduction}
+              placeholder={
+                'e.g. Nextudio Architects is pleased to submit this proposal for the architectural design and consultancy ' +
+                'services for the above-mentioned project...'
+              }
+              onChange={(e) => update('introduction', e.target.value)}
+            />
+            <div className="doc-hint">
+              A proper opening paragraph for the quotation — separate from Summary, Notes/Terms. Shown before Services, in the
+              Preview/PDF.
             </div>
           </div>
 
@@ -704,6 +755,17 @@ function EstimateEditorPage() {
         {saved && <p className="doc-saved">Saved.</p>}
         {actions}
       </div>
+
+      {emailOpen && !isNew && (
+        <SendEstimateEmailDialog
+          estimateId={id!}
+          clientEmail={client?.email ?? null}
+          contactName={form.contact_name}
+          projectTitle={form.summary || form.title}
+          onClose={() => setEmailOpen(false)}
+          onSent={(updated) => applyEstimate(updated)}
+        />
+      )}
     </>
   )
 }

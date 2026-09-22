@@ -31,6 +31,8 @@ type Invoice = {
   payment_terms: string | null
   timeline: string | null
   exclusions: string | null
+  project_location: string | null
+  introduction: string | null
   subtotal: string
   discount_type: string
   discount_value: string
@@ -162,6 +164,11 @@ function InvoiceDetailPage() {
         <p>
           Title: <strong>{invoice.summary || invoice.title}</strong>
         </p>
+        {invoice.project_location && (
+          <p>
+            Project Location: <strong>{invoice.project_location}</strong>
+          </p>
+        )}
         {invoice.estimate_id && (
           <p>
             From estimate: <Link to={`/estimates/${invoice.estimate_id}`}>{invoice.estimate_number}</Link>
@@ -177,6 +184,11 @@ function InvoiceDetailPage() {
 
       <div className="card">
         <h2>Services</h2>
+        {invoice.introduction && (
+          <div className="terms-view" style={{ marginTop: 0, marginBottom: '1rem' }}>
+            <div className="terms-text">{invoice.introduction}</div>
+          </div>
+        )}
         <table className="data-table">
           <thead>
             <tr>

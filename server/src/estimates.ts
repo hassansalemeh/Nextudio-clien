@@ -98,15 +98,20 @@ function parseHeader(body: Record<string, unknown>) {
     discount_type,
     discount_value,
     project_id: body.project_id ? body.project_id : null,
+    // Separate from the client's saved address, and from Summary/Notes/Terms
+    project_location: optionalText(body.project_location),
+    introduction: longText(body.introduction),
   }
 }
 
 const ESTIMATE_SELECT = `
   SELECT estimates.id, estimates.estimate_number, estimates.title, estimates.summary,
-         estimates.client_id, clients.name AS client_name, estimates.contact_name, estimates.customer_ref,
+         estimates.client_id, clients.name AS client_name, clients.email AS client_email,
+         estimates.contact_name, estimates.customer_ref,
          to_char(estimates.estimate_date, 'YYYY-MM-DD') AS estimate_date,
          to_char(estimates.valid_until, 'YYYY-MM-DD') AS valid_until,
          estimates.currency, estimates.status, estimates.notes, estimates.payment_terms, estimates.timeline, estimates.exclusions,
+         estimates.project_location, estimates.introduction,
          estimates.subtotal, estimates.discount, estimates.discount_type, estimates.discount_value, estimates.total,
          estimates.project_id, estimates.approved_at,
          invoices.id AS invoice_id, invoices.invoice_number,
@@ -207,14 +212,15 @@ async function approveEstimate(estimateId: string) {
       await client.query(
         `INSERT INTO invoices (estimate_id, invoice_number, client_id, contact_name, title, summary, invoice_date, due_date,
                                currency, notes, subtotal, discount_type, discount_value, discount, total,
-                               payment_terms, timeline, exclusions)
-         VALUES ($1, $2, $3, $4, $5, $6, current_date, current_date + $7::int, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                               payment_terms, timeline, exclusions, project_location, introduction)
+         VALUES ($1, $2, $3, $4, $5, $6, current_date, current_date + $7::int, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          RETURNING id`,
         [
           estimateId, number, estimate.client_id, estimate.contact_name, estimate.title, estimate.summary,
           INVOICE_PAYMENT_TERM_DAYS, estimate.currency, estimate.notes, estimate.subtotal, estimate.discount_type,
           estimate.discount_value, estimate.discount, estimate.total,
           estimate.payment_terms, estimate.timeline, estimate.exclusions,
+          estimate.project_location, estimate.introduction,
         ]
       )
     ).rows[0]
@@ -233,15 +239,15 @@ async function approveEstimate(estimateId: string) {
       if (linked.rows.length === 0) throw new HttpError(400, 'The linked project no longer exists')
       if (linked.rows[0].source_estimate_id) throw new HttpError(400, 'The linked project already belongs to another estimate')
       await client.query(
-        `UPDATE projects SET fee_status = 'confirmed', total_fee = $2, source_estimate_id = $3, source_invoice_id = $4 WHERE id = $1`,
-        [estimate.project_id, estimate.total, estimateId, invoice.id]
+        `UPDATE projects SET fee_status = 'confirmed', total_fee = $2, source_estimate_id = $3, source_invoice_id = $4, location = $5 WHERE id = $1`,
+        [estimate.project_id, estimate.total, estimateId, invoice.id, estimate.project_location]
       )
       projectId = estimate.project_id
     } else {
       const created = await client.query(
-        `INSERT INTO projects (client_id, name, description, total_fee, fee_status, start_date, status, source_estimate_id, source_invoice_id)
-         VALUES ($1, $2, $3, $4, 'confirmed', current_date, 'planning', $5, $6) RETURNING id`,
-        [estimate.client_id, estimate.summary || estimate.title, estimate.summary, estimate.total, estimateId, invoice.id]
+        `INSERT INTO projects (client_id, name, description, total_fee, fee_status, start_date, status, source_estimate_id, source_invoice_id, location)
+         VALUES ($1, $2, $3, $4, 'confirmed', current_date, 'planning', $5, $6, $7) RETURNING id`,
+        [estimate.client_id, estimate.summary || estimate.title, estimate.summary, estimate.total, estimateId, invoice.id, estimate.project_location]
       )
       projectId = created.rows[0].id
     }
@@ -300,12 +306,13 @@ export function registerEstimateRoutes(app: Express) {
         const inserted = await client.query(
           `INSERT INTO estimates (estimate_number, title, summary, client_id, contact_name, customer_ref, estimate_date,
                                   valid_until, currency, status, notes, discount_type, discount_value, project_id,
-                                  payment_terms, timeline, exclusions)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+                                  payment_terms, timeline, exclusions, project_location, introduction)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
           [
             header.estimate_number, header.title, header.summary, header.client_id, header.contact_name, header.customer_ref,
             header.estimate_date, header.valid_until, header.currency, header.status, header.notes, header.discount_type,
             header.discount_value, header.project_id, header.payment_terms, header.timeline, header.exclusions,
+            header.project_location, header.introduction,
           ]
         )
         await saveItemsAndTotals(client, inserted.rows[0].id, items, header.discount_type as string, header.discount_value as number)
@@ -338,12 +345,14 @@ export function registerEstimateRoutes(app: Express) {
           `UPDATE estimates SET estimate_number = $2, title = $3, summary = $4, client_id = $5, contact_name = $6,
                                 customer_ref = $7, estimate_date = $8, valid_until = $9, currency = $10, status = $11,
                                 notes = $12, discount_type = $13, discount_value = $14, project_id = $15,
-                                payment_terms = $16, timeline = $17, exclusions = $18, updated_at = now()
+                                payment_terms = $16, timeline = $17, exclusions = $18, project_location = $19,
+                                introduction = $20, updated_at = now()
            WHERE id = $1`,
           [
             id, header.estimate_number, header.title, header.summary, header.client_id, header.contact_name, header.customer_ref,
             header.estimate_date, header.valid_until, header.currency, header.status, header.notes, header.discount_type,
             header.discount_value, header.project_id, header.payment_terms, header.timeline, header.exclusions,
+            header.project_location, header.introduction,
           ]
         )
         await saveItemsAndTotals(client, id, items, header.discount_type as string, header.discount_value as number)

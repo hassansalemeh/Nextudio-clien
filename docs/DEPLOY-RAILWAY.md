@@ -16,6 +16,10 @@ The app runs as one Docker container (website + API + Chromium for PDFs). The da
 Do **not** set `PORT`: Railway provides it and the app listens on `process.env.PORT`.
 `NODE_ENV`, `PDF_BROWSER_PATH` and `PDF_NO_SANDBOX` are already set inside the image.
 
+To enable "Send by Email" on quotations, also set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (your email
+provider's SMTP credentials) and optionally `MAIL_FROM_EMAIL` (default `info@nextudio.co`) and `MAIL_FROM_NAME`
+(default `Nextudio Architects`). Without these, sending fails with a clear error; nothing else is affected.
+
 ## 3. Domain
 Service → Settings → Networking → Custom Domain → `control.nextudio.co`. Add the CNAME record Railway shows at your DNS provider. HTTPS is issued automatically.
 

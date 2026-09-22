@@ -46,6 +46,11 @@ function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' }) {
           <button type="button" className="btn-outline" onClick={() => navigate(`/${collection}/${id}`)}>
             Back
           </button>
+          {kind === 'estimate' && (
+            <button type="button" className="btn-outline" onClick={() => navigate(`/estimates/${id}?send=1`)}>
+              Send by Email
+            </button>
+          )}
           {url && (
             <a className="btn-pill doc-download" href={url} download={filename}>
               Download PDF

@@ -70,6 +70,13 @@ export const EyeIcon = (p: IconProps) => (
   </Svg>
 )
 
+export const MailIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+    <path d="m3.5 6 8.5 7 8.5-7" />
+  </Svg>
+)
+
 export const LogoutIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

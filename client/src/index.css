@@ -615,6 +615,10 @@ main {
   resize: vertical;
 }
 
+.doc-notes.tall textarea {
+  min-height: 13rem;
+}
+
 .doc-bottombar {
   display: flex;
   flex-direction: column;
@@ -959,6 +963,84 @@ main {
 .modal-actions .btn-sm {
   padding: 0.5rem 1.1rem;
   font-size: 0.9rem;
+}
+
+/* ---------- Send Estimate by Email dialog ---------- */
+
+.modal-wide {
+  max-width: 40rem;
+  text-align: left;
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modal-header h2 {
+  margin: 0 0 1rem;
+}
+
+.email-message {
+  min-height: 8rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.email-attach-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+}
+
+.email-history {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.email-history h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.email-history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.email-history li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.85rem;
+}
+
+.email-history li:last-child {
+  border-bottom: none;
+}
+
+.email-history-error {
+  margin-top: 0.2rem;
+  color: #b3261e;
+  font-size: 0.8rem;
 }
 
 @keyframes modal-fade {

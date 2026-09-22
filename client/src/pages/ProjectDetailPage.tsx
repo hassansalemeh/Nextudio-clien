@@ -22,6 +22,7 @@ type ProjectDetails = {
     client_name: string
     name: string
     description: string | null
+    location: string | null
     total_fee: string | null
     fee_status: string
     start_date: string | null
@@ -103,6 +104,9 @@ function ProjectDetailPage() {
         <h2>Project Details</h2>
         <p>
           Client: <strong>{project.client_name}</strong>
+        </p>
+        <p>
+          Location: <strong>{project.location || '—'}</strong>
         </p>
         <p>
           Description: <strong>{project.description || '—'}</strong>

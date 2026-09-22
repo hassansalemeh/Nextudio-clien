@@ -13,7 +13,9 @@ const INVOICE_SELECT = `
          invoices.contact_name, invoices.title, invoices.summary,
          to_char(invoices.invoice_date, 'YYYY-MM-DD') AS invoice_date,
          to_char(invoices.due_date, 'YYYY-MM-DD') AS due_date,
-         invoices.currency, invoices.notes, invoices.payment_terms, invoices.timeline, invoices.exclusions, invoices.subtotal, invoices.discount_type, invoices.discount_value,
+         invoices.currency, invoices.notes, invoices.payment_terms, invoices.timeline, invoices.exclusions,
+         invoices.project_location, invoices.introduction,
+         invoices.subtotal, invoices.discount_type, invoices.discount_value,
          invoices.discount, invoices.total, invoices.estimate_id, estimates.estimate_number,
          projects.id AS project_id, projects.name AS project_name,
          coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id), 0) AS paid

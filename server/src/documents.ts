@@ -54,6 +54,8 @@ type DocumentData = {
   secondDate: string | null
   currency: string
   billTo: { name: string; contact: string | null; phone: string | null; email: string | null }
+  projectLocation: string | null
+  introduction: string | null
   items: DocItem[]
   subtotal: string
   discount: string
@@ -169,6 +171,7 @@ function bodyHtml(doc: DocumentData) {
     .t-label { text-align: right; }
     .t-value { text-align: right; min-width: 90px; }
     .t-grand td { padding-top: 7px; padding-bottom: 7px; border-top: 2px solid #e5e6e8; font-size: 11px; }
+    .intro { margin: 4px 0 18px; font-size: 10.5px; line-height: 1.6; color: #222; white-space: pre-wrap; overflow-wrap: anywhere; }
     .notes { margin-top: 20px; color: #555; font-size: 10px; line-height: 1.55; }
     .notes h4 { margin: 0 0 6px; font-size: 10.5px; color: #444; break-after: avoid; page-break-after: avoid; }
     .notes .text { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -186,9 +189,11 @@ function bodyHtml(doc: DocumentData) {
         <tr><td class="m-label">${escapeHtml(doc.numberLabel)}:</td><td class="m-value">${escapeHtml(doc.number)}</td></tr>
         <tr><td class="m-label">${escapeHtml(doc.dateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.date))}</td></tr>
         ${doc.secondDate ? `<tr><td class="m-label">${escapeHtml(doc.secondDateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.secondDate))}</td></tr>` : ''}
+        ${doc.projectLocation ? `<tr><td class="m-label">Project Location:</td><td class="m-value">${escapeHtml(doc.projectLocation)}</td></tr>` : ''}
         ${highlight}
       </table>
     </div>
+    ${doc.introduction ? `<div class="intro">${escapeHtml(doc.introduction)}</div>` : ''}
     <table class="items">
       <thead><tr><th>Services</th><th class="c">Quantity</th><th class="c">Unit</th><th>Unit Price</th><th>Amount</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -242,7 +247,7 @@ function getBrowser() {
   return browserPromise
 }
 
-async function renderPdf(doc: DocumentData): Promise<Buffer> {
+export async function renderPdf(doc: DocumentData): Promise<Buffer> {
   const browser = await getBrowser()
   const page = await browser.newPage()
   try {
@@ -277,6 +282,8 @@ export async function checkPdfEngine(): Promise<{ ok: boolean; browser?: string;
       secondDate: null,
       currency: 'USD',
       billTo: { name: 'Check', contact: null, phone: null, email: null },
+      projectLocation: null,
+      introduction: null,
       items: [{ name: 'Test service', description: 'Line one\nLine two', quantity: '1', unit: 'ls', unit_price: '1', amount: '1' }],
       subtotal: '1',
       discount: '0',
@@ -312,7 +319,7 @@ async function clientFor(clientId: string | null) {
   return result.rows[0] ?? { name: '', phone: null, email: null }
 }
 
-async function quotationDocument(estimateId: string): Promise<DocumentData> {
+export async function quotationDocument(estimateId: string): Promise<DocumentData> {
   const estimate = await loadEstimate(estimateId)
   if (!estimate) throw new HttpError(404, 'Estimate not found')
   const client = await clientFor(estimate.client_id)
@@ -328,6 +335,8 @@ async function quotationDocument(estimateId: string): Promise<DocumentData> {
     secondDate: estimate.valid_until,
     currency: estimate.currency,
     billTo: { name: client.name || estimate.client_name || '', contact: estimate.contact_name, phone: client.phone, email: client.email },
+    projectLocation: estimate.project_location,
+    introduction: estimate.introduction,
     items: estimate.items,
     subtotal: estimate.subtotal,
     discount: estimate.discount,
@@ -355,6 +364,8 @@ async function invoiceDocument(invoiceId: string): Promise<DocumentData> {
     secondDate: invoice.due_date,
     currency: invoice.currency,
     billTo: { name: invoice.client_name, contact: invoice.contact_name, phone: invoice.client_phone, email: invoice.client_email },
+    projectLocation: invoice.project_location,
+    introduction: invoice.introduction,
     items: invoice.items,
     subtotal: invoice.subtotal,
     discount: invoice.discount,
