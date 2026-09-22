@@ -1,18 +1,7 @@
-// Sends email from the server only. Credentials live in environment variables (SMTP_HOST/PORT/USER/PASS) and are
-// never sent to the browser. Configure a real provider by setting those variables; nothing here hardcodes one.
-import nodemailer from 'nodemailer'
-import type { Transporter } from 'nodemailer'
+// Sends email from the server only, over HTTPS via the Resend API (https://resend.com/docs/api-reference/emails/send-email).
+// Credentials live in environment variables and are never sent to the browser. No SMTP: Railway blocks outbound
+// SMTP on our plan (ETIMEDOUT / ENETUNREACH to smtp.gmail.com:465), which is exactly what an HTTPS API avoids.
 import { describeError, HttpError } from './http'
-
-// describeError() already redacts DATABASE_URL and session secrets; this also strips SMTP_PASS/SMTP_USER,
-// in case a mail-server error ever echoes them back (some SMTP servers include the failed AUTH line).
-export function redactCredentials(text: string): string {
-  let redacted = text
-  for (const secret of [process.env.SMTP_PASS, process.env.SMTP_USER]) {
-    if (secret && secret.length >= 3) redacted = redacted.split(secret).join('***')
-  }
-  return redacted
-}
 
 export type MailAttachment = { filename: string; content: Buffer; contentType?: string }
 export type MailMessage = {
@@ -23,76 +12,79 @@ export type MailMessage = {
   attachments?: MailAttachment[]
 }
 
-function transporterFromEnv(): Transporter | null {
-  const host = process.env.SMTP_HOST
-  if (!host) return null
-  return nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true', // true for port 465, false (STARTTLS) for 587/25
-    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-  })
+// Overridable only so local tests can point requests at a mock server instead of the real API; production
+// never needs to set this.
+const RESEND_API_URL = process.env.RESEND_API_URL || 'https://api.resend.com/emails'
+
+// describeError() already redacts DATABASE_URL and session secrets; this also strips the Resend API key, in
+// case a provider error response or a network error message ever echoed it back.
+export function redactCredentials(text: string): string {
+  const key = process.env.RESEND_API_KEY
+  return key && key.length >= 3 ? text.split(key).join('***') : text
 }
 
-let setupPromise: Promise<{ transporter: Transporter; isTestAccount: boolean }> | null = null
+function splitAddresses(value: string): string[] {
+  return value
+    .split(',')
+    .map((address) => address.trim())
+    .filter(Boolean)
+}
 
-function setupTransporter() {
-  if (!setupPromise) {
-    setupPromise = (async () => {
-      const fromEnv = transporterFromEnv()
-      if (fromEnv) return { transporter: fromEnv, isTestAccount: false }
-
-      if (process.env.NODE_ENV === 'production') {
-        throw new HttpError(
-          500,
-          'Email is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER and SMTP_PASS in the server environment.'
-        )
-      }
-
-      // Development only: a free, disposable Ethereal mailbox (nodemailer's own test SMTP service). Nothing is
-      // delivered to a real inbox; the message can only be viewed through the preview URL this logs to the console.
-      const account = await nodemailer.createTestAccount()
-      console.warn(
-        `[mail] SMTP_HOST is not set, so a temporary Ethereal test mailbox is being used for local testing only ` +
-          `(${account.user}). Set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS to send real email.`
-      )
-      const transporter = nodemailer.createTransport({
-        host: account.smtp.host,
-        port: account.smtp.port,
-        secure: account.smtp.secure,
-        auth: { user: account.user, pass: account.pass },
-      })
-      return { transporter, isTestAccount: true }
-    })()
-    setupPromise.catch(() => {
-      setupPromise = null
-    })
+function describeResendFailure(status: number, body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { message?: string; name?: string }
+    if (parsed?.message) return `The email provider rejected the message: ${parsed.message}`
+  } catch {
+    // body wasn't JSON; fall through to a generic message below
   }
-  return setupPromise
+  if (status === 401 || status === 403) return 'The email provider rejected the request. Check that RESEND_API_KEY is set correctly.'
+  if (status === 422) return 'The email provider rejected the message (check the sender address and that the domain is verified).'
+  return 'The mail server rejected the message. Please try again or check the email settings.'
 }
 
-// Resolves once the message is accepted by the mail server; throws (never returns a "failed" value) otherwise.
-// testPreviewUrl is only set when no real provider is configured (see setupTransporter above).
-export async function sendMail(message: MailMessage): Promise<{ testPreviewUrl: string | null }> {
-  const { transporter, isTestAccount } = await setupTransporter()
+// Resolves once Resend accepts the message; throws HttpError otherwise. Never silently "succeeds" on failure.
+export async function sendMail(message: MailMessage): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    throw new HttpError(
+      500,
+      'Email is not configured. Set RESEND_API_KEY (and optionally MAIL_FROM_EMAIL / MAIL_FROM_NAME) in the server environment.'
+    )
+  }
+
   const fromEmail = process.env.MAIL_FROM_EMAIL || 'info@nextudio.co'
   const fromName = process.env.MAIL_FROM_NAME || 'Nextudio Architects'
 
+  const payload: Record<string, unknown> = {
+    from: `${fromName} <${fromEmail}>`,
+    to: splitAddresses(message.to),
+    subject: message.subject,
+    text: message.text,
+  }
+  if (message.cc) payload.cc = splitAddresses(message.cc)
+  if (message.attachments?.length) {
+    // Resend's HTTP API takes each attachment's content as a base64 string
+    payload.attachments = message.attachments.map((attachment) => ({
+      filename: attachment.filename,
+      content: attachment.content.toString('base64'),
+    }))
+  }
+
+  let response: Response
   try {
-    const info = await transporter.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
-      to: message.to,
-      cc: message.cc || undefined,
-      subject: message.subject,
-      text: message.text,
-      attachments: message.attachments,
+    response = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     })
-    const testPreviewUrl = isTestAccount ? nodemailer.getTestMessageUrl(info) || null : null
-    if (testPreviewUrl) console.log('[mail] test message preview:', testPreviewUrl)
-    return { testPreviewUrl }
   } catch (err) {
-    if (err instanceof HttpError) throw err
-    console.error('[mail] send failed:', redactCredentials(describeError(err)))
-    throw new HttpError(502, 'The mail server rejected the message. Please try again or check the email settings.')
+    console.error('[mail] could not reach the email provider:', redactCredentials(describeError(err)))
+    throw new HttpError(502, 'Could not reach the email provider. Please try again.')
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    console.error(`[mail] Resend rejected the message (HTTP ${response.status}):`, redactCredentials(body))
+    throw new HttpError(502, describeResendFailure(response.status, body))
   }
 }
