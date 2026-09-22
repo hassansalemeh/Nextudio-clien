@@ -778,18 +778,9 @@ app.post('/api/time/manual', async (req, res) => {
         )
       }
 
-      // if the employee clocked in that day, the work must fall inside the office period
-      // (a session that is still open counts up to the current time; end <= now is already checked)
-      const sessions = await client.query(
-        'SELECT clock_in, clock_out FROM attendance WHERE employee_id = $1 AND clock_in >= $2 AND clock_in < $3',
-        [employee_id, dayStart, dayEnd]
-      )
-      if (sessions.rows.length > 0) {
-        const inside = sessions.rows.some(
-          (session) => startAt >= session.clock_in && endAt <= (session.clock_out ?? now)
-        )
-        if (!inside) throw new HttpError(400, 'The work must fall inside your clock-in and clock-out period for that day')
-      }
+      // Attendance (Clock In/Out) and project work tracking are separate on purpose: real attendance is
+      // verified externally (Hikvision/Hik-Connect), so a manual work entry is never required to fall
+      // inside — or even have — a Clock In/Out session in this app.
 
       // same frozen hourly rate as a timer entry
       const salary = await client.query('SELECT monthly_salary FROM employees WHERE id = $1', [employee_id])
