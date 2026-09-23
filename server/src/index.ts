@@ -8,9 +8,11 @@ import { registerAuth, resolveEmployeeId } from './auth'
 import { hourlyRateFromSalary } from './config'
 import { pool } from './db'
 import { HttpError, describeError, isIsoDate, roundMoney, withTransaction } from './http'
+import { registerDisbursementRoutes } from './disbursements'
 import { registerDocumentRoutes } from './documents'
 import { registerEstimateEmailRoutes } from './estimateEmail'
 import { registerEstimateRoutes } from './estimates'
+import { registerInvoiceEmailRoutes } from './invoiceEmail'
 import { listInvoices, registerInvoiceRoutes } from './invoices'
 import { registerPaymentRoutes } from './payments'
 import { isProduction, registerSecurity } from './security'
@@ -67,6 +69,8 @@ registerAuth(app)
 registerEstimateRoutes(app)
 registerEstimateEmailRoutes(app)
 registerInvoiceRoutes(app)
+registerInvoiceEmailRoutes(app)
+registerDisbursementRoutes(app)
 registerPaymentRoutes(app)
 registerDocumentRoutes(app)
 
@@ -165,7 +169,7 @@ app.get('/api/projects', async (_req, res) => {
   try {
     const result = await pool.query(
       `SELECT projects.id, projects.client_id, clients.name AS client_name, projects.name,
-              projects.description, projects.total_fee, projects.fee_status, projects.source_estimate_id,
+              projects.description, projects.location, projects.total_fee, projects.fee_status, projects.source_estimate_id,
               to_char(projects.start_date, 'YYYY-MM-DD') AS start_date, projects.status,
               projects.created_at
        FROM projects
@@ -1050,11 +1054,38 @@ app.get('/api/dashboard', async (req, res) => {
     const confirmedValue = sum(confirmed.map((project) => project.amount))
     const laborCost = sum(confirmed.map((project) => project.deducted))
 
-    // Invoices and cash come from the invoice records themselves (payments are summed there)
+    // Invoices and cash come from the invoice records themselves (payments are summed there).
+    // Client Funds invoices/payments (money held for project expenses, not Nextudio's design fee) are kept
+    // out of every professional/design-fee figure below, and reported separately instead.
     const invoices = await listInvoices()
-    const invoiced = sum(invoices.map((invoice) => Number(invoice.total)))
-    // cash actually collected: every payment record, whether or not it is applied to an invoice
-    const paymentsReceived = roundMoney(Number((await pool.query('SELECT coalesce(sum(amount), 0) AS total FROM payments')).rows[0].total))
+    const professionalInvoices = invoices.filter((invoice) => invoice.invoice_type === 'professional_services')
+    const clientFundsInvoices = invoices.filter((invoice) => invoice.invoice_type === 'client_funds')
+    const invoiced = sum(professionalInvoices.map((invoice) => Number(invoice.total)))
+    // cash actually collected: every payment record not applied to a Client Funds invoice
+    const paymentsReceived = roundMoney(
+      Number(
+        (
+          await pool.query(
+            `SELECT coalesce(sum(payments.amount), 0) AS total FROM payments
+             LEFT JOIN invoices ON invoices.id = payments.invoice_id
+             WHERE invoices.id IS NULL OR invoices.invoice_type = 'professional_services'`
+          )
+        ).rows[0].total
+      )
+    )
+    const clientFundsReceived = roundMoney(
+      Number(
+        (
+          await pool.query(
+            `SELECT coalesce(sum(payments.amount), 0) AS total FROM payments
+             JOIN invoices ON invoices.id = payments.invoice_id
+             WHERE invoices.invoice_type = 'client_funds'`
+          )
+        ).rows[0].total
+      )
+    )
+    const clientFundsInvoiced = sum(clientFundsInvoices.map((invoice) => Number(invoice.total)))
+    const clientFundsOutstanding = sum(clientFundsInvoices.map((invoice) => invoice.amount_due))
     const recentPayments = await pool.query(
       `SELECT payments.id, payments.project_id, projects.name AS project_name, clients.name AS client_name,
               to_char(payments.payment_date, 'YYYY-MM-DD') AS payment_date, payments.amount, payments.reason
@@ -1062,8 +1093,9 @@ app.get('/api/dashboard', async (req, res) => {
        ORDER BY payments.payment_date DESC, payments.id DESC LIMIT 5`
     )
 
-    // Open invoices first, plus the few most recent ones
-    const recentInvoices = invoices
+    // Open invoices first, plus the few most recent ones. Professional Services only - Client Funds invoices
+    // are reported separately (see the client_funds cards below and the Invoices page).
+    const recentInvoices = professionalInvoices
       .filter((invoice, index) => invoice.amount_due > 0 || index < 5)
       .slice(0, 10)
       .map((invoice) => ({
@@ -1105,9 +1137,17 @@ app.get('/api/dashboard', async (req, res) => {
         project_remaining: roundMoney(confirmedValue - laborCost),
         invoiced,
         payments_received: paymentsReceived,
-        // what invoices still have due (only payments applied to an invoice reduce it)
-        outstanding: sum(invoices.map((invoice) => invoice.amount_due)),
+        // what invoices still have due (only payments applied to an invoice reduce it) - Professional Services only
+        outstanding: sum(professionalInvoices.map((invoice) => invoice.amount_due)),
         pending_exposure: sum(pending.map((project) => project.deducted)),
+        // Money received on behalf of / for the client's project expenses. Never part of Nextudio's own
+        // professional/design fee revenue, confirmed project value or profitability above.
+        client_funds_invoiced: clientFundsInvoiced,
+        client_funds_received: clientFundsReceived,
+        client_funds_outstanding: clientFundsOutstanding,
+        // Annual cash-in / turnover view: every dollar actually collected, professional or client funds.
+        // This is a receipts total, not a revenue figure - it must never be relabelled as professional revenue.
+        total_client_receipts: roundMoney(paymentsReceived + clientFundsReceived),
       },
       projects: projects.map((project) => ({
         project_id: project.project_id,
@@ -1192,17 +1232,34 @@ app.get('/api/projects/:projectId', async (req, res) => {
     const laborCostTotal = totalLaborCost(timeRows)
     const revenue = confirmedRevenue(project)
 
+    // Client Funds payments (money held for this project's expenses, not Nextudio's design fee) are kept out
+    // of this project's client-side figures below, and reported separately in the client_funds block instead.
     const paymentRows = await pool.query(
-      `SELECT id, to_char(payment_date, 'YYYY-MM-DD') AS payment_date, reason, amount, method, invoice_id
-       FROM payments WHERE project_id = $1 ORDER BY payment_date DESC, id DESC`,
+      `SELECT payments.id, to_char(payments.payment_date, 'YYYY-MM-DD') AS payment_date, payments.reason,
+              payments.amount, payments.method, payments.invoice_id,
+              coalesce(invoices.invoice_type, 'professional_services') AS invoice_type
+       FROM payments LEFT JOIN invoices ON invoices.id = payments.invoice_id
+       WHERE payments.project_id = $1 ORDER BY payments.payment_date DESC, payments.id DESC`,
       [projectId]
     )
-    const paymentsReceived = roundMoney(paymentRows.rows.reduce((total, row) => total + Number(row.amount), 0))
+    const professionalPaymentRows = paymentRows.rows.filter((row) => row.invoice_type !== 'client_funds')
+    const clientFundsPaymentRows = paymentRows.rows.filter((row) => row.invoice_type === 'client_funds')
+    const paymentsReceived = roundMoney(professionalPaymentRows.reduce((total, row) => total + Number(row.amount), 0))
+
+    const clientFundsInvoices = (await listInvoices()).filter(
+      (invoice) => invoice.invoice_type === 'client_funds' && String(invoice.project_id) === String(projectId)
+    )
+    const clientFundsReceived = roundMoney(clientFundsPaymentRows.reduce((total, row) => total + Number(row.amount), 0))
+    const disbursementRows =
+      clientFundsInvoices.length === 0
+        ? { rows: [] }
+        : await pool.query('SELECT amount FROM invoice_disbursements WHERE invoice_id = ANY($1::bigint[])', [clientFundsInvoices.map((i) => i.id)])
+    const clientFundsSpent = roundMoney(disbursementRows.rows.reduce((total: number, row: { amount: string }) => total + Number(row.amount), 0))
 
     res.json({
       project,
       employees,
-      payments: paymentRows.rows,
+      payments: professionalPaymentRows,
       payments_received: paymentsReceived,
       // what the client still owes on the confirmed project value; unrelated to employee labor cost
       client_balance_due: roundMoney(revenue - paymentsReceived),
@@ -1210,6 +1267,22 @@ app.get('/api/projects/:projectId', async (req, res) => {
       total_labor_cost: laborCostTotal,
       confirmed_revenue: revenue,
       current_position: roundMoney(revenue - laborCostTotal),
+      // Funds held for this project's expenses - never part of the design-fee figures above
+      client_funds: {
+        invoices: clientFundsInvoices.map((invoice) => ({
+          id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          currency: invoice.currency,
+          total: Number(invoice.total),
+          paid: invoice.paid,
+          amount_due: invoice.amount_due,
+          status: invoice.status,
+        })),
+        invoiced: roundMoney(clientFundsInvoices.reduce((total, invoice) => total + Number(invoice.total), 0)),
+        received: clientFundsReceived,
+        spent: clientFundsSpent,
+        remaining: roundMoney(clientFundsReceived - clientFundsSpent),
+      },
     })
   } catch {
     res.status(500).json({ error: 'Failed to fetch project details' })

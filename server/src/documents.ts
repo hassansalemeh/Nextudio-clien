@@ -349,13 +349,16 @@ export async function quotationDocument(estimateId: string): Promise<DocumentDat
   }
 }
 
-async function invoiceDocument(invoiceId: string): Promise<DocumentData> {
+export async function invoiceDocument(invoiceId: string): Promise<DocumentData> {
   const invoice = await loadInvoice(invoiceId)
   if (!invoice) throw new HttpError(404, 'Invoice not found')
+  const isClientFunds = invoice.invoice_type === 'client_funds'
   return {
     kind: 'invoice',
-    heading: 'INVOICE',
-    subtitle: invoice.summary || invoice.title,
+    heading: isClientFunds ? 'CLIENT FUNDS / PROJECT EXPENSES' : 'INVOICE',
+    subtitle: isClientFunds
+      ? 'Funds held for project expenses — not a professional/design fee invoice'
+      : invoice.summary || invoice.title,
     number: invoice.invoice_number,
     numberLabel: 'Invoice Number',
     dateLabel: 'Invoice Date',
@@ -397,8 +400,9 @@ export function registerDocumentRoutes(app: Express) {
       if (!/^\d+$/.test(req.params.invoiceId)) throw new HttpError(404, 'Invoice not found')
       const doc = await invoiceDocument(req.params.invoiceId)
       const pdf = await renderPdf(doc)
+      const filePrefix = doc.heading === 'INVOICE' ? 'Invoice' : 'ClientFunds'
       res.setHeader('Content-Type', 'application/pdf')
-      res.setHeader('Content-Disposition', `inline; filename="Invoice_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf"`)
+      res.setHeader('Content-Disposition', `inline; filename="${filePrefix}_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf"`)
       res.send(pdf)
     } catch (err) {
       sendError(res, err, 'Failed to generate the invoice PDF')

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth'
 import { LogoutIcon, MenuIcon, CloseIcon } from './components/icons'
+import ClientFundsInvoiceEditorPage from './pages/ClientFundsInvoiceEditorPage'
 import ClientsPage from './pages/ClientsPage'
 import DashboardPage from './pages/DashboardPage'
 import DocumentPreviewPage from './pages/DocumentPreviewPage'
@@ -120,7 +121,9 @@ function App() {
           <Route path="/estimates/:id" element={<EstimateEditorPage />} />
           <Route path="/estimates/:id/preview" element={<DocumentPreviewPage kind="estimate" />} />
           <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/invoices/new" element={<ClientFundsInvoiceEditorPage />} />
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+          <Route path="/invoices/:id/edit" element={<ClientFundsInvoiceEditorPage />} />
           <Route path="/invoices/:id/preview" element={<DocumentPreviewPage kind="invoice" />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/financial-summary" element={<ProjectFinancialSummaryPage />} />

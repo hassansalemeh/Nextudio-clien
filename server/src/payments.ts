@@ -11,7 +11,7 @@ export const PAYMENT_METHODS = ['cash', 'bank_transfer', 'cheque', 'card', 'othe
 
 const PAYMENT_SELECT = `
   SELECT payments.id, payments.project_id, projects.name AS project_name, clients.name AS client_name,
-         payments.invoice_id, invoices.invoice_number,
+         payments.invoice_id, invoices.invoice_number, invoices.invoice_type,
          to_char(payments.payment_date, 'YYYY-MM-DD') AS payment_date,
          payments.amount, payments.reason, payments.method, payments.reference,
          payments.created_at, payments.updated_at,
@@ -73,8 +73,7 @@ async function checkPayment(client: PoolClient, input: PaymentInput, paymentId: 
     // the invoice must be this project's own invoice; lock it so simultaneous payments can't both pass
     const invoice = await client.query(
       `SELECT invoices.id, invoices.total FROM invoices
-       JOIN projects ON projects.source_invoice_id = invoices.id
-       WHERE invoices.id = $1 AND projects.id = $2 FOR UPDATE OF invoices`,
+       WHERE invoices.id = $1 AND invoices.project_id = $2 FOR UPDATE OF invoices`,
       [input.invoice_id, input.project_id]
     )
     if (invoice.rows.length === 0) throw new HttpError(400, 'That invoice does not belong to this project')

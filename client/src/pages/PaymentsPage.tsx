@@ -19,7 +19,7 @@ const METHOD_LABELS: Record<string, string> = Object.fromEntries(METHODS.map((m)
 const REASON_SUGGESTIONS = ['Down payment', 'Concept Design payment', 'Permit phase payment', 'Final payment', 'Other']
 
 type Project = { id: string; name: string }
-type InvoiceRow = { id: string; invoice_number: string; project_id: string | null; amount_due: number }
+type InvoiceRow = { id: string; invoice_number: string; invoice_type: string; project_id: string | null; amount_due: number }
 type Payment = {
   id: string
   project_id: string
@@ -77,8 +77,10 @@ function PaymentsPage() {
       .catch(() => setLoadError('Could not load projects.'))
   }, [load])
 
-  // The selected project's invoice (a project has at most one), and what is still due on it
-  const invoice = invoices.find((row) => row.project_id !== null && String(row.project_id) === projectId) ?? null
+  // The selected project's Professional Services invoice (a project has at most one), and what is still due on
+  // it. Client Funds invoices are paid from the invoice's own page instead, so they're left out of this picker.
+  const invoice =
+    invoices.find((row) => row.invoice_type === 'professional_services' && row.project_id !== null && String(row.project_id) === projectId) ?? null
   const dueOnInvoice = invoice ? invoice.amount_due + (editing && editing.invoice_id === invoice.id ? Number(editing.amount) : 0) : 0
   const canApply = invoice !== null && dueOnInvoice > 0
 

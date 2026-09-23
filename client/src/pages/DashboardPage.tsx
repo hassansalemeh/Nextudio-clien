@@ -18,6 +18,10 @@ type Dashboard = {
     payments_received: number
     outstanding: number
     pending_exposure: number
+    client_funds_invoiced: number
+    client_funds_received: number
+    client_funds_outstanding: number
+    total_client_receipts: number
   }
   projects: { project_id: string; name: string; fee_status: string; amount: number; deducted: number; remaining: number }[]
   invoices: {
@@ -105,6 +109,22 @@ function DashboardPage() {
         note={`Labor already spent on ${pendingCount} Pending / Unconfirmed project${pendingCount === 1 ? '' : 's'} with no confirmed revenue yet`}
         tone="warning"
       />
+
+      <h2 style={{ marginTop: '1.5rem' }}>Client Funds (Project Expenses)</h2>
+      <p className="empty-state" style={{ marginTop: 0 }}>
+        Money held on behalf of clients for construction workers, suppliers, materials and site expenses. Never part of Nextudio's
+        professional/design fee revenue above.
+      </p>
+      <div className="stat-grid">
+        <StatCard label="Client Funds Invoiced" value={money(cards.client_funds_invoiced)} note="Total value of all Client Funds invoices" />
+        <StatCard label="Client Funds Received" value={money(cards.client_funds_received)} note="Cash received for project expenses, not design fees" />
+        <StatCard label="Client Funds Outstanding" value={money(cards.client_funds_outstanding)} note="What Client Funds invoices still have due" />
+        <StatCard
+          label="Total Client Receipts"
+          value={money(cards.total_client_receipts)}
+          note="Professional payments + Client Funds received. A cash-in / turnover figure, not a revenue figure."
+        />
+      </div>
 
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h2>Projects Financial Overview</h2>

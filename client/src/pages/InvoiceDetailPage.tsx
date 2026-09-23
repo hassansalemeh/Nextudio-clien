@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import SendInvoiceEmailDialog from '../components/SendInvoiceEmailDialog'
+import { MailIcon, PencilIcon } from '../components/icons'
 import { localDateString } from '../timeUtils'
-import { INVOICE_STATUS_LABELS } from './InvoicesPage'
+import { INVOICE_STATUS_LABELS, INVOICE_TYPE_LABELS } from './InvoicesPage'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -17,9 +19,12 @@ const METHODS = [
 
 const METHOD_LABELS: Record<string, string> = Object.fromEntries(METHODS.map((m) => [m.value, m.label]))
 
+const DISBURSEMENT_CATEGORY_SUGGESTIONS = ['Construction advance', 'Contractor payment', 'Material purchase', 'Supplier payment', 'Site expense']
+
 type Invoice = {
   id: string
   invoice_number: string
+  invoice_type: string
   client_name: string
   contact_name: string | null
   title: string
@@ -42,6 +47,7 @@ type Invoice = {
   estimate_number: string | null
   project_id: string | null
   project_name: string | null
+  client_email: string | null
   paid: number
   amount_due: number
   status: string
@@ -49,11 +55,23 @@ type Invoice = {
   payments: { id: string; payment_date: string; amount: string; reason: string; method: string | null; reference: string | null }[]
 }
 
+type Disbursement = {
+  id: string
+  disbursement_date: string
+  payee: string
+  description: string | null
+  category: string | null
+  amount: string
+  reference: string | null
+}
+
 function InvoiceDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [error, setError] = useState('')
+  const [emailOpen, setEmailOpen] = useState(false)
 
   const [paymentDate, setPaymentDate] = useState(localDateString())
   const [amount, setAmount] = useState('')
@@ -62,6 +80,16 @@ function InvoiceDetailPage() {
   const [reference, setReference] = useState('')
   const [paymentError, setPaymentError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const [disbursements, setDisbursements] = useState<Disbursement[]>([])
+  const [dDate, setDDate] = useState(localDateString())
+  const [dPayee, setDPayee] = useState('')
+  const [dDescription, setDDescription] = useState('')
+  const [dCategory, setDCategory] = useState('')
+  const [dAmount, setDAmount] = useState('')
+  const [dReference, setDReference] = useState('')
+  const [dError, setDError] = useState('')
+  const [dSaving, setDSaving] = useState(false)
 
   const load = useCallback(() => {
     fetch(`${API_URL}/api/invoices/${id}`)
@@ -77,11 +105,32 @@ function InvoiceDetailPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load invoice.'))
   }, [id])
 
+  const loadDisbursements = useCallback(() => {
+    fetch(`${API_URL}/api/invoices/${id}/disbursements`)
+      .then((response) => (response.ok ? response.json() : []))
+      .then(setDisbursements)
+      .catch(() => undefined)
+  }, [id])
+
   useEffect(() => {
     load()
     window.addEventListener('focus', load)
     return () => window.removeEventListener('focus', load)
   }, [load])
+
+  useEffect(() => {
+    if (invoice?.invoice_type === 'client_funds') loadDisbursements()
+  }, [invoice?.invoice_type, loadDisbursements])
+
+  // Opened via /invoices/:id?send=1 (e.g. from the PDF preview's "Send by Email" shortcut)
+  useEffect(() => {
+    if (!invoice) return
+    if (searchParams.get('send') === '1') {
+      setEmailOpen(true)
+      searchParams.delete('send')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [invoice, searchParams, setSearchParams])
 
   async function recordPayment(event: React.FormEvent) {
     event.preventDefault()
@@ -120,6 +169,53 @@ function InvoiceDetailPage() {
     }
   }
 
+  async function addDisbursement(event: React.FormEvent) {
+    event.preventDefault()
+    setDError('')
+    const value = Number(dAmount)
+    if (!dDate) return setDError('Date is required.')
+    if (!dPayee.trim()) return setDError('Enter who the money was paid to.')
+    if (dAmount === '' || Number.isNaN(value) || value <= 0) return setDError('Enter an amount greater than 0.')
+
+    setDSaving(true)
+    try {
+      const response = await fetch(`${API_URL}/api/invoices/${id}/disbursements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          disbursement_date: dDate,
+          payee: dPayee,
+          description: dDescription || null,
+          category: dCategory || null,
+          amount: value,
+          reference: dReference || null,
+        }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Could not record the disbursement.')
+      loadDisbursements()
+      setDPayee('')
+      setDDescription('')
+      setDCategory('')
+      setDAmount('')
+      setDReference('')
+    } catch (err) {
+      setDError(err instanceof Error ? err.message : 'Could not record the disbursement.')
+    } finally {
+      setDSaving(false)
+    }
+  }
+
+  async function deleteDisbursement(disbursementId: string) {
+    try {
+      const response = await fetch(`${API_URL}/api/invoices/${id}/disbursements/${disbursementId}`, { method: 'DELETE' })
+      if (!response.ok && response.status !== 204) throw new Error()
+      loadDisbursements()
+    } catch {
+      setDError('Could not delete the disbursement.')
+    }
+  }
+
   if (error) {
     return (
       <>
@@ -134,14 +230,24 @@ function InvoiceDetailPage() {
 
   const money = (value: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(Number(value))
   const hasDiscount = Number(invoice.discount) > 0
+  const isClientFunds = invoice.invoice_type === 'client_funds'
+  const fundsSpent = disbursements.reduce((total, d) => total + Number(d.amount), 0)
 
   return (
     <>
       <div className="doc-topbar">
-        <h1>Invoice {invoice.invoice_number}</h1>
+        <h1>{isClientFunds ? 'Client Funds Invoice' : 'Invoice'} {invoice.invoice_number}</h1>
         <div className="doc-actions">
           <button type="button" className="btn-outline" onClick={() => navigate('/invoices')}>
             Back
+          </button>
+          {isClientFunds && invoice.paid === 0 && (
+            <button type="button" className="btn-outline" onClick={() => navigate(`/invoices/${invoice.id}/edit`)}>
+              <PencilIcon /> Edit
+            </button>
+          )}
+          <button type="button" className="btn-outline" onClick={() => setEmailOpen(true)}>
+            <MailIcon /> Send by Email
           </button>
           <button type="button" className="btn-pill" onClick={() => navigate(`/invoices/${invoice.id}/preview`)}>
             Preview / PDF
@@ -151,6 +257,12 @@ function InvoiceDetailPage() {
 
       <div className="card">
         <h2>Invoice Details</h2>
+        <p>
+          Type:{' '}
+          <span className={`status-badge ${isClientFunds ? 'status-draft' : 'status-approved'}`}>
+            {INVOICE_TYPE_LABELS[invoice.invoice_type] ?? invoice.invoice_type}
+          </span>
+        </p>
         <p>
           Client: <strong>{invoice.client_name}</strong>
         </p>
@@ -183,7 +295,7 @@ function InvoiceDetailPage() {
       </div>
 
       <div className="card">
-        <h2>Services</h2>
+        <h2>{isClientFunds ? 'Items' : 'Services'}</h2>
         {invoice.introduction && (
           <div className="terms-view" style={{ marginTop: 0, marginBottom: '1rem' }}>
             <div className="terms-text">{invoice.introduction}</div>
@@ -192,7 +304,7 @@ function InvoiceDetailPage() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Service</th>
+              <th>{isClientFunds ? 'Description' : 'Service'}</th>
               <th>Quantity</th>
               <th>Unit</th>
               <th>Unit Price</th>
@@ -324,6 +436,115 @@ function InvoiceDetailPage() {
           <p className="empty-state">This invoice is fully paid.</p>
         )}
       </div>
+
+      {isClientFunds && (
+        <div className="card">
+          <h2>Disbursements / Project Expenses</h2>
+          <div className="inv-totals" style={{ marginBottom: '1.25rem' }}>
+            <div>Funds Received</div>
+            <div>{money(invoice.paid)}</div>
+            <div>Funds Spent</div>
+            <div>{money(fundsSpent)}</div>
+            <div>
+              <strong>Funds Remaining</strong>
+            </div>
+            <div>
+              <strong>{money(invoice.paid - fundsSpent)}</strong>
+            </div>
+          </div>
+
+          {disbursements.length === 0 ? (
+            <p className="empty-state">No disbursements recorded yet.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Payee / Supplier / Worker</th>
+                  <th>Description</th>
+                  <th>Category</th>
+                  <th>Reference</th>
+                  <th>Amount</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {disbursements.map((d) => (
+                  <tr key={d.id}>
+                    <td>{d.disbursement_date}</td>
+                    <td>{d.payee}</td>
+                    <td className="col-wrap">{d.description || '—'}</td>
+                    <td>{d.category || '—'}</td>
+                    <td>{d.reference || '—'}</td>
+                    <td>{money(d.amount)}</td>
+                    <td>
+                      <button type="button" className="btn-sm btn-ghost" onClick={() => deleteDisbursement(d.id)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <form onSubmit={addDisbursement} noValidate style={{ marginTop: '1.25rem' }}>
+            <h2>Record Disbursement</h2>
+            <div className="form-grid">
+              <label className="form-field">
+                Date
+                <input type="date" value={dDate} onChange={(e) => setDDate(e.target.value)} />
+              </label>
+              <label className="form-field">
+                Payee / Supplier / Worker
+                <input value={dPayee} onChange={(e) => setDPayee(e.target.value)} placeholder="e.g. ABC Contracting" />
+              </label>
+              <label className="form-field">
+                Category (optional)
+                <input
+                  list="disbursement-categories"
+                  value={dCategory}
+                  onChange={(e) => setDCategory(e.target.value)}
+                  placeholder="e.g. Contractor payment"
+                />
+                <datalist id="disbursement-categories">
+                  {DISBURSEMENT_CATEGORY_SUGGESTIONS.map((suggestion) => (
+                    <option key={suggestion} value={suggestion} />
+                  ))}
+                </datalist>
+              </label>
+              <label className="form-field">
+                Amount
+                <input type="number" min="0" step="0.01" value={dAmount} onChange={(e) => setDAmount(e.target.value)} />
+              </label>
+              <label className="form-field">
+                Reference / Receipt Number (optional)
+                <input value={dReference} onChange={(e) => setDReference(e.target.value)} />
+              </label>
+            </div>
+            <label className="form-field">
+              Description (optional)
+              <input value={dDescription} onChange={(e) => setDDescription(e.target.value)} />
+            </label>
+            <button type="submit" className="btn-primary" disabled={dSaving}>
+              Record Disbursement
+            </button>
+            {dError && <p className="error-message">{dError}</p>}
+          </form>
+        </div>
+      )}
+
+      {emailOpen && (
+        <SendInvoiceEmailDialog
+          invoiceId={invoice.id}
+          invoiceType={invoice.invoice_type}
+          clientEmail={invoice.client_email}
+          contactName={invoice.contact_name ?? ''}
+          projectTitle={invoice.summary || invoice.title}
+          onClose={() => setEmailOpen(false)}
+          onSent={() => load()}
+        />
+      )}
     </>
   )
 }

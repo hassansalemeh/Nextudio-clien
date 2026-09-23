@@ -44,6 +44,13 @@ type ProjectDetails = {
   payments: { id: string; payment_date: string; reason: string; amount: string }[]
   payments_received: number
   client_balance_due: number
+  client_funds: {
+    invoices: { id: string; invoice_number: string; currency: string; total: number; paid: number; amount_due: number; status: string }[]
+    invoiced: number
+    received: number
+    spent: number
+    remaining: number
+  }
 }
 
 function formatHours(hours: number) {
@@ -183,6 +190,55 @@ function ProjectDetailPage() {
           <Link to={`/payments?project=${project.id}`}>Record a payment for this project →</Link>
         </p>
       </div>
+
+      {details.client_funds.invoices.length > 0 && (
+        <div className="card">
+          <h2>Client Funds (Project Expenses)</h2>
+          <p className="empty-state" style={{ marginTop: 0 }}>
+            Money held for this project's expenses. Kept separate from the design fee and profitability figures above.
+          </p>
+          <div className="inv-totals" style={{ marginBottom: '1.25rem' }}>
+            <div>Funds Invoiced</div>
+            <div>{currencyFormatter.format(details.client_funds.invoiced)}</div>
+            <div>Funds Received</div>
+            <div>{currencyFormatter.format(details.client_funds.received)}</div>
+            <div>Funds Spent</div>
+            <div>{currencyFormatter.format(details.client_funds.spent)}</div>
+            <div>
+              <strong>Funds Remaining</strong>
+            </div>
+            <div>
+              <strong>{currencyFormatter.format(details.client_funds.remaining)}</strong>
+            </div>
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Invoice Number</th>
+                <th>Total</th>
+                <th>Paid</th>
+                <th>Amount Due</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {details.client_funds.invoices.map((invoice) => (
+                <tr key={invoice.id}>
+                  <td>
+                    <Link to={`/invoices/${invoice.id}`}>{invoice.invoice_number}</Link>
+                  </td>
+                  <td>{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.total)}</td>
+                  <td>{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.paid)}</td>
+                  <td>{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.amount_due)}</td>
+                  <td>
+                    <span className={`status-badge status-${invoice.status}`}>{invoice.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="card">
         <h2>Employees / Project Work</h2>
