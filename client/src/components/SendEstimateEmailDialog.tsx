@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { estimateEmailDefaults, type DocumentLanguage } from '../emailDefaults'
 import { CloseIcon } from './icons'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -21,6 +22,7 @@ type Props = {
   clientEmail: string | null
   contactName: string
   projectTitle: string
+  documentLanguage: string
   onClose: () => void
   // Called with the (possibly updated, e.g. Draft -> Pending) estimate after a successful send
   onSent: (estimate: any) => void
@@ -33,22 +35,15 @@ function formatSentAt(iso: string) {
   return `${d} at ${t}`
 }
 
-function defaultSubject(title: string) {
-  return `Quotation - ${title || 'Project'} - Nextudio`
-}
-
-function defaultMessage(contactName: string, title: string) {
-  return `Dear ${contactName || 'Sir/Madam'},\n\nPlease find attached our quotation for ${title || 'your project'}.\n\nKind regards,\nNextudio Architects`
-}
-
-function SendEstimateEmailDialog({ estimateId, clientEmail, contactName, projectTitle, onClose, onSent }: Props) {
+function SendEstimateEmailDialog({ estimateId, clientEmail, contactName, projectTitle, documentLanguage, onClose, onSent }: Props) {
   const [history, setHistory] = useState<EmailHistoryItem[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
 
+  const defaults = estimateEmailDefaults((documentLanguage as DocumentLanguage) || 'en', contactName, projectTitle)
   const [to, setTo] = useState(clientEmail ?? '')
   const [cc, setCc] = useState('')
-  const [subject, setSubject] = useState(defaultSubject(projectTitle))
-  const [message, setMessage] = useState(defaultMessage(contactName, projectTitle))
+  const [subject, setSubject] = useState(defaults.subject)
+  const [message, setMessage] = useState(defaults.message)
   const [attachPdf, setAttachPdf] = useState(true)
 
   const [busy, setBusy] = useState(false)

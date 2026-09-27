@@ -51,6 +51,13 @@ const PRICING_METHODS = [
   { value: 'lump_sum', label: 'Lump Sum' },
 ]
 
+// The client-facing Quotation/Invoice PDF's language; the admin app itself stays English
+const DOCUMENT_LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'fr', label: 'Français' },
+  { value: 'ar', label: 'العربية' },
+]
+
 const CURRENCIES = [
   { value: 'USD', label: 'USD ($) - United States dollar' },
   { value: 'EUR', label: 'EUR (€) - Euro' },
@@ -103,6 +110,7 @@ function emptyForm() {
     discount_value: '',
     pricing_method: 'itemized',
     lump_sum_fee: '',
+    document_language: 'en',
     project_id: '',
     project_location: '',
     introduction: '',
@@ -180,6 +188,7 @@ function EstimateEditorPage() {
       discount_value: Number(estimate.discount_value) ? String(Number(estimate.discount_value)) : '',
       pricing_method: estimate.pricing_method ?? 'itemized',
       lump_sum_fee: Number(estimate.lump_sum_fee) ? String(Number(estimate.lump_sum_fee)) : '',
+      document_language: estimate.document_language ?? 'en',
       project_id: estimate.project_id ?? '',
       project_location: estimate.project_location ?? '',
       introduction: estimate.introduction ?? '',
@@ -387,6 +396,22 @@ function EstimateEditorPage() {
     if (approved?.invoice_id) navigate(`/invoices/${approved.invoice_id}`)
   }
 
+  // A brand-new estimate that starts from this one's content - the original is left completely unchanged
+  async function handleDuplicate() {
+    setBusy(true)
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/estimates/${id}/duplicate`, { method: 'POST' })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Could not duplicate the estimate.')
+      navigate(`/estimates/${body.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not duplicate the estimate.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const actions = (
     <div className="doc-actions">
       <button type="button" className="btn-outline" onClick={() => navigate('/estimates')}>
@@ -398,6 +423,17 @@ function EstimateEditorPage() {
       {!isNew && (
         <button type="button" className="btn-outline" disabled={busy} onClick={() => setEmailOpen(true)}>
           <MailIcon /> Send by Email
+        </button>
+      )}
+      {!isNew && (
+        <button
+          type="button"
+          className="btn-outline"
+          disabled={busy}
+          onClick={handleDuplicate}
+          title="Create a new, independent estimate starting from this one's content"
+        >
+          Duplicate
         </button>
       )}
       {!locked && (
@@ -570,6 +606,18 @@ function EstimateEditorPage() {
                     ? 'One overall fee for all service sections below. Quantity/unit price are hidden and unused.'
                     : 'Each service section is priced by quantity × unit price.'}
                 </div>
+              </div>
+
+              <label htmlFor="est-document-language">Document Language</label>
+              <div>
+                <select id="est-document-language" value={form.document_language} onChange={(e) => update('document_language', e.target.value)}>
+                  {DOCUMENT_LANGUAGES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="doc-hint">The language of the Quotation/Invoice PDF sent to the client. This editor stays in English.</div>
               </div>
 
               <label htmlFor="est-project">Project</label>
@@ -816,6 +864,7 @@ function EstimateEditorPage() {
           clientEmail={client?.email ?? null}
           contactName={form.contact_name}
           projectTitle={form.summary || form.title}
+          documentLanguage={form.document_language}
           onClose={() => setEmailOpen(false)}
           onSent={(updated) => applyEstimate(updated)}
         />

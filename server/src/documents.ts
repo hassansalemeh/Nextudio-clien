@@ -3,15 +3,17 @@ import path from 'path'
 import type { Express } from 'express'
 import { chromium } from 'playwright-core'
 import type { Browser } from 'playwright-core'
-import { pool } from './db'
 import { loadEstimate } from './estimates'
 import { HttpError, sendError } from './http'
+import { DIRECTION, DocumentLanguage, labelsFor } from './i18n/documentLabels'
 import { loadInvoice } from './invoices'
 
 // The Nextudio logo, embedded so it prints on every page of the PDF
 const LOGO_DATA_URI = `data:image/webp;base64,${fs.readFileSync(path.resolve(__dirname, '../assets/nextudio-logo.webp')).toString('base64')}`
 
 // ---- Company details printed on every page (from Nextudio's existing quotations and invoices) ----
+// The company's own name/address are never translated - a company name/address isn't the kind of
+// "fixed label" the Document Language controls, any more than the admin's own written text is.
 const COMPANY = {
   name: 'Nextudio.co',
   addressLines: ['Hazmieh | Said Freiha str.', 'Ferekh Bldg. | First floor', 'Beirut, Beyrouth', 'Lebanon'],
@@ -21,12 +23,13 @@ const COMPANY = {
 }
 
 const UNIT_LABELS: Record<string, string> = { sqm: 'sqm', lm: 'lm', ls: 'ls', pc: 'pc', m3: 'm³', sheet: 'sheet' }
-const METHOD_LABELS: Record<string, string> = {
-  cash: 'cash',
-  bank_transfer: 'bank transfer',
-  cheque: 'cheque',
-  card: 'card',
-  other: 'other',
+
+// The Arabic-capable font family installed in the Railway/Docker image (see Dockerfile). Listed first
+// only for Arabic documents, so English/French keep using the Latin font as before.
+const ARABIC_FONT_FAMILY = 'Noto Naskh Arabic'
+
+function fontStack(language: DocumentLanguage) {
+  return language === 'ar' ? `'${ARABIC_FONT_FAMILY}', 'Segoe UI', Arial, sans-serif` : `'Segoe UI', Arial, sans-serif`
 }
 
 const escapeHtml = (value: unknown) =>
@@ -35,15 +38,36 @@ const escapeHtml = (value: unknown) =>
 const money = (amount: number | string, currency: string) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount))
 
-const longDate = (isoDate: string | null) =>
-  isoDate ? new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : ''
+const longDate = (isoDate: string | null, language: DocumentLanguage) =>
+  isoDate
+    ? new Date(`${isoDate}T00:00:00Z`).toLocaleDateString(language === 'ar' ? 'ar' : language === 'fr' ? 'fr-FR' : 'en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC',
+      })
+    : ''
 
 const plainNumber = (value: string | number) => String(Number(value))
 
 type DocItem = { name: string; description: string | null; quantity: string; unit: string; unit_price: string; amount: string }
 
+// A Professional Services Invoice's contract / Acceptance & Signatures block. Never set for an Estimate
+// or a Client Funds invoice - those always pass `contract: null` and the section is left out entirely.
+type ContractData = {
+  terms: string | null
+  clientRepName: string | null
+  clientRepTitle: string | null
+  nextudioRepName: string | null
+  nextudioRepTitle: string | null
+}
+
 type DocumentData = {
   kind: 'quotation' | 'invoice'
+  // Only set for `kind: 'invoice'`; distinguishes a Professional Services invoice from a Client Funds one
+  // (filenames, and which invoices ever carry a contract) without inferring it from translated text.
+  invoiceType?: 'professional_services' | 'client_funds'
+  language: DocumentLanguage
   heading: string
   subtitle: string
   number: string
@@ -53,7 +77,7 @@ type DocumentData = {
   secondDateLabel: string
   secondDate: string | null
   currency: string
-  billTo: { name: string; contact: string | null; phone: string | null; email: string | null }
+  billTo: { name: string; contact: string | null; phone: string | null; email: string | null; address: string | null }
   projectLocation: string | null
   introduction: string | null
   items: DocItem[]
@@ -65,44 +89,55 @@ type DocumentData = {
   discountType: string
   discountValue: string
   total: string
-  sections: { title: string; text: string }[]
+  sections: { key: 'paymentTerms' | 'timeline' | 'notes' | 'exclusions'; text: string }[]
   payments: { payment_date: string; amount: string; method: string | null }[]
   amountDue: number | null
+  contract: ContractData | null
 }
 
 // ---- Layout: modelled on Nextudio's real quotation / invoice PDFs ----
 
-const headerHtml = (doc: DocumentData) => `
-<div style="width:100%;font-family:'Segoe UI',Arial,sans-serif;padding:0 12mm;box-sizing:border-box;">
+const headerHtml = (doc: DocumentData) => {
+  const t = labelsFor(doc.language)
+  const dir = DIRECTION[doc.language]
+  return `
+<div dir="${dir}" style="width:100%;font-family:${fontStack(doc.language)};padding:0 12mm;box-sizing:border-box;">
   <table style="width:100%;border-collapse:collapse;"><tr>
     <td style="vertical-align:top;width:45%;">
       <img src="${LOGO_DATA_URI}" style="height:46px;margin-top:4px;" />
     </td>
-    <td style="vertical-align:top;text-align:right;">
-      <div style="font-size:30px;font-weight:300;letter-spacing:0.5px;line-height:1;">${escapeHtml(doc.heading)}</div>
+    <td style="vertical-align:top;text-align:${dir === 'rtl' ? 'left' : 'right'};">
+      <div style="font-size:30px;font-weight:300;letter-spacing:0.5px;line-height:1;text-transform:uppercase;">${escapeHtml(doc.heading)}</div>
       <div style="font-size:9px;color:#888;text-transform:uppercase;margin:3px 0 8px;">${escapeHtml(doc.subtitle)}</div>
       <div style="font-size:8.5px;line-height:1.35;color:#111;">
         <b>${escapeHtml(COMPANY.name)}</b><br>
         ${COMPANY.addressLines.map(escapeHtml).join('<br>')}<br>
         <span style="display:inline-block;height:4px;"></span><br>
-        Phone: ${escapeHtml(COMPANY.phone)}<br>
-        Mobile: ${escapeHtml(COMPANY.mobile)}<br>
+        ${escapeHtml(t.phone)}: <bdi dir="ltr">${escapeHtml(COMPANY.phone)}</bdi><br>
+        ${escapeHtml(t.mobile)}: <bdi dir="ltr">${escapeHtml(COMPANY.mobile)}</bdi><br>
         ${escapeHtml(COMPANY.website)}
       </div>
     </td>
   </tr></table>
   <div style="border-bottom:1px solid #ddd;margin-top:6px;"></div>
 </div>`
+}
 
-const footerHtml = (doc: DocumentData) => `
-<div style="width:100%;text-align:center;font-family:'Segoe UI',Arial,sans-serif;font-size:8.5px;color:#888;">
-  Page <span class="pageNumber"></span> of <span class="totalPages"></span> for ${doc.kind === 'quotation' ? 'Quotation' : 'Invoice'} #${escapeHtml(doc.number)}
+const footerHtml = (doc: DocumentData) => {
+  const t = labelsFor(doc.language)
+  const word = doc.kind === 'quotation' ? t.quotation : t.invoice
+  return `
+<div dir="${DIRECTION[doc.language]}" style="width:100%;text-align:center;font-family:${fontStack(doc.language)};font-size:8.5px;color:#888;">
+  ${escapeHtml(t.footerPage)} <span class="pageNumber"></span> ${escapeHtml(t.footerOf)} <span class="totalPages"></span> ${escapeHtml(t.footerFor)} ${escapeHtml(word)} #${escapeHtml(doc.number)}
 </div>`
+}
 
 function bodyHtml(doc: DocumentData) {
-  const { currency } = doc
+  const { currency, language } = doc
+  const t = labelsFor(language)
+  const dir = DIRECTION[language]
   const isLumpSum = doc.pricingMethod === 'lump_sum'
-  const subtotalLabel = isLumpSum ? 'Lump Sum Fee' : 'Subtotal'
+  const subtotalLabel = isLumpSum ? t.lumpSumFee : t.subtotal
 
   const rows = doc.items
     .map(
@@ -133,41 +168,44 @@ function bodyHtml(doc: DocumentData) {
   const itemsHtml = isLumpSum
     ? `<div class="scopes">${scopeSections}</div>`
     : `<table class="items">
-        <thead><tr><th>Services</th><th class="c">Quantity</th><th class="c">Unit</th><th>Unit Price</th><th>Amount</th></tr></thead>
+        <thead><tr><th>${escapeHtml(t.services)}</th><th class="c">${escapeHtml(t.quantity)}</th><th class="c">${escapeHtml(t.unit)}</th><th>${escapeHtml(t.unitPrice)}</th><th>${escapeHtml(t.amount)}</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`
 
   const hasDiscount = Number(doc.discount) > 0
-  const discountLabel = doc.discountType === 'percent' ? `${plainNumber(doc.discountValue)}% Discount` : 'Discount'
+  const discountLabel = doc.discountType === 'percent' ? `${plainNumber(doc.discountValue)}% ${t.discount}` : t.discount
 
   const totals =
     doc.kind === 'quotation'
       ? `
       ${hasDiscount || isLumpSum ? `<tr><td class="t-label">${escapeHtml(subtotalLabel)}:</td><td class="t-value">${money(doc.subtotal, currency)}</td></tr>` : ''}
       ${hasDiscount ? `<tr><td class="t-label">${escapeHtml(discountLabel)}:</td><td class="t-value">(${money(doc.discount, currency)})</td></tr>` : ''}
-      <tr class="t-grand"><td class="t-label"><b>Grand Total (${escapeHtml(currency)}):</b></td><td class="t-value"><b>${money(doc.total, currency)}</b></td></tr>`
+      <tr class="t-grand"><td class="t-label"><b>${escapeHtml(t.grandTotal)} (${escapeHtml(currency)}):</b></td><td class="t-value"><b>${money(doc.total, currency)}</b></td></tr>`
       : `
       <tr><td class="t-label"><b>${escapeHtml(subtotalLabel)}:</b></td><td class="t-value">${money(doc.subtotal, currency)}</td></tr>
       ${hasDiscount ? `<tr><td class="t-label">${escapeHtml(discountLabel)}:</td><td class="t-value">(${money(doc.discount, currency)})</td></tr>` : ''}
-      <tr class="t-grand"><td class="t-label"><b>Total:</b></td><td class="t-value">${money(doc.total, currency)}</td></tr>
+      <tr class="t-grand"><td class="t-label"><b>${escapeHtml(t.total)}:</b></td><td class="t-value">${money(doc.total, currency)}</td></tr>
       ${doc.payments
-        .map(
-          (p) => `<tr><td class="t-label">Payment on ${escapeHtml(longDate(p.payment_date))}${p.method ? ` using ${escapeHtml(METHOD_LABELS[p.method] ?? p.method)}` : ''}:</td><td class="t-value">${money(p.amount, currency)}</td></tr>`
-        )
+        .map((p) => {
+          const methodText = p.method ? ` ${t.using} ${escapeHtml(t.methods[p.method as keyof typeof t.methods] ?? p.method)}` : ''
+          return `<tr><td class="t-label">${escapeHtml(t.paymentOn)} ${escapeHtml(longDate(p.payment_date, language))}${methodText}:</td><td class="t-value">${money(p.amount, currency)}</td></tr>`
+        })
         .join('')}
-      <tr class="t-grand"><td class="t-label"><b>Amount Due (${escapeHtml(currency)}):</b></td><td class="t-value"><b>${money(doc.amountDue ?? 0, currency)}</b></td></tr>`
+      <tr class="t-grand"><td class="t-label"><b>${escapeHtml(t.amountDue)} (${escapeHtml(currency)}):</b></td><td class="t-value"><b>${money(doc.amountDue ?? 0, currency)}</b></td></tr>`
 
   const highlight =
     doc.kind === 'quotation'
-      ? `<tr class="band"><td class="m-label">Grand Total (${escapeHtml(currency)}):</td><td class="m-value">${money(doc.total, currency)}</td></tr>`
-      : `<tr class="band"><td class="m-label">Amount Due (${escapeHtml(currency)}):</td><td class="m-value">${money(doc.amountDue ?? 0, currency)}</td></tr>`
+      ? `<tr class="band"><td class="m-label">${escapeHtml(t.grandTotal)} (${escapeHtml(currency)}):</td><td class="m-value">${money(doc.total, currency)}</td></tr>`
+      : `<tr class="band"><td class="m-label">${escapeHtml(t.amountDue)} (${escapeHtml(currency)}):</td><td class="m-value">${money(doc.amountDue ?? 0, currency)}</td></tr>`
 
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  const signatures = signatureSectionHtml(doc)
+
+  return `<!doctype html><html dir="${dir}" lang="${language}"><head><meta charset="utf-8"><style>
     @page { size: A4; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { margin: 0; font-family: ${fontStack(language)}; font-size: 10px; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .meta { display: flex; justify-content: space-between; margin: 2px 0 14px; }
-    .bill-to .label { color: #999; font-size: 10px; margin-bottom: 3px; letter-spacing: 0.5px; }
+    .bill-to .label { color: #999; font-size: 10px; margin-bottom: 3px; letter-spacing: 0.5px; text-transform: uppercase; }
     .bill-to .name { font-weight: 700; font-size: 11px; }
     .bill-to div { line-height: 1.5; }
     .meta-table { border-collapse: collapse; }
@@ -204,29 +242,71 @@ function bodyHtml(doc: DocumentData) {
     .notes h4 { margin: 0 0 6px; font-size: 10.5px; color: #444; break-after: avoid; page-break-after: avoid; }
     .notes .text { white-space: pre-wrap; overflow-wrap: anywhere; }
     .thanks { margin-top: 34px; text-align: center; color: #888; font-size: 10px; }
+    .signatures { margin-top: 30px; padding-top: 14px; border-top: 2px solid #e5e6e8; page-break-inside: avoid; }
+    .signatures h4 { margin: 0 0 8px; font-size: 11.5px; color: #111; break-after: avoid; page-break-after: avoid; }
+    .acceptance-text { font-size: 9.5px; line-height: 1.6; color: #333; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 20px; }
+    .sig-grid { display: flex; gap: 26px; }
+    .sig-block { flex: 1; min-width: 0; }
+    .sig-party { font-weight: 700; font-size: 10.5px; padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid #ccc; }
+    .sig-row { display: flex; align-items: flex-end; gap: 6px; margin-top: 15px; padding-bottom: 4px; border-bottom: 1px solid #999; font-size: 9.5px; min-height: 12px; }
+    .sig-row-label { white-space: nowrap; color: #555; }
+    .sig-row-value { flex: 1; overflow-wrap: anywhere; }
+    .sig-row-blank { margin-top: 24px; padding-bottom: 26px; }
   </style></head><body>
     <div class="meta">
       <div class="bill-to">
-        <div class="label">BILL TO</div>
+        <div class="label">${escapeHtml(t.billTo)}</div>
         <div class="name">${escapeHtml(doc.billTo.name)}</div>
         ${doc.billTo.contact ? `<div>${escapeHtml(doc.billTo.contact)}</div>` : ''}
-        ${doc.billTo.phone ? `<div style="margin-top:8px;">${escapeHtml(doc.billTo.phone)}</div>` : ''}
+        ${doc.billTo.address ? `<div>${escapeHtml(doc.billTo.address)}</div>` : ''}
+        ${doc.billTo.phone ? `<div style="margin-top:8px;"><bdi dir="ltr">${escapeHtml(doc.billTo.phone)}</bdi></div>` : ''}
         ${doc.billTo.email ? `<div>${escapeHtml(doc.billTo.email)}</div>` : ''}
       </div>
       <table class="meta-table">
         <tr><td class="m-label">${escapeHtml(doc.numberLabel)}:</td><td class="m-value">${escapeHtml(doc.number)}</td></tr>
-        <tr><td class="m-label">${escapeHtml(doc.dateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.date))}</td></tr>
-        ${doc.secondDate ? `<tr><td class="m-label">${escapeHtml(doc.secondDateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.secondDate))}</td></tr>` : ''}
-        ${doc.projectLocation ? `<tr><td class="m-label">Project Location:</td><td class="m-value">${escapeHtml(doc.projectLocation)}</td></tr>` : ''}
+        <tr><td class="m-label">${escapeHtml(doc.dateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.date, language))}</td></tr>
+        ${doc.secondDate ? `<tr><td class="m-label">${escapeHtml(doc.secondDateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.secondDate, language))}</td></tr>` : ''}
+        ${doc.projectLocation ? `<tr><td class="m-label">${escapeHtml(t.projectLocation)}:</td><td class="m-value">${escapeHtml(doc.projectLocation)}</td></tr>` : ''}
         ${highlight}
       </table>
     </div>
     ${doc.introduction ? `<div class="intro">${escapeHtml(doc.introduction)}</div>` : ''}
     ${itemsHtml}
     <div class="totals"><table>${totals}</table></div>
-    ${doc.sections.map((section) => `<div class="notes"><h4>${escapeHtml(section.title)}</h4><div class="text">${escapeHtml(section.text)}</div></div>`).join('')}
-    <div class="thanks">Thank you for your cooperation</div>
+    ${doc.sections.map((section) => `<div class="notes"><h4>${escapeHtml(t[section.key])}</h4><div class="text">${escapeHtml(section.text)}</div></div>`).join('')}
+    <div class="thanks">${escapeHtml(t.thankYou)}</div>
+    ${signatures}
   </body></html>`
+}
+
+// The Professional Services Invoice's Acceptance & Signatures block. Never rendered for an Estimate or
+// a Client Funds invoice (doc.contract is null for both). Both signature blocks are kept in one
+// page-break-avoiding container so they aren't split across pages, with generous blank rows for
+// handwritten signatures - no electronic signing is implemented.
+function signatureSectionHtml(doc: DocumentData) {
+  if (!doc.contract) return ''
+  const t = labelsFor(doc.language)
+  const c = doc.contract
+
+  const block = (party: string, companyName: string, repName: string | null, repTitle: string | null) => `
+      <div class="sig-block">
+        <div class="sig-party">${escapeHtml(party)}</div>
+        <div class="sig-row"><span class="sig-row-label">${escapeHtml(t.companyName)}:</span><span class="sig-row-value">${escapeHtml(companyName)}</span></div>
+        <div class="sig-row"><span class="sig-row-label">${escapeHtml(t.authorizedRepresentative)}:</span><span class="sig-row-value">${escapeHtml(repName ?? '')}</span></div>
+        <div class="sig-row"><span class="sig-row-label">${escapeHtml(t.titlePosition)}:</span><span class="sig-row-value">${escapeHtml(repTitle ?? '')}</span></div>
+        <div class="sig-row sig-row-blank"><span class="sig-row-label">${escapeHtml(t.signature)}:</span><span class="sig-row-value"></span></div>
+        <div class="sig-row"><span class="sig-row-label">${escapeHtml(t.signatureDate)}:</span><span class="sig-row-value"></span></div>
+      </div>`
+
+  return `
+    <div class="signatures">
+      <h4>${escapeHtml(t.acceptanceSignatures)}</h4>
+      <div class="acceptance-text">${escapeHtml(c.terms && c.terms.trim() ? c.terms : t.acceptanceParagraph)}</div>
+      <div class="sig-grid">
+        ${block(t.client, doc.billTo.name, c.clientRepName, c.clientRepTitle)}
+        ${block(t.nextudioParty, 'Nextudio Architects', c.nextudioRepName, c.nextudioRepTitle)}
+      </div>
+    </div>`
 }
 
 // ---- PDF rendering (Chromium prints the HTML: page breaks, repeated table header, page numbers) ----
@@ -297,7 +377,8 @@ export async function checkPdfEngine(): Promise<{ ok: boolean; browser?: string;
     const browser = findBrowser()
     const pdf = await renderPdf({
       kind: 'quotation',
-      heading: 'QUOTATION',
+      language: 'en',
+      heading: 'Quotation',
       subtitle: 'PDF ENGINE CHECK',
       number: 'CHECK',
       numberLabel: 'Estimate Number',
@@ -306,7 +387,7 @@ export async function checkPdfEngine(): Promise<{ ok: boolean; browser?: string;
       secondDateLabel: 'Valid Until',
       secondDate: null,
       currency: 'USD',
-      billTo: { name: 'Check', contact: null, phone: null, email: null },
+      billTo: { name: 'Check', contact: null, phone: null, email: null, address: null },
       projectLocation: null,
       introduction: null,
       items: [{ name: 'Test service', description: 'Line one\nLine two', quantity: '1', unit: 'ls', unit_price: '1', amount: '1' }],
@@ -319,6 +400,7 @@ export async function checkPdfEngine(): Promise<{ ok: boolean; browser?: string;
       sections: [],
       payments: [],
       amountDue: null,
+      contract: null,
     })
     const valid = pdf.subarray(0, 4).toString() === '%PDF' && pdf.length > 1000
     return valid ? { ok: true, browser, bytes: pdf.length, ms: Date.now() - started } : { ok: false, error: 'the browser ran but the result is not a valid PDF' }
@@ -329,38 +411,43 @@ export async function checkPdfEngine(): Promise<{ ok: boolean; browser?: string;
 
 // ---- Data -> document ----
 
-// The four terms sections, in the order they are printed; empty ones are left out
+// The four terms sections, in the order they are printed; empty ones are left out. Only the section
+// titles are translated by Document Language - the text itself is the admin's own writing.
 function sectionsOf(source: { payment_terms: string | null; timeline: string | null; notes: string | null; exclusions: string | null }) {
-  return [
-    { title: 'Payment Terms', text: source.payment_terms },
-    { title: 'Timeline', text: source.timeline },
-    { title: 'Notes', text: source.notes },
-    { title: 'Exclusions', text: source.exclusions },
-  ].filter((section): section is { title: string; text: string } => !!section.text && section.text.trim() !== '')
-}
-
-async function clientFor(clientId: string | null) {
-  if (!clientId) return { name: '', phone: null, email: null }
-  const result = await pool.query('SELECT name, phone, email FROM clients WHERE id = $1', [clientId])
-  return result.rows[0] ?? { name: '', phone: null, email: null }
+  return (
+    [
+      { key: 'paymentTerms', text: source.payment_terms },
+      { key: 'timeline', text: source.timeline },
+      { key: 'notes', text: source.notes },
+      { key: 'exclusions', text: source.exclusions },
+    ] as const
+  ).filter((section): section is { key: typeof section.key; text: string } => !!section.text && section.text.trim() !== '')
 }
 
 export async function quotationDocument(estimateId: string): Promise<DocumentData> {
   const estimate = await loadEstimate(estimateId)
   if (!estimate) throw new HttpError(404, 'Estimate not found')
-  const client = await clientFor(estimate.client_id)
+  const t = labelsFor(estimate.document_language)
   return {
     kind: 'quotation',
-    heading: 'QUOTATION',
+    language: estimate.document_language,
+    heading: t.quotation,
     subtitle: estimate.summary || estimate.title,
     number: estimate.estimate_number,
-    numberLabel: 'Estimate Number',
-    dateLabel: 'Estimate Date',
+    numberLabel: t.estimateNumber,
+    dateLabel: t.estimateDate,
     date: estimate.estimate_date,
-    secondDateLabel: 'Valid Until',
+    secondDateLabel: t.validUntil,
     secondDate: estimate.valid_until,
     currency: estimate.currency,
-    billTo: { name: client.name || estimate.client_name || '', contact: estimate.contact_name, phone: client.phone, email: client.email },
+    // The estimate's own frozen snapshot - never a fresh Client master record lookup
+    billTo: {
+      name: estimate.client_name || '',
+      contact: estimate.contact_name,
+      phone: estimate.client_phone,
+      email: estimate.client_email,
+      address: estimate.client_address,
+    },
     projectLocation: estimate.project_location,
     introduction: estimate.introduction,
     items: estimate.items,
@@ -373,6 +460,8 @@ export async function quotationDocument(estimateId: string): Promise<DocumentDat
     sections: sectionsOf(estimate),
     payments: [],
     amountDue: null,
+    // The Acceptance & Signatures contract only ever applies to a Professional Services Invoice
+    contract: null,
   }
 }
 
@@ -380,20 +469,21 @@ export async function invoiceDocument(invoiceId: string): Promise<DocumentData> 
   const invoice = await loadInvoice(invoiceId)
   if (!invoice) throw new HttpError(404, 'Invoice not found')
   const isClientFunds = invoice.invoice_type === 'client_funds'
+  const t = labelsFor(invoice.document_language)
   return {
     kind: 'invoice',
-    heading: isClientFunds ? 'CLIENT FUNDS / PROJECT EXPENSES' : 'INVOICE',
-    subtitle: isClientFunds
-      ? 'Funds held for project expenses — not a professional/design fee invoice'
-      : invoice.summary || invoice.title,
+    invoiceType: invoice.invoice_type,
+    language: invoice.document_language,
+    heading: isClientFunds ? t.clientFunds : t.invoice,
+    subtitle: isClientFunds ? t.clientFundsSubtitle : invoice.summary || invoice.title,
     number: invoice.invoice_number,
-    numberLabel: 'Invoice Number',
-    dateLabel: 'Invoice Date',
+    numberLabel: t.invoiceNumber,
+    dateLabel: t.invoiceDate,
     date: invoice.invoice_date,
-    secondDateLabel: 'Payment Due',
+    secondDateLabel: t.paymentDue,
     secondDate: invoice.due_date,
     currency: invoice.currency,
-    billTo: { name: invoice.client_name, contact: invoice.contact_name, phone: invoice.client_phone, email: invoice.client_email },
+    billTo: { name: invoice.client_name, contact: invoice.contact_name, phone: invoice.client_phone, email: invoice.client_email, address: invoice.client_address },
     projectLocation: invoice.project_location,
     introduction: invoice.introduction,
     items: invoice.items,
@@ -406,6 +496,15 @@ export async function invoiceDocument(invoiceId: string): Promise<DocumentData> 
     sections: sectionsOf(invoice),
     payments: invoice.payments,
     amountDue: invoice.amount_due,
+    contract: isClientFunds
+      ? null
+      : {
+          terms: invoice.contract_terms,
+          clientRepName: invoice.client_representative_name,
+          clientRepTitle: invoice.client_representative_title,
+          nextudioRepName: invoice.nextudio_representative_name,
+          nextudioRepTitle: invoice.nextudio_representative_title,
+        },
   }
 }
 
@@ -428,7 +527,7 @@ export function registerDocumentRoutes(app: Express) {
       if (!/^\d+$/.test(req.params.invoiceId)) throw new HttpError(404, 'Invoice not found')
       const doc = await invoiceDocument(req.params.invoiceId)
       const pdf = await renderPdf(doc)
-      const filePrefix = doc.heading === 'INVOICE' ? 'Invoice' : 'ClientFunds'
+      const filePrefix = doc.invoiceType === 'client_funds' ? 'ClientFunds' : 'Invoice'
       res.setHeader('Content-Type', 'application/pdf')
       res.setHeader('Content-Disposition', `inline; filename="${filePrefix}_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf"`)
       res.send(pdf)

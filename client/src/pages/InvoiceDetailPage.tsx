@@ -38,7 +38,13 @@ type Invoice = {
   exclusions: string | null
   project_location: string | null
   introduction: string | null
+  document_language: string
   pricing_method: string
+  contract_terms: string | null
+  client_representative_name: string | null
+  client_representative_title: string | null
+  nextudio_representative_name: string | null
+  nextudio_representative_title: string | null
   subtotal: string
   discount_type: string
   discount_value: string
@@ -91,6 +97,15 @@ function InvoiceDetailPage() {
   const [dReference, setDReference] = useState('')
   const [dError, setDError] = useState('')
   const [dSaving, setDSaving] = useState(false)
+
+  const [contractEditing, setContractEditing] = useState(false)
+  const [contractTerms, setContractTerms] = useState('')
+  const [clientRepName, setClientRepName] = useState('')
+  const [clientRepTitle, setClientRepTitle] = useState('')
+  const [nextudioRepName, setNextudioRepName] = useState('')
+  const [nextudioRepTitle, setNextudioRepTitle] = useState('')
+  const [contractError, setContractError] = useState('')
+  const [contractSaving, setContractSaving] = useState(false)
 
   const load = useCallback(() => {
     fetch(`${API_URL}/api/invoices/${id}`)
@@ -214,6 +229,44 @@ function InvoiceDetailPage() {
       loadDisbursements()
     } catch {
       setDError('Could not delete the disbursement.')
+    }
+  }
+
+  function startContractEdit() {
+    if (!invoice) return
+    setContractError('')
+    setContractTerms(invoice.contract_terms ?? '')
+    setClientRepName(invoice.client_representative_name ?? '')
+    setClientRepTitle(invoice.client_representative_title ?? '')
+    setNextudioRepName(invoice.nextudio_representative_name ?? '')
+    setNextudioRepTitle(invoice.nextudio_representative_title ?? '')
+    setContractEditing(true)
+  }
+
+  // Only the contract/signatures fields change here - every financial field on the invoice stays frozen
+  async function saveContract() {
+    setContractError('')
+    setContractSaving(true)
+    try {
+      const response = await fetch(`${API_URL}/api/invoices/${id}/contract`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract_terms: contractTerms,
+          client_representative_name: clientRepName,
+          client_representative_title: clientRepTitle,
+          nextudio_representative_name: nextudioRepName,
+          nextudio_representative_title: nextudioRepTitle,
+        }),
+      })
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(body?.error || 'Could not save the contract.')
+      setInvoice(body)
+      setContractEditing(false)
+    } catch (err) {
+      setContractError(err instanceof Error ? err.message : 'Could not save the contract.')
+    } finally {
+      setContractSaving(false)
     }
   }
 
@@ -377,6 +430,69 @@ function InvoiceDetailPage() {
             </div>
           ))}
       </div>
+
+      {!isClientFunds && (
+        <div className="card">
+          <h2>Acceptance & Signatures (Contract)</h2>
+          <p className="doc-hint" style={{ marginTop: 0 }}>
+            Shown at the end of this invoice's PDF only - never on the Estimate/Quotation, and never on a Client Funds invoice.
+          </p>
+          {contractEditing ? (
+            <>
+              <label className="form-field">
+                Contract / Acceptance Terms (optional - a default acceptance paragraph is used in the PDF if left blank)
+                <textarea className="email-message" value={contractTerms} onChange={(e) => setContractTerms(e.target.value)} />
+              </label>
+              <div className="form-grid">
+                <label className="form-field">
+                  Client Authorized Representative
+                  <input value={clientRepName} onChange={(e) => setClientRepName(e.target.value)} />
+                </label>
+                <label className="form-field">
+                  Client Representative Title
+                  <input value={clientRepTitle} onChange={(e) => setClientRepTitle(e.target.value)} />
+                </label>
+                <label className="form-field">
+                  Nextudio Authorized Representative
+                  <input value={nextudioRepName} onChange={(e) => setNextudioRepName(e.target.value)} />
+                </label>
+                <label className="form-field">
+                  Nextudio Representative Title
+                  <input value={nextudioRepTitle} onChange={(e) => setNextudioRepTitle(e.target.value)} />
+                </label>
+              </div>
+              <div className="modal-actions" style={{ marginTop: '1rem' }}>
+                <button type="button" className="btn-sm btn-solid" disabled={contractSaving} onClick={saveContract}>
+                  Save
+                </button>
+                <button type="button" className="btn-sm btn-ghost" disabled={contractSaving} onClick={() => setContractEditing(false)}>
+                  Cancel
+                </button>
+              </div>
+              {contractError && <p className="error-message">{contractError}</p>}
+            </>
+          ) : (
+            <>
+              {invoice.contract_terms && (
+                <div className="terms-view" style={{ marginTop: 0 }}>
+                  <div className="terms-text">{invoice.contract_terms}</div>
+                </div>
+              )}
+              <p>
+                Client Authorized Representative: <strong>{invoice.client_representative_name || '—'}</strong>
+                {invoice.client_representative_title ? ` (${invoice.client_representative_title})` : ''}
+              </p>
+              <p>
+                Nextudio Authorized Representative: <strong>{invoice.nextudio_representative_name || '—'}</strong>
+                {invoice.nextudio_representative_title ? ` (${invoice.nextudio_representative_title})` : ''}
+              </p>
+              <button type="button" className="btn-sm btn-ghost" onClick={startContractEdit}>
+                <PencilIcon /> Edit
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <h2>Payments</h2>
@@ -554,6 +670,7 @@ function InvoiceDetailPage() {
           clientEmail={invoice.client_email}
           contactName={invoice.contact_name ?? ''}
           projectTitle={invoice.summary || invoice.title}
+          documentLanguage={invoice.document_language}
           onClose={() => setEmailOpen(false)}
           onSent={() => load()}
         />

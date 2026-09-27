@@ -2,8 +2,9 @@ import type { Express, Request } from 'express'
 import type { PoolClient } from 'pg'
 import { clientFundsInvoiceNumber } from './config'
 import { pool } from './db'
-import { computeTotals, ItemInput, UNITS } from './estimates'
+import { ClientSnapshot, computeTotals, ItemInput, loadClientSnapshot, UNITS } from './estimates'
 import { HttpError, isIsoDate, roundMoney, sendError, withTransaction } from './http'
+import { DOCUMENT_LANGUAGES, isDocumentLanguage } from './i18n/documentLabels'
 
 export function invoiceStatus(total: number, paid: number): 'unpaid' | 'partially_paid' | 'paid' {
   if (paid <= 0) return 'unpaid'
@@ -11,22 +12,24 @@ export function invoiceStatus(total: number, paid: number): 'unpaid' | 'partiall
 }
 
 const INVOICE_SELECT = `
-  SELECT invoices.id, invoices.invoice_number, invoices.invoice_type, invoices.client_id, clients.name AS client_name,
-         clients.phone AS client_phone, clients.email AS client_email,
+  SELECT invoices.id, invoices.invoice_number, invoices.invoice_type, invoices.client_id,
+         invoices.client_name, invoices.client_phone, invoices.client_email, invoices.client_address,
          invoices.contact_name, invoices.customer_ref, invoices.title, invoices.summary,
          to_char(invoices.invoice_date, 'YYYY-MM-DD') AS invoice_date,
          to_char(invoices.due_date, 'YYYY-MM-DD') AS due_date,
          invoices.currency, invoices.notes, invoices.payment_terms, invoices.timeline, invoices.exclusions,
-         invoices.project_location, invoices.introduction,
+         invoices.project_location, invoices.introduction, invoices.document_language,
          invoices.subtotal, invoices.discount_type, invoices.discount_value,
          invoices.discount, invoices.total, invoices.pricing_method, invoices.lump_sum_fee,
+         -- Professional Services Invoice contract / Acceptance & Signatures - never set on a Client Funds invoice
+         invoices.contract_terms, invoices.client_representative_name, invoices.client_representative_title,
+         invoices.nextudio_representative_name, invoices.nextudio_representative_title,
          invoices.estimate_id, estimates.estimate_number,
          -- the forward link (both invoice types) falls back to the estimate-approval reverse link, for old rows
          coalesce(invoices.project_id, reverse_project.id) AS project_id,
          coalesce(fwd_project.name, reverse_project.name) AS project_name,
          coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id), 0) AS paid
   FROM invoices
-  JOIN clients ON clients.id = invoices.client_id
   LEFT JOIN estimates ON estimates.id = invoices.estimate_id
   LEFT JOIN projects fwd_project ON fwd_project.id = invoices.project_id
   LEFT JOIN projects reverse_project ON reverse_project.source_invoice_id = invoices.id`
@@ -107,6 +110,7 @@ function parseClientFundsHeader(body: Record<string, unknown>) {
   const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : 'USD'
   const discount_type = body.discount_type ?? 'fixed'
   const discount_value = body.discount_value ?? 0
+  const document_language = body.document_language ?? 'en'
 
   if (!client_id || !/^\d+$/.test(String(client_id))) throw new HttpError(400, 'Choose a client')
   if (!project_id || !/^\d+$/.test(String(project_id))) throw new HttpError(400, 'Choose the project these funds are for')
@@ -118,6 +122,9 @@ function parseClientFundsHeader(body: Record<string, unknown>) {
   }
   if (typeof discount_value !== 'number' || !Number.isFinite(discount_value) || discount_value < 0) {
     throw new HttpError(400, 'Discount must be 0 or more')
+  }
+  if (!isDocumentLanguage(document_language)) {
+    throw new HttpError(400, 'Document language must be one of: ' + DOCUMENT_LANGUAGES.join(', '))
   }
 
   return {
@@ -137,6 +144,7 @@ function parseClientFundsHeader(body: Record<string, unknown>) {
     exclusions: longText(body.exclusions),
     discount_type,
     discount_value,
+    document_language,
     project_location: optionalText(body.project_location),
     introduction: longText(body.introduction),
   }
@@ -183,7 +191,9 @@ async function saveClientFundsItemsAndTotals(
 
 async function requireClientFundsInvoice(client: PoolClient, invoiceId: string) {
   const current = await client.query(
-    `SELECT invoices.invoice_type, coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id), 0) AS paid
+    `SELECT invoices.invoice_type, invoices.client_id, invoices.client_name, invoices.client_email,
+            invoices.client_phone, invoices.client_address,
+            coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id), 0) AS paid
      FROM invoices WHERE invoices.id = $1 FOR UPDATE`,
     [invoiceId]
   )
@@ -194,6 +204,7 @@ async function requireClientFundsInvoice(client: PoolClient, invoiceId: string) 
   if (Number(current.rows[0].paid) > 0) {
     throw new HttpError(400, 'This invoice already has a payment recorded and can no longer be edited')
   }
+  return current.rows[0] as { client_id: string } & ClientSnapshot
 }
 
 export function registerInvoiceRoutes(app: Express) {
@@ -243,19 +254,24 @@ export function registerInvoiceRoutes(app: Express) {
       const id = await withTransaction(async (client) => {
         const project = await loadClientFundsProject(client, header.client_id, header.project_id)
         const projectLocation = header.project_location ?? project.location
+        // Created directly (not from an estimate), so it takes a fresh snapshot of the client right now
+        const snapshot = await loadClientSnapshot(client, header.client_id)
 
         const inserted = await client.query(
           `INSERT INTO invoices (invoice_type, invoice_number, client_id, project_id, contact_name, customer_ref,
                                  title, summary, invoice_date, due_date, currency, notes, discount_type,
                                  discount_value, payment_terms, timeline, exclusions, project_location, introduction,
+                                 document_language, client_name, client_email, client_phone, client_address,
                                  subtotal, discount, total)
-           VALUES ('client_funds', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 0, 0, 0)
+           VALUES ('client_funds', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+                   $19, $20, $21, $22, $23, 0, 0, 0)
            RETURNING id`,
           [
             header.invoice_number, header.client_id, header.project_id, header.contact_name, header.customer_ref,
             header.title, header.summary, header.invoice_date, header.due_date, header.currency, header.notes,
             header.discount_type, header.discount_value, header.payment_terms, header.timeline, header.exclusions,
-            projectLocation, header.introduction,
+            projectLocation, header.introduction, header.document_language,
+            snapshot.client_name, snapshot.client_email, snapshot.client_phone, snapshot.client_address,
           ]
         )
         await saveClientFundsItemsAndTotals(client, inserted.rows[0].id, items, header.discount_type as string, header.discount_value as number)
@@ -275,22 +291,27 @@ export function registerInvoiceRoutes(app: Express) {
       computeTotals(items, header.discount_type as string, header.discount_value as number)
 
       await withTransaction(async (client) => {
-        await requireClientFundsInvoice(client, id)
+        const current = await requireClientFundsInvoice(client, id)
         const project = await loadClientFundsProject(client, header.client_id, header.project_id)
         const projectLocation = header.project_location ?? project.location
+        // Only a genuine change of client refreshes the snapshot; re-saving the same client keeps it frozen
+        const clientChanged = String(current.client_id ?? '') !== String(header.client_id ?? '')
+        const snapshot: ClientSnapshot = clientChanged ? await loadClientSnapshot(client, header.client_id) : current
 
         await client.query(
           `UPDATE invoices SET invoice_number = $2, client_id = $3, project_id = $4, contact_name = $5,
                                customer_ref = $6, title = $7, summary = $8, invoice_date = $9, due_date = $10,
                                currency = $11, notes = $12, discount_type = $13, discount_value = $14,
                                payment_terms = $15, timeline = $16, exclusions = $17, project_location = $18,
-                               introduction = $19
+                               introduction = $19, document_language = $20,
+                               client_name = $21, client_email = $22, client_phone = $23, client_address = $24
            WHERE id = $1`,
           [
             id, header.invoice_number, header.client_id, header.project_id, header.contact_name, header.customer_ref,
             header.title, header.summary, header.invoice_date, header.due_date, header.currency, header.notes,
             header.discount_type, header.discount_value, header.payment_terms, header.timeline, header.exclusions,
-            projectLocation, header.introduction,
+            projectLocation, header.introduction, header.document_language,
+            snapshot.client_name, snapshot.client_email, snapshot.client_phone, snapshot.client_address,
           ]
         )
         await saveClientFundsItemsAndTotals(client, id, items, header.discount_type as string, header.discount_value as number)
@@ -298,6 +319,36 @@ export function registerInvoiceRoutes(app: Express) {
       res.json(await loadInvoice(id))
     } catch (err) {
       sendError(res, err, 'Failed to update the invoice', 'That invoice number is already used')
+    }
+  })
+
+  // Narrow, Professional-Services-only route: only the contract/signatures fields can change here.
+  // Every financial field, the items, and the dates stay exactly as they were frozen at approval.
+  app.put('/api/invoices/:invoiceId/contract', async (req, res) => {
+    try {
+      const id = requireId(req)
+      const contract_terms = longText(req.body.contract_terms)
+      const client_representative_name = optionalText(req.body.client_representative_name)
+      const client_representative_title = optionalText(req.body.client_representative_title)
+      const nextudio_representative_name = optionalText(req.body.nextudio_representative_name)
+      const nextudio_representative_title = optionalText(req.body.nextudio_representative_title)
+
+      await withTransaction(async (client) => {
+        const current = await client.query('SELECT invoice_type FROM invoices WHERE id = $1 FOR UPDATE', [id])
+        if (current.rows.length === 0) throw new HttpError(404, 'Invoice not found')
+        if (current.rows[0].invoice_type !== 'professional_services') {
+          throw new HttpError(400, 'The Acceptance & Signatures contract only applies to a Professional Services invoice')
+        }
+        await client.query(
+          `UPDATE invoices SET contract_terms = $2, client_representative_name = $3, client_representative_title = $4,
+                               nextudio_representative_name = $5, nextudio_representative_title = $6
+           WHERE id = $1`,
+          [id, contract_terms, client_representative_name, client_representative_title, nextudio_representative_name, nextudio_representative_title]
+        )
+      })
+      res.json(await loadInvoice(id))
+    } catch (err) {
+      sendError(res, err, 'Failed to update the contract')
     }
   })
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { invoiceEmailDefaults, type DocumentLanguage } from '../emailDefaults'
 import { CloseIcon } from './icons'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -22,6 +23,7 @@ type Props = {
   clientEmail: string | null
   contactName: string
   projectTitle: string
+  documentLanguage: string
   onClose: () => void
   onSent: (invoice: any) => void
 }
@@ -33,25 +35,15 @@ function formatSentAt(iso: string) {
   return `${d} at ${t}`
 }
 
-function defaultSubject(invoiceType: string, title: string) {
-  return invoiceType === 'client_funds' ? `Client Funds Receipt - ${title || 'Project'} - Nextudio` : `Invoice - ${title || 'Project'} - Nextudio`
-}
-
-function defaultMessage(invoiceType: string, contactName: string, title: string) {
-  if (invoiceType === 'client_funds') {
-    return `Dear ${contactName || 'Sir/Madam'},\n\nPlease find attached the document confirming funds received for ${title || 'your project'}'s expenses.\n\nKind regards,\nNextudio Architects`
-  }
-  return `Dear ${contactName || 'Sir/Madam'},\n\nPlease find attached our invoice for ${title || 'your project'}.\n\nKind regards,\nNextudio Architects`
-}
-
-function SendInvoiceEmailDialog({ invoiceId, invoiceType, clientEmail, contactName, projectTitle, onClose, onSent }: Props) {
+function SendInvoiceEmailDialog({ invoiceId, invoiceType, clientEmail, contactName, projectTitle, documentLanguage, onClose, onSent }: Props) {
   const [history, setHistory] = useState<EmailHistoryItem[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
 
+  const defaults = invoiceEmailDefaults((documentLanguage as DocumentLanguage) || 'en', invoiceType, contactName, projectTitle)
   const [to, setTo] = useState(clientEmail ?? '')
   const [cc, setCc] = useState('')
-  const [subject, setSubject] = useState(defaultSubject(invoiceType, projectTitle))
-  const [message, setMessage] = useState(defaultMessage(invoiceType, contactName, projectTitle))
+  const [subject, setSubject] = useState(defaults.subject)
+  const [message, setMessage] = useState(defaults.message)
   const [attachPdf, setAttachPdf] = useState(true)
 
   const [busy, setBusy] = useState(false)

@@ -74,10 +74,12 @@ registerDisbursementRoutes(app)
 registerPaymentRoutes(app)
 registerDocumentRoutes(app)
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 app.get('/api/clients', async (_req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, contact_name, email, phone, created_at FROM clients ORDER BY created_at DESC'
+      'SELECT id, name, contact_name, email, phone, address, created_at FROM clients ORDER BY created_at DESC'
     )
     res.json(result.rows)
   } catch {
@@ -90,19 +92,60 @@ app.post('/api/clients', async (req, res) => {
   const contact_name = typeof req.body.contact_name === 'string' ? req.body.contact_name.trim() : null
   const email = typeof req.body.email === 'string' ? req.body.email.trim() : null
   const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : null
+  const address = typeof req.body.address === 'string' ? req.body.address.trim() : null
 
   if (!name) {
     return res.status(400).json({ error: 'Client name is required' })
   }
+  if (email && !EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address' })
+  }
 
   try {
     const result = await pool.query(
-      'INSERT INTO clients (name, contact_name, email, phone) VALUES ($1, $2, $3, $4) RETURNING id, name, contact_name, email, phone, created_at',
-      [name, contact_name, email, phone]
+      'INSERT INTO clients (name, contact_name, email, phone, address) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, contact_name, email, phone, address, created_at',
+      [name, contact_name, email, phone, address]
     )
     res.status(201).json(result.rows[0])
   } catch {
     res.status(500).json({ error: 'Failed to create client' })
+  }
+})
+
+// Editing the client record only affects future estimates/invoices: existing documents already carry
+// their own frozen snapshot (name/email/phone/address, taken when each document was created), so this
+// never rewrites anything that already exists.
+app.put('/api/clients/:clientId', async (req, res) => {
+  const { clientId } = req.params
+  if (!/^\d+$/.test(clientId)) {
+    return res.status(404).json({ error: 'Client not found' })
+  }
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : ''
+  const contact_name = typeof req.body.contact_name === 'string' ? req.body.contact_name.trim() : null
+  const email = typeof req.body.email === 'string' ? req.body.email.trim() : null
+  const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : null
+  const address = typeof req.body.address === 'string' ? req.body.address.trim() : null
+
+  if (!name) {
+    return res.status(400).json({ error: 'Client name is required' })
+  }
+  if (email && !EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address' })
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE clients SET name = $2, contact_name = $3, email = $4, phone = $5, address = $6
+       WHERE id = $1
+       RETURNING id, name, contact_name, email, phone, address, created_at`,
+      [clientId, name, contact_name, email, phone, address]
+    )
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Client not found' })
+    }
+    res.json(result.rows[0])
+  } catch {
+    res.status(500).json({ error: 'Failed to update client' })
   }
 })
 
