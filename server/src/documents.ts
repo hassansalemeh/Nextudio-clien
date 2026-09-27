@@ -57,6 +57,9 @@ type DocumentData = {
   projectLocation: string | null
   introduction: string | null
   items: DocItem[]
+  // Itemized: subtotal comes from the line amounts. Lump Sum: subtotal is the lump sum fee, and items are
+  // printed as titled scope sections without quantity/unit/unit price/amount columns.
+  pricingMethod: 'itemized' | 'lump_sum'
   subtotal: string
   discount: string
   discountType: string
@@ -98,6 +101,8 @@ const footerHtml = (doc: DocumentData) => `
 
 function bodyHtml(doc: DocumentData) {
   const { currency } = doc
+  const isLumpSum = doc.pricingMethod === 'lump_sum'
+  const subtotalLabel = isLumpSum ? 'Lump Sum Fee' : 'Subtotal'
 
   const rows = doc.items
     .map(
@@ -114,17 +119,35 @@ function bodyHtml(doc: DocumentData) {
     )
     .join('')
 
+  // Lump Sum: scope sections (title + description) only - no per-item pricing columns beside them.
+  const scopeSections = doc.items
+    .map(
+      (item) => `
+      <div class="scope-item">
+        <div class="scope-name">${escapeHtml(item.name)}</div>
+        ${item.description ? `<div class="scope-desc">${escapeHtml(item.description)}</div>` : ''}
+      </div>`
+    )
+    .join('')
+
+  const itemsHtml = isLumpSum
+    ? `<div class="scopes">${scopeSections}</div>`
+    : `<table class="items">
+        <thead><tr><th>Services</th><th class="c">Quantity</th><th class="c">Unit</th><th>Unit Price</th><th>Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`
+
   const hasDiscount = Number(doc.discount) > 0
   const discountLabel = doc.discountType === 'percent' ? `${plainNumber(doc.discountValue)}% Discount` : 'Discount'
 
   const totals =
     doc.kind === 'quotation'
       ? `
-      ${hasDiscount ? `<tr><td class="t-label">Subtotal:</td><td class="t-value">${money(doc.subtotal, currency)}</td></tr>
-      <tr><td class="t-label">${escapeHtml(discountLabel)}:</td><td class="t-value">(${money(doc.discount, currency)})</td></tr>` : ''}
+      ${hasDiscount || isLumpSum ? `<tr><td class="t-label">${escapeHtml(subtotalLabel)}:</td><td class="t-value">${money(doc.subtotal, currency)}</td></tr>` : ''}
+      ${hasDiscount ? `<tr><td class="t-label">${escapeHtml(discountLabel)}:</td><td class="t-value">(${money(doc.discount, currency)})</td></tr>` : ''}
       <tr class="t-grand"><td class="t-label"><b>Grand Total (${escapeHtml(currency)}):</b></td><td class="t-value"><b>${money(doc.total, currency)}</b></td></tr>`
       : `
-      <tr><td class="t-label"><b>Subtotal:</b></td><td class="t-value">${money(doc.subtotal, currency)}</td></tr>
+      <tr><td class="t-label"><b>${escapeHtml(subtotalLabel)}:</b></td><td class="t-value">${money(doc.subtotal, currency)}</td></tr>
       ${hasDiscount ? `<tr><td class="t-label">${escapeHtml(discountLabel)}:</td><td class="t-value">(${money(doc.discount, currency)})</td></tr>` : ''}
       <tr class="t-grand"><td class="t-label"><b>Total:</b></td><td class="t-value">${money(doc.total, currency)}</td></tr>
       ${doc.payments
@@ -163,6 +186,11 @@ function bodyHtml(doc: DocumentData) {
     .svc { width: 46%; }
     .svc-name { font-weight: 700; }
     .svc-desc { white-space: pre-wrap; margin-top: 1px; line-height: 1.4; overflow-wrap: anywhere; }
+    .scopes { margin: 4px 0; }
+    .scope-item { padding: 10px 2px; border-bottom: 1px solid #e5e6e8; page-break-inside: avoid; }
+    .scope-item:last-child { border-bottom: none; }
+    .scope-name { font-weight: 700; font-size: 10.5px; }
+    .scope-desc { white-space: pre-wrap; margin-top: 3px; line-height: 1.5; color: #333; overflow-wrap: anywhere; }
     .num-center { text-align: center; white-space: nowrap; }
     .num-right { text-align: right; white-space: nowrap; }
     .totals { margin-top: 14px; border-top: 2px solid #e5e6e8; padding-top: 8px; display: flex; justify-content: flex-end; page-break-inside: avoid; }
@@ -194,10 +222,7 @@ function bodyHtml(doc: DocumentData) {
       </table>
     </div>
     ${doc.introduction ? `<div class="intro">${escapeHtml(doc.introduction)}</div>` : ''}
-    <table class="items">
-      <thead><tr><th>Services</th><th class="c">Quantity</th><th class="c">Unit</th><th>Unit Price</th><th>Amount</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    ${itemsHtml}
     <div class="totals"><table>${totals}</table></div>
     ${doc.sections.map((section) => `<div class="notes"><h4>${escapeHtml(section.title)}</h4><div class="text">${escapeHtml(section.text)}</div></div>`).join('')}
     <div class="thanks">Thank you for your cooperation</div>
@@ -285,6 +310,7 @@ export async function checkPdfEngine(): Promise<{ ok: boolean; browser?: string;
       projectLocation: null,
       introduction: null,
       items: [{ name: 'Test service', description: 'Line one\nLine two', quantity: '1', unit: 'ls', unit_price: '1', amount: '1' }],
+      pricingMethod: 'itemized',
       subtotal: '1',
       discount: '0',
       discountType: 'fixed',
@@ -338,6 +364,7 @@ export async function quotationDocument(estimateId: string): Promise<DocumentDat
     projectLocation: estimate.project_location,
     introduction: estimate.introduction,
     items: estimate.items,
+    pricingMethod: estimate.pricing_method,
     subtotal: estimate.subtotal,
     discount: estimate.discount,
     discountType: estimate.discount_type,
@@ -370,6 +397,7 @@ export async function invoiceDocument(invoiceId: string): Promise<DocumentData> 
     projectLocation: invoice.project_location,
     introduction: invoice.introduction,
     items: invoice.items,
+    pricingMethod: invoice.pricing_method,
     subtotal: invoice.subtotal,
     discount: invoice.discount,
     discountType: invoice.discount_type,

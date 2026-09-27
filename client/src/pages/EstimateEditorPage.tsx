@@ -46,6 +46,11 @@ const UNITS = [
   { value: 'sheet', label: 'sheet' },
 ]
 
+const PRICING_METHODS = [
+  { value: 'itemized', label: 'Itemized' },
+  { value: 'lump_sum', label: 'Lump Sum' },
+]
+
 const CURRENCIES = [
   { value: 'USD', label: 'USD ($) - United States dollar' },
   { value: 'EUR', label: 'EUR (€) - Euro' },
@@ -96,6 +101,8 @@ function emptyForm() {
     exclusions: '',
     discount_type: 'fixed',
     discount_value: '',
+    pricing_method: 'itemized',
+    lump_sum_fee: '',
     project_id: '',
     project_location: '',
     introduction: '',
@@ -171,6 +178,8 @@ function EstimateEditorPage() {
       exclusions: estimate.exclusions ?? '',
       discount_type: estimate.discount_type,
       discount_value: Number(estimate.discount_value) ? String(Number(estimate.discount_value)) : '',
+      pricing_method: estimate.pricing_method ?? 'itemized',
+      lump_sum_fee: Number(estimate.lump_sum_fee) ? String(Number(estimate.lump_sum_fee)) : '',
       project_id: estimate.project_id ?? '',
       project_location: estimate.project_location ?? '',
       introduction: estimate.introduction ?? '',
@@ -246,8 +255,11 @@ function EstimateEditorPage() {
   }
 
   // Live numbers while typing. The server recalculates the same totals when saving, and rejects anything inconsistent.
+  const isLumpSum = form.pricing_method === 'lump_sum'
   const lineAmount = (item: ItemForm) => round2((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))
-  const subtotal = round2(items.reduce((sum, item) => sum + lineAmount(item), 0))
+  const itemsSubtotal = round2(items.reduce((sum, item) => sum + lineAmount(item), 0))
+  // Lump Sum: the subtotal is only the lump sum fee - item quantity/unit price never feed it, even if a row still has them internally.
+  const subtotal = isLumpSum ? round2(Number(form.lump_sum_fee) || 0) : itemsSubtotal
   const discountValue = Number(form.discount_value) || 0
   const discount = form.discount_type === 'percent' ? round2((subtotal * discountValue) / 100) : discountValue
   const total = round2(subtotal - discount)
@@ -273,8 +285,13 @@ function EstimateEditorPage() {
     }
     for (const [index, item] of items.entries()) {
       if (!item.name.trim()) return setError(`Item ${index + 1}: enter the service name.`), null
+      // Quantity/unit price aren't shown or required in Lump Sum mode; whatever is already stored is kept as-is.
+      if (isLumpSum) continue
       if (!(Number(item.quantity) > 0)) return setError(`Item ${index + 1}: quantity must be greater than 0.`), null
       if (item.unit_price === '' || Number(item.unit_price) < 0) return setError(`Item ${index + 1}: enter the unit price.`), null
+    }
+    if (isLumpSum && (form.lump_sum_fee === '' || Number(form.lump_sum_fee) < 0)) {
+      return setError('Enter the Lump Sum Fee.'), null
     }
     if (form.discount_type === 'percent' && discountValue > 100) return setError('A percentage discount cannot be more than 100%.'), null
     if (discount > subtotal) return setError('The discount cannot be more than the subtotal.'), null
@@ -289,6 +306,7 @@ function EstimateEditorPage() {
           project_id: form.project_id || null,
           valid_until: form.valid_until || null,
           discount_value: discountValue,
+          lump_sum_fee: Number(form.lump_sum_fee) || 0,
           items: items.map((item) => ({
             name: item.name,
             description: item.description,
@@ -538,6 +556,22 @@ function EstimateEditorPage() {
                 {daysValid !== null && daysValid >= 0 && <div className="doc-hint">Within {daysValid} days</div>}
               </div>
 
+              <label htmlFor="est-pricing-method">Pricing Method</label>
+              <div>
+                <select id="est-pricing-method" value={form.pricing_method} onChange={(e) => update('pricing_method', e.target.value)}>
+                  {PRICING_METHODS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="doc-hint">
+                  {isLumpSum
+                    ? 'One overall fee for all service sections below. Quantity/unit price are hidden and unused.'
+                    : 'Each service section is priced by quantity × unit price.'}
+                </div>
+              </div>
+
               <label htmlFor="est-project">Project</label>
               <div>
                 <select id="est-project" value={form.project_id} onChange={(e) => update('project_id', e.target.value)}>
@@ -590,14 +624,18 @@ function EstimateEditorPage() {
             </div>
           </div>
 
-          <table className="doc-items">
+          <table className={`doc-items${isLumpSum ? ' doc-items-lump' : ''}`}>
             <thead>
               <tr>
                 <th>Services</th>
-                <th>Quantity</th>
-                <th>Unit</th>
-                <th>Unit Price</th>
-                <th>Amount</th>
+                {!isLumpSum && (
+                  <>
+                    <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>Unit Price</th>
+                    <th>Amount</th>
+                  </>
+                )}
                 <th aria-label="Actions"></th>
               </tr>
             </thead>
@@ -618,38 +656,42 @@ function EstimateEditorPage() {
                       onChange={(e) => updateItem(item.key, 'description', e.target.value)}
                     />
                   </td>
-                  <td>
-                    <input
-                      className="doc-item-num"
-                      type="number"
-                      min="0"
-                      step="any"
-                      aria-label="Quantity"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(item.key, 'quantity', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <select aria-label="Unit" value={item.unit} onChange={(e) => updateItem(item.key, 'unit', e.target.value)}>
-                      {UNITS.map((unit) => (
-                        <option key={unit.value} value={unit.value}>
-                          {unit.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      className="doc-item-num"
-                      type="number"
-                      min="0"
-                      step="any"
-                      aria-label="Unit price"
-                      value={item.unit_price}
-                      onChange={(e) => updateItem(item.key, 'unit_price', e.target.value)}
-                    />
-                  </td>
-                  <td className="doc-amount">{formatMoney(lineAmount(item), form.currency)}</td>
+                  {!isLumpSum && (
+                    <>
+                      <td>
+                        <input
+                          className="doc-item-num"
+                          type="number"
+                          min="0"
+                          step="any"
+                          aria-label="Quantity"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(item.key, 'quantity', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select aria-label="Unit" value={item.unit} onChange={(e) => updateItem(item.key, 'unit', e.target.value)}>
+                          {UNITS.map((unit) => (
+                            <option key={unit.value} value={unit.value}>
+                              {unit.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          className="doc-item-num"
+                          type="number"
+                          min="0"
+                          step="any"
+                          aria-label="Unit price"
+                          value={item.unit_price}
+                          onChange={(e) => updateItem(item.key, 'unit_price', e.target.value)}
+                        />
+                      </td>
+                      <td className="doc-amount">{formatMoney(lineAmount(item), form.currency)}</td>
+                    </>
+                  )}
                   <td className="doc-item-actions">
                     <button type="button" className="doc-icon" title="Move up" aria-label="Move up" disabled={index === 0} onClick={() => moveItem(index, -1)}>
                       ↑
@@ -680,7 +722,7 @@ function EstimateEditorPage() {
                 </tr>
               ))}
               <tr>
-                <td colSpan={6}>
+                <td colSpan={isLumpSum ? 2 : 6}>
                   <button
                     type="button"
                     className="doc-link"
@@ -697,8 +739,20 @@ function EstimateEditorPage() {
           </table>
 
           <div className="doc-totals">
-            <div>Subtotal</div>
-            <div>{formatMoney(subtotal, form.currency)}</div>
+            <div>{isLumpSum ? 'Lump Sum Fee' : 'Subtotal'}</div>
+            {isLumpSum ? (
+              <input
+                className="doc-lump-sum-input"
+                type="number"
+                min="0"
+                step="any"
+                aria-label="Lump sum fee"
+                value={form.lump_sum_fee}
+                onChange={(e) => update('lump_sum_fee', e.target.value)}
+              />
+            ) : (
+              <div>{formatMoney(subtotal, form.currency)}</div>
+            )}
             <div className="doc-discount-row">
               <span>Discount</span>
               <select

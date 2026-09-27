@@ -38,6 +38,7 @@ type Invoice = {
   exclusions: string | null
   project_location: string | null
   introduction: string | null
+  pricing_method: string
   subtotal: string
   discount_type: string
   discount_value: string
@@ -231,6 +232,7 @@ function InvoiceDetailPage() {
   const money = (value: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(Number(value))
   const hasDiscount = Number(invoice.discount) > 0
   const isClientFunds = invoice.invoice_type === 'client_funds'
+  const isLumpSum = invoice.pricing_method === 'lump_sum'
   const fundsSpent = disbursements.reduce((total, d) => total + Number(d.amount), 0)
 
   return (
@@ -301,33 +303,44 @@ function InvoiceDetailPage() {
             <div className="terms-text">{invoice.introduction}</div>
           </div>
         )}
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{isClientFunds ? 'Description' : 'Service'}</th>
-              <th>Quantity</th>
-              <th>Unit</th>
-              <th>Unit Price</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
+        {isLumpSum ? (
+          <div className="scope-sections">
             {invoice.items.map((item) => (
-              <tr key={item.id}>
-                <td className="col-wrap">
-                  <strong>{item.name}</strong>
-                  {item.description && <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}>{item.description}</div>}
-                </td>
-                <td>{Number(item.quantity)}</td>
-                <td>{UNIT_LABELS[item.unit] ?? item.unit}</td>
-                <td>{money(item.unit_price)}</td>
-                <td>{money(item.amount)}</td>
-              </tr>
+              <div key={item.id} className="terms-view" style={{ marginTop: 0 }}>
+                <h3 style={{ marginBottom: item.description ? '0.35rem' : 0 }}>{item.name}</h3>
+                {item.description && <div className="terms-text">{item.description}</div>}
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>{isClientFunds ? 'Description' : 'Service'}</th>
+                <th>Quantity</th>
+                <th>Unit</th>
+                <th>Unit Price</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoice.items.map((item) => (
+                <tr key={item.id}>
+                  <td className="col-wrap">
+                    <strong>{item.name}</strong>
+                    {item.description && <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}>{item.description}</div>}
+                  </td>
+                  <td>{Number(item.quantity)}</td>
+                  <td>{UNIT_LABELS[item.unit] ?? item.unit}</td>
+                  <td>{money(item.unit_price)}</td>
+                  <td>{money(item.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         <div className="inv-totals">
-          <div>Subtotal</div>
+          <div>{isLumpSum ? 'Lump Sum Fee' : 'Subtotal'}</div>
           <div>{money(invoice.subtotal)}</div>
           {hasDiscount && (
             <>

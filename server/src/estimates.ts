@@ -6,14 +6,26 @@ import { HttpError, isIsoDate, roundMoney, sendError, withTransaction } from './
 
 export const ESTIMATE_STATUSES = ['draft', 'pending', 'approved', 'rejected']
 export const UNITS = ['sqm', 'lm', 'ls', 'pc', 'm3', 'sheet']
+export const PRICING_METHODS = ['itemized', 'lump_sum']
 const DISCOUNT_TYPES = ['fixed', 'percent']
 const MAX_ITEMS = 200
 
 export type ItemInput = { name: string; description: string | null; quantity: number; unit: string; unit_price: number }
 
 // The single place quotation totals are calculated. The client only displays what this returns.
-export function computeTotals(items: { quantity: number; unit_price: number }[], discountType: string, discountValue: number) {
-  const subtotal = roundMoney(items.reduce((sum, item) => sum + roundMoney(item.quantity * item.unit_price), 0))
+// Itemized: subtotal is the sum of the line amounts. Lump Sum: subtotal is only the lump sum fee -
+// the line items still carry quantity/unit/unit_price internally, but none of that feeds the subtotal.
+export function computeTotals(
+  items: { quantity: number; unit_price: number }[],
+  discountType: string,
+  discountValue: number,
+  pricingMethod: string = 'itemized',
+  lumpSumFee: number = 0
+) {
+  const subtotal =
+    pricingMethod === 'lump_sum'
+      ? roundMoney(lumpSumFee)
+      : roundMoney(items.reduce((sum, item) => sum + roundMoney(item.quantity * item.unit_price), 0))
   if (discountType === 'percent' && discountValue > 100) {
     throw new HttpError(400, 'A percentage discount cannot be more than 100%')
   }
@@ -33,7 +45,8 @@ function optionalText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
-function parseItems(raw: unknown): ItemInput[] {
+// pricingMethod defaults to 'itemized' for callers (e.g. Client Funds invoices) that have no pricing method of their own.
+function parseItems(raw: unknown, pricingMethod: string = 'itemized'): ItemInput[] {
   if (!Array.isArray(raw)) return []
   if (raw.length > MAX_ITEMS) throw new HttpError(400, `An estimate can have at most ${MAX_ITEMS} items`)
   return raw.map((item, index) => {
@@ -42,6 +55,24 @@ function parseItems(raw: unknown): ItemInput[] {
     const quantity = item?.quantity
     const unit_price = item?.unit_price
     if (!name) throw new HttpError(400, `${row}: service name is required`)
+    // Descriptions keep their line breaks exactly as typed
+    const description = typeof item?.description === 'string' && item.description.trim() ? item.description : null
+
+    if (pricingMethod === 'lump_sum') {
+      // Quantity/unit/unit price aren't shown or required in Lump Sum mode. A row that already had valid
+      // values (e.g. from before switching modes) keeps them untouched, so switching back to Itemized
+      // restores them; a brand-new row created while in Lump Sum mode gets a harmless internal default.
+      const validQuantity = typeof quantity === 'number' && Number.isFinite(quantity) && quantity > 0
+      const validUnitPrice = typeof unit_price === 'number' && Number.isFinite(unit_price) && unit_price >= 0
+      return {
+        name,
+        description,
+        quantity: validQuantity ? quantity : 1,
+        unit: UNITS.includes(item?.unit) ? item.unit : 'ls',
+        unit_price: validUnitPrice ? unit_price : 0,
+      }
+    }
+
     if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) {
       throw new HttpError(400, `${row}: quantity must be greater than 0`)
     }
@@ -49,8 +80,6 @@ function parseItems(raw: unknown): ItemInput[] {
     if (typeof unit_price !== 'number' || !Number.isFinite(unit_price) || unit_price < 0) {
       throw new HttpError(400, `${row}: unit price must be 0 or more`)
     }
-    // Descriptions keep their line breaks exactly as typed
-    const description = typeof item?.description === 'string' && item.description.trim() ? item.description : null
     return { name, description, quantity, unit: item.unit, unit_price }
   })
 }
@@ -63,6 +92,8 @@ function parseHeader(body: Record<string, unknown>) {
   const valid_until = body.valid_until ? body.valid_until : null
   const discount_type = body.discount_type ?? 'fixed'
   const discount_value = body.discount_value ?? 0
+  const pricing_method = body.pricing_method ?? 'itemized'
+  const lump_sum_fee = body.lump_sum_fee ?? 0
 
   if (!estimate_number) throw new HttpError(400, 'Estimate number is required')
   if (!isIsoDate(estimate_date)) throw new HttpError(400, 'Estimate date is required')
@@ -77,6 +108,12 @@ function parseHeader(body: Record<string, unknown>) {
   }
   if (typeof discount_value !== 'number' || !Number.isFinite(discount_value) || discount_value < 0) {
     throw new HttpError(400, 'Discount must be 0 or more')
+  }
+  if (typeof pricing_method !== 'string' || !PRICING_METHODS.includes(pricing_method)) {
+    throw new HttpError(400, 'Pricing method must be itemized or lump_sum')
+  }
+  if (typeof lump_sum_fee !== 'number' || !Number.isFinite(lump_sum_fee) || lump_sum_fee < 0) {
+    throw new HttpError(400, 'Lump sum fee must be 0 or more')
   }
 
   return {
@@ -97,6 +134,9 @@ function parseHeader(body: Record<string, unknown>) {
     exclusions: longText(body.exclusions),
     discount_type,
     discount_value,
+    pricing_method,
+    // Stored to the same precision as every other money column
+    lump_sum_fee: roundMoney(lump_sum_fee),
     project_id: body.project_id ? body.project_id : null,
     // Separate from the client's saved address, and from Summary/Notes/Terms
     project_location: optionalText(body.project_location),
@@ -113,6 +153,7 @@ const ESTIMATE_SELECT = `
          estimates.currency, estimates.status, estimates.notes, estimates.payment_terms, estimates.timeline, estimates.exclusions,
          estimates.project_location, estimates.introduction,
          estimates.subtotal, estimates.discount, estimates.discount_type, estimates.discount_value, estimates.total,
+         estimates.pricing_method, estimates.lump_sum_fee,
          estimates.project_id, estimates.approved_at,
          invoices.id AS invoice_id, invoices.invoice_number,
          (SELECT projects.id FROM projects WHERE projects.source_estimate_id = estimates.id) AS created_project_id
@@ -143,8 +184,16 @@ async function assertReferences(db: { query: PoolClient['query'] }, clientId: un
 }
 
 // Replaces all line items of an estimate and stores the backend-calculated totals
-async function saveItemsAndTotals(client: PoolClient, estimateId: string | number, items: ItemInput[], discountType: string, discountValue: number) {
-  const totals = computeTotals(items, discountType, discountValue)
+async function saveItemsAndTotals(
+  client: PoolClient,
+  estimateId: string | number,
+  items: ItemInput[],
+  discountType: string,
+  discountValue: number,
+  pricingMethod: string,
+  lumpSumFee: number
+) {
+  const totals = computeTotals(items, discountType, discountValue, pricingMethod, lumpSumFee)
   await client.query('DELETE FROM estimate_items WHERE estimate_id = $1', [estimateId])
   for (const [index, item] of items.entries()) {
     await client.query(
@@ -212,8 +261,9 @@ async function approveEstimate(estimateId: string) {
       await client.query(
         `INSERT INTO invoices (estimate_id, invoice_number, client_id, contact_name, title, summary, invoice_date, due_date,
                                currency, notes, subtotal, discount_type, discount_value, discount, total,
-                               payment_terms, timeline, exclusions, project_location, introduction)
-         VALUES ($1, $2, $3, $4, $5, $6, current_date, current_date + $7::int, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+                               payment_terms, timeline, exclusions, project_location, introduction,
+                               pricing_method, lump_sum_fee)
+         VALUES ($1, $2, $3, $4, $5, $6, current_date, current_date + $7::int, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
          RETURNING id`,
         [
           estimateId, number, estimate.client_id, estimate.contact_name, estimate.title, estimate.summary,
@@ -221,6 +271,7 @@ async function approveEstimate(estimateId: string) {
           estimate.discount_value, estimate.discount, estimate.total,
           estimate.payment_terms, estimate.timeline, estimate.exclusions,
           estimate.project_location, estimate.introduction,
+          estimate.pricing_method, estimate.lump_sum_fee,
         ]
       )
     ).rows[0]
@@ -297,25 +348,29 @@ export function registerEstimateRoutes(app: Express) {
       const body = { ...req.body }
       if (typeof body.estimate_number !== 'string' || !body.estimate_number.trim()) body.estimate_number = await nextEstimateNumber()
       const header = parseHeader(body)
-      const items = parseItems(req.body.items)
+      const items = parseItems(req.body.items, header.pricing_method as string)
       if (header.status === 'approved') throw new HttpError(400, 'Use the approve action to approve an estimate')
-      computeTotals(items, header.discount_type as string, header.discount_value as number)
+      computeTotals(items, header.discount_type as string, header.discount_value as number, header.pricing_method as string, header.lump_sum_fee as number)
 
       const id = await withTransaction(async (client) => {
         await assertReferences(client, header.client_id, header.project_id)
         const inserted = await client.query(
           `INSERT INTO estimates (estimate_number, title, summary, client_id, contact_name, customer_ref, estimate_date,
                                   valid_until, currency, status, notes, discount_type, discount_value, project_id,
-                                  payment_terms, timeline, exclusions, project_location, introduction)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
+                                  payment_terms, timeline, exclusions, project_location, introduction,
+                                  pricing_method, lump_sum_fee)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
           [
             header.estimate_number, header.title, header.summary, header.client_id, header.contact_name, header.customer_ref,
             header.estimate_date, header.valid_until, header.currency, header.status, header.notes, header.discount_type,
             header.discount_value, header.project_id, header.payment_terms, header.timeline, header.exclusions,
-            header.project_location, header.introduction,
+            header.project_location, header.introduction, header.pricing_method, header.lump_sum_fee,
           ]
         )
-        await saveItemsAndTotals(client, inserted.rows[0].id, items, header.discount_type as string, header.discount_value as number)
+        await saveItemsAndTotals(
+          client, inserted.rows[0].id, items, header.discount_type as string, header.discount_value as number,
+          header.pricing_method as string, header.lump_sum_fee as number
+        )
         return inserted.rows[0].id
       })
       res.status(201).json(await loadEstimate(id))
@@ -328,8 +383,8 @@ export function registerEstimateRoutes(app: Express) {
     try {
       const id = requireId(req)
       const header = parseHeader(req.body)
-      const items = parseItems(req.body.items)
-      computeTotals(items, header.discount_type as string, header.discount_value as number)
+      const items = parseItems(req.body.items, header.pricing_method as string)
+      computeTotals(items, header.discount_type as string, header.discount_value as number, header.pricing_method as string, header.lump_sum_fee as number)
 
       await withTransaction(async (client) => {
         const current = await client.query('SELECT status FROM estimates WHERE id = $1 FOR UPDATE', [id])
@@ -346,16 +401,19 @@ export function registerEstimateRoutes(app: Express) {
                                 customer_ref = $7, estimate_date = $8, valid_until = $9, currency = $10, status = $11,
                                 notes = $12, discount_type = $13, discount_value = $14, project_id = $15,
                                 payment_terms = $16, timeline = $17, exclusions = $18, project_location = $19,
-                                introduction = $20, updated_at = now()
+                                introduction = $20, pricing_method = $21, lump_sum_fee = $22, updated_at = now()
            WHERE id = $1`,
           [
             id, header.estimate_number, header.title, header.summary, header.client_id, header.contact_name, header.customer_ref,
             header.estimate_date, header.valid_until, header.currency, header.status, header.notes, header.discount_type,
             header.discount_value, header.project_id, header.payment_terms, header.timeline, header.exclusions,
-            header.project_location, header.introduction,
+            header.project_location, header.introduction, header.pricing_method, header.lump_sum_fee,
           ]
         )
-        await saveItemsAndTotals(client, id, items, header.discount_type as string, header.discount_value as number)
+        await saveItemsAndTotals(
+          client, id, items, header.discount_type as string, header.discount_value as number,
+          header.pricing_method as string, header.lump_sum_fee as number
+        )
       })
       res.json(await loadEstimate(id))
     } catch (err) {

@@ -19,7 +19,8 @@ const INVOICE_SELECT = `
          invoices.currency, invoices.notes, invoices.payment_terms, invoices.timeline, invoices.exclusions,
          invoices.project_location, invoices.introduction,
          invoices.subtotal, invoices.discount_type, invoices.discount_value,
-         invoices.discount, invoices.total, invoices.estimate_id, estimates.estimate_number,
+         invoices.discount, invoices.total, invoices.pricing_method, invoices.lump_sum_fee,
+         invoices.estimate_id, estimates.estimate_number,
          -- the forward link (both invoice types) falls back to the estimate-approval reverse link, for old rows
          coalesce(invoices.project_id, reverse_project.id) AS project_id,
          coalesce(fwd_project.name, reverse_project.name) AS project_name,
