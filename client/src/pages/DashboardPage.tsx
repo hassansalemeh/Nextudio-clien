@@ -89,6 +89,16 @@ function DashboardPage() {
       <h1>Dashboard</h1>
       {error && <p className="error-message">{error}</p>}
 
+      <div className="card accounting-entry-card">
+        <h2>Accounting Workspace</h2>
+        <p className="empty-state" style={{ marginTop: 0 }}>
+          Book-based double-entry accounting - Cash &amp; Bank, Payees, Journal, and Reports - kept as its own separate workspace.
+        </p>
+        <Link to="/accounting" className="btn-pill">
+          Open Accounting →
+        </Link>
+      </div>
+
       <div className="stat-grid">
         <StatCard label="Confirmed Project Value" value={money(cards.confirmed_value)} note="Value of approved (confirmed) work" />
         <StatCard label="Employee Labor Cost" value={money(cards.labor_cost)} note="Cost of employee time on confirmed projects" />

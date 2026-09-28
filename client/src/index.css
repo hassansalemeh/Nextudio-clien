@@ -157,6 +157,12 @@ main {
   font-weight: 600;
 }
 
+/* A card that links out to a separate workspace (e.g. Accounting) rather than showing data inline -
+   a left accent border in the same accent color as buttons/links marks it as an entry point, not a report. */
+.accounting-entry-card {
+  border-left: 3px solid var(--color-accent);
+}
+
 /* Forms */
 
 .form-grid {

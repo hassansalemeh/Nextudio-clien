@@ -14,6 +14,8 @@
     "restore": "node dist/scripts/restore.js",
     "check": "node dist/scripts/check.js",
     "create-user": "node dist/scripts/create-user.js",
+    "test:accounting": "tsx src/scripts/accounting-smoke-test.ts",
+    "test:accounting-auth": "tsx src/scripts/accounting-auth-check.ts",
     "lint": "eslint ."
   },
   "dependencies": {
