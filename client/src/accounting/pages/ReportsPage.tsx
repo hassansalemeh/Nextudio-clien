@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAccountingBook } from '../BookContext'
 import { fetchJson, money } from '../format'
 
-type Tab = 'general-journal' | 'trial-balance' | 'account-statement' | 'cash-account-statement' | 'project-statement' | 'payee-statement'
+type Tab = 'general-journal' | 'trial-balance' | 'account-statement' | 'cash-account-statement' | 'project-statement' | 'payee-statement' | 'professional-fees'
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'general-journal', label: 'General Journal' },
@@ -11,6 +11,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'cash-account-statement', label: 'Cash Account Statement' },
   { value: 'project-statement', label: 'Project Statement' },
   { value: 'payee-statement', label: 'Payee Statement' },
+  { value: 'professional-fees', label: 'Professional Fees' },
 ]
 
 type Account = { id: string; name: string; type: string }
@@ -344,6 +345,44 @@ function PayeeStatementReport({ bookId, currency }: { bookId: string; currency: 
   )
 }
 
+// Kept strictly separate from client/project funds (LIA-CLIENTADV/LIA-CLIENTFUNDS never contribute here):
+// invoiced = revenue recognized (INC-FEES); outstanding = the CURRENT AST-RECV balance (a genuine amount
+// owed to Nextudio right now, book-wide across every client sharing that one receivable account); collected
+// = invoiced minus outstanding. A negative "outstanding" is possible and means collections/settlements have,
+// in aggregate, outpaced new non-prepaid billing - it does NOT mean Nextudio owes clients money.
+function ProfessionalFeesReport({ bookId, currency }: { bookId: string; currency: string }) {
+  const [summary, setSummary] = useState<{ invoiced: number; collected: number; outstanding: number } | null>(null)
+
+  useEffect(() => {
+    fetchJson(`/api/accounting/reports/professional-fees?book_id=${bookId}`).then(setSummary).catch(() => setSummary(null))
+  }, [bookId])
+
+  if (!summary) return <p className="empty-state">Loading...</p>
+
+  return (
+    <>
+      <div className="accounting-stat-row">
+        <div className="accounting-stat">
+          <div className="accounting-stat-label">Fees Invoiced</div>
+          <div className="accounting-stat-value">{money(summary.invoiced, currency)}</div>
+        </div>
+        <div className="accounting-stat">
+          <div className="accounting-stat-label">Fees Collected</div>
+          <div className="accounting-stat-value">{money(summary.collected, currency)}</div>
+        </div>
+        <div className="accounting-stat">
+          <div className="accounting-stat-label">Outstanding Receivable</div>
+          <div className="accounting-stat-value">{money(summary.outstanding, currency)}</div>
+        </div>
+      </div>
+      <p className="empty-state">
+        Separate from client/project funds held: this counts only revenue actually recognized on an invoice (Professional / Architecture Fees), never a
+        client advance or funds held for a project.
+      </p>
+    </>
+  )
+}
+
 function ReportsPage() {
   const { book, loading: bookLoading } = useAccountingBook()
   const [tab, setTab] = useState<Tab>('general-journal')
@@ -369,6 +408,7 @@ function ReportsPage() {
         {tab === 'cash-account-statement' && <CashAccountStatementReport bookId={book.id} currency={book.currency_code} />}
         {tab === 'project-statement' && <ProjectStatementReport currency={book.currency_code} bookId={book.id} />}
         {tab === 'payee-statement' && <PayeeStatementReport bookId={book.id} currency={book.currency_code} />}
+        {tab === 'professional-fees' && <ProfessionalFeesReport bookId={book.id} currency={book.currency_code} />}
       </div>
     </>
   )

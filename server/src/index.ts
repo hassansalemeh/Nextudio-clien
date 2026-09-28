@@ -11,6 +11,7 @@ import { registerAccountingCashAccountRoutes } from './accounting/cashAccountsRo
 import { registerAccountingCounterpartyRoutes } from './accounting/counterpartiesRoutes'
 import { registerAccountingDashboardRoutes } from './accounting/dashboardRoutes'
 import { registerAccountingJournalRoutes } from './accounting/journalRoutes'
+import { registerAccountingLegacyJobRoutes } from './accounting/legacyJobsRoutes'
 import { registerAccountingOpeningBalanceRoutes } from './accounting/openingBalanceRoutes'
 import { registerAccountingReportRoutes } from './accounting/reportsRoutes'
 import { registerAccountingTransactionRoutes } from './accounting/transactionsRoutes'
@@ -90,6 +91,7 @@ registerAccountingTransactionRoutes(app)
 registerAccountingJournalRoutes(app)
 registerAccountingDashboardRoutes(app)
 registerAccountingReportRoutes(app)
+registerAccountingLegacyJobRoutes(app)
 registerAccountingOpeningBalanceRoutes(app)
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

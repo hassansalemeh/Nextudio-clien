@@ -1,8 +1,8 @@
 import type { Express } from 'express'
 import { pool } from '../db'
-import { HttpError, sendError } from '../http'
+import { HttpError, roundMoney, sendError } from '../http'
 import { requireBookId, queryId, queryString } from './helpers'
-import { cashAccountBalance, projectClientDisbursements, projectSpendByCategory, projectSpendByPayee, projectTotals, payeeTotals, payeeTotalsByProject, trialBalance } from './queries'
+import { cashAccountBalance, projectClientDisbursements, projectSpendByCategory, projectSpendByPayee, projectTotals, payeeTotals, payeeTotalsByProject, payeeHistoricalTotals, payeeHistoricalHistory, professionalFeesSummary, trialBalance } from './queries'
 
 // All reports read posted entries only, per the hard invariant that reports must reconcile to what was
 // actually posted - a draft or reversed row never appears in a report total.
@@ -31,6 +31,15 @@ export function registerAccountingReportRoutes(app: Express) {
       res.json(result.rows)
     } catch (err) {
       sendError(res, err, 'Failed to build the general journal')
+    }
+  })
+
+  app.get('/api/accounting/reports/professional-fees', async (req, res) => {
+    try {
+      const bookId = requireBookId(req.query.book_id)
+      res.json(await professionalFeesSummary(pool, bookId))
+    } catch (err) {
+      sendError(res, err, 'Failed to build the professional fees summary')
     }
   })
 
@@ -173,7 +182,9 @@ export function registerAccountingReportRoutes(app: Express) {
       const counterparty = await pool.query('SELECT id, name, kind FROM accounting_counterparties WHERE id = $1', [counterpartyId])
       if (counterparty.rows.length === 0) throw new HttpError(404, 'Payee not found')
 
-      const totals = await payeeTotals(pool, counterpartyId)
+      const nativeTotals = await payeeTotals(pool, counterpartyId)
+      const historicalTotals = await payeeHistoricalTotals(pool, counterpartyId)
+      const totals = { paid: roundMoney(nativeTotals.paid + historicalTotals.paid), received: roundMoney(nativeTotals.received + historicalTotals.received) }
       const byProject = await payeeTotalsByProject(pool, counterpartyId)
       const history = await pool.query(
         `SELECT t.id, t.direction, t.transaction_date, t.amount, t.currency_code, t.description, t.status,
@@ -192,8 +203,10 @@ export function registerAccountingReportRoutes(app: Express) {
          ORDER BY t.transaction_date DESC, t.id DESC`,
         [counterpartyId]
       )
+      const historicalHistory = await payeeHistoricalHistory(pool, counterpartyId)
+      const combinedHistory = [...history.rows, ...historicalHistory].sort((a, b) => (a.transaction_date < b.transaction_date ? 1 : -1))
 
-      res.json({ counterparty: counterparty.rows[0], ...totals, by_project: byProject, history: history.rows })
+      res.json({ counterparty: counterparty.rows[0], ...totals, by_project: byProject, history: combinedHistory })
     } catch (err) {
       sendError(res, err, 'Failed to build the payee statement')
     }

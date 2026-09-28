@@ -6,6 +6,7 @@ import './accounting.css'
 import { AccountingBookProvider, useAccountingBook } from './BookContext'
 import AccountingDashboardPage from './pages/AccountingDashboardPage'
 import AddTransactionPage from './pages/AddTransactionPage'
+import AccountingLegacyJobDetailPage from './pages/AccountingLegacyJobDetailPage'
 import AccountingProjectDetailPage from './pages/AccountingProjectDetailPage'
 import AccountingProjectsPage from './pages/AccountingProjectsPage'
 import CashBankPage from './pages/CashBankPage'
@@ -91,6 +92,7 @@ function AccountingShell() {
           <Route path="/accounting/add" element={<AddTransactionPage />} />
           <Route path="/accounting/projects" element={<AccountingProjectsPage />} />
           <Route path="/accounting/projects/:id" element={<AccountingProjectDetailPage />} />
+          <Route path="/accounting/legacy-jobs/:id" element={<AccountingLegacyJobDetailPage />} />
           <Route path="/accounting/payees" element={<PayeesPage />} />
           <Route path="/accounting/payees/:id" element={<PayeeDetailPage />} />
           <Route path="/accounting/cash-bank" element={<CashBankPage />} />

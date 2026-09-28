@@ -3,4 +3,4 @@
 
 export const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'income', 'expense'] as const
 export const CASH_ACCOUNT_KINDS = ['cash', 'bank', 'card', 'petty_cash', 'project_fund'] as const
-export const COUNTERPARTY_KINDS = ['worker', 'contractor', 'supplier', 'consultant', 'employee', 'client', 'government', 'other'] as const
+export const COUNTERPARTY_KINDS = ['worker', 'contractor', 'supplier', 'consultant', 'employee', 'client', 'government', 'partner', 'other'] as const

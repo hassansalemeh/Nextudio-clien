@@ -3,7 +3,7 @@ import { pool } from '../db'
 import { HttpError, sendError, withTransaction } from '../http'
 import { writeAuditLog } from './auditLog'
 import { requireBookId, requireParamId } from './helpers'
-import { payeeTotals, payeeTotalsByProject } from './queries'
+import { payeeTotals, payeeTotalsByProject, payeeHistoricalTotals } from './queries'
 import { COUNTERPARTY_KINDS } from './types'
 import type { CounterpartyKind } from './types'
 
@@ -50,7 +50,16 @@ export function registerAccountingCounterpartyRoutes(app: Express) {
          ORDER BY paid DESC, cp.name`,
         [bookId]
       )
-      res.json(result.rows.map((row) => ({ ...row, paid: Number(row.paid), received: Number(row.received) })))
+      // Adds imported historical paid/received on top of native totals - see payeeHistoricalTotals for why
+      // this never double-counts a native transaction.
+      const withHistorical = await Promise.all(
+        result.rows.map(async (row) => {
+          const hist = await payeeHistoricalTotals(pool, row.id)
+          return { ...row, paid: Number(row.paid) + hist.paid, received: Number(row.received) + hist.received }
+        })
+      )
+      withHistorical.sort((a, b) => b.paid - a.paid)
+      res.json(withHistorical)
     } catch (err) {
       sendError(res, err, 'Failed to fetch payees')
     }

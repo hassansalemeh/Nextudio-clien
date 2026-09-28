@@ -3,6 +3,7 @@ import { pool } from '../db'
 import { HttpError, sendError } from '../http'
 import { EXCLUDE_REVERSAL_PAIRS_SQL, requireBookId, requireParamId, queryId, queryString } from './helpers'
 import { parsePostTransactionInput, postTransaction, reverseTransaction } from './postingService'
+import { historicalTransactionsList } from './queries'
 
 // reversed_by_transaction_id is derived, not stored: a transaction's own status stays 'posted' forever even
 // after it is reversed (see the schema migration's comment on accounting_transactions), so "has this been
@@ -69,7 +70,14 @@ export function registerAccountingTransactionRoutes(app: Express) {
         `${TRANSACTION_SELECT} WHERE ${conditions.join(' AND ')} ORDER BY t.transaction_date DESC, t.id DESC LIMIT 500`,
         params
       )
-      res.json(result.rows)
+
+      // Adds imported historical activity to this same drill-down list, filtered the same way, so the
+      // Dashboard's "every total drills down to the exact journal entries" holds for imported history too.
+      const historical = await historicalTransactionsList(pool, bookId, {
+        counterpartyId, cashAccountId, categoryAccountId, direction, dateFrom, dateTo, projectId,
+      })
+      const combined = [...result.rows, ...historical].sort((a, b) => (a.transaction_date < b.transaction_date ? 1 : -1)).slice(0, 500)
+      res.json(combined)
     } catch (err) {
       sendError(res, err, 'Failed to fetch transactions')
     }

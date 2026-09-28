@@ -45,6 +45,7 @@ export const COUNTERPARTY_KIND_LABELS: Record<string, string> = {
   employee: 'Employee',
   client: 'Client',
   government: 'Government',
+  partner: 'Partner',
   other: 'Other',
 }
 

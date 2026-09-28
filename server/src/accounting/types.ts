@@ -7,7 +7,7 @@ export type AccountType = (typeof ACCOUNT_TYPES)[number]
 export const CASH_ACCOUNT_KINDS = ['cash', 'bank', 'card', 'petty_cash', 'project_fund'] as const
 export type CashAccountKind = (typeof CASH_ACCOUNT_KINDS)[number]
 
-export const COUNTERPARTY_KINDS = ['worker', 'contractor', 'supplier', 'consultant', 'employee', 'client', 'government', 'other'] as const
+export const COUNTERPARTY_KINDS = ['worker', 'contractor', 'supplier', 'consultant', 'employee', 'client', 'government', 'partner', 'other'] as const
 export type CounterpartyKind = (typeof COUNTERPARTY_KINDS)[number]
 
 export const TRANSACTION_DIRECTIONS = ['money_in', 'money_out', 'transfer', 'non_cash'] as const

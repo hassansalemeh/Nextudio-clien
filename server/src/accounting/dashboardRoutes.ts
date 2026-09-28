@@ -1,8 +1,29 @@
 import type { Express } from 'express'
 import { pool } from '../db'
-import { HttpError, sendError } from '../http'
+import { HttpError, roundMoney, sendError } from '../http'
 import { EXCLUDE_REVERSAL_PAIRS_SQL, requireBookId, queryString } from './helpers'
-import { cashAccountBalance } from './queries'
+import { cashAccountBalance, historicalCashTotals, historicalCashByCategory, historicalCashByCounterparty, historicalCashByCashAccount } from './queries'
+
+// Merges a native (accounting_transactions-based) breakdown with a historical (journal-lines-based) one that
+// shares the same dimension id, so e.g. a payee paid both before the import cutover and via a native
+// transaction shows one combined row - never two separate, confusing entries for the same real-world payee.
+function mergeBreakdowns<T extends { money_in: number; money_out: number }>(
+  native: (T & Record<string, unknown>)[], idKey: string, historical: { received: number; paid: number; [k: string]: unknown }[], historicalIdKey: string
+): T[] {
+  const byId = new Map<string, T & Record<string, unknown>>()
+  for (const row of native) byId.set(String(row[idKey]), { ...row })
+  for (const row of historical) {
+    const id = String(row[historicalIdKey])
+    const existing = byId.get(id)
+    if (existing) {
+      existing.money_in = Number(existing.money_in) + row.received
+      existing.money_out = Number(existing.money_out) + row.paid
+    } else {
+      byId.set(id, { ...row, [idKey]: row[historicalIdKey], money_in: row.received, money_out: row.paid } as unknown as T & Record<string, unknown>)
+    }
+  }
+  return [...byId.values()] as T[]
+}
 
 // A separate route from the existing /api/dashboard (design-fee/labor-cost dashboard) - this one is purely
 // about cash movement in the accounting books, and never touches the existing dashboard's tables or query.
@@ -97,14 +118,25 @@ export function registerAccountingDashboardRoutes(app: Express) {
         params
       )
 
+      // Everything below adds the historical (imported Polypus) cash movement on top of the native totals
+      // above - see queries.ts's historicalCashTotals for why this can never double-count a native entry.
+      const historicalTotals = await historicalCashTotals(pool, bookId, month)
+      const historicalByCategory = await historicalCashByCategory(pool, bookId, month)
+      const historicalByCounterparty = await historicalCashByCounterparty(pool, bookId, month)
+      const historicalByCashAccount = await historicalCashByCashAccount(pool, bookId, month)
+
+      const nativeByCategory = byCategory.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) }))
+      const nativeByCounterparty = byCounterparty.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) }))
+      const nativeByCashAccount = byCashAccount.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) }))
+
       res.json({
-        money_in: Number(totals.rows[0].money_in),
-        money_out: Number(totals.rows[0].money_out),
+        money_in: roundMoney(Number(totals.rows[0].money_in) + historicalTotals.received),
+        money_out: roundMoney(Number(totals.rows[0].money_out) + historicalTotals.paid),
         cash_balances: cashBalances,
         by_project: byProject.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) })),
-        by_category: byCategory.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) })),
-        by_counterparty: byCounterparty.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) })),
-        by_cash_account: byCashAccount.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) })),
+        by_category: mergeBreakdowns(nativeByCategory, 'account_id', historicalByCategory, 'account_id').sort((a, b) => b.money_out - a.money_out),
+        by_counterparty: mergeBreakdowns(nativeByCounterparty, 'counterparty_id', historicalByCounterparty, 'counterparty_id').sort((a, b) => b.money_out - a.money_out),
+        by_cash_account: mergeBreakdowns(nativeByCashAccount, 'cash_account_id', historicalByCashAccount, 'cash_account_id').sort((a, b) => b.money_out - a.money_out),
       })
     } catch (err) {
       sendError(res, err, 'Failed to load the accounting dashboard')
