@@ -15,6 +15,8 @@ const TRANSACTION_SELECT = `
          t.category_account_id, aa.name AS category_name,
          t.from_cash_account_id, fca.name AS from_cash_account_name,
          t.to_cash_account_id, tca.name AS to_cash_account_name,
+         t.contra_account_id, ca2.name AS contra_account_name,
+         t.classification_account_id, cls.name AS classification_name,
          je.reference AS journal_reference,
          (SELECT r.id FROM accounting_transactions r WHERE r.reversal_of_transaction_id = t.id) AS reversed_by_transaction_id
   FROM accounting_transactions t
@@ -23,6 +25,8 @@ const TRANSACTION_SELECT = `
   LEFT JOIN accounting_accounts aa ON aa.id = t.category_account_id
   LEFT JOIN accounting_cash_accounts fca ON fca.id = t.from_cash_account_id
   LEFT JOIN accounting_cash_accounts tca ON tca.id = t.to_cash_account_id
+  LEFT JOIN accounting_accounts ca2 ON ca2.id = t.contra_account_id
+  LEFT JOIN accounting_accounts cls ON cls.id = t.classification_account_id
   LEFT JOIN accounting_journal_entries je ON je.id = t.journal_entry_id`
 
 function requireTransactionId(req: Request) {

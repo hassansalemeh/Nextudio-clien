@@ -71,11 +71,13 @@ export function registerAccountingCounterpartyRoutes(app: Express) {
         `SELECT t.id, t.direction, t.transaction_date, t.amount, t.currency_code, t.description, t.status,
                 projects.id AS project_id, projects.name AS project_name,
                 aa.name AS category_name,
+                cls.name AS classification_name,
                 coalesce(fca.name, tca.name) AS cash_account_name,
                 (SELECT r.id FROM accounting_transactions r WHERE r.reversal_of_transaction_id = t.id) AS reversed_by_transaction_id
          FROM accounting_transactions t
          LEFT JOIN projects ON projects.id = t.project_id
          LEFT JOIN accounting_accounts aa ON aa.id = t.category_account_id
+         LEFT JOIN accounting_accounts cls ON cls.id = t.classification_account_id
          LEFT JOIN accounting_cash_accounts fca ON fca.id = t.from_cash_account_id
          LEFT JOIN accounting_cash_accounts tca ON tca.id = t.to_cash_account_id
          WHERE t.counterparty_id = $1

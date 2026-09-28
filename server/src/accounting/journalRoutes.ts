@@ -11,7 +11,7 @@ import { reverseJournalEntry } from './postingService'
 // changes away from 'posted'.
 const JOURNAL_ENTRY_SELECT = `
   SELECT je.id, je.book_id, ab.code AS book_code, je.entry_date, je.reference, je.description, je.status,
-         je.reversal_of_entry_id, je.posted_at, je.created_at,
+         je.reversal_of_entry_id, je.posted_at, je.created_at, je.currency_code, je.entry_kind,
          (SELECT t.id FROM accounting_transactions t WHERE t.journal_entry_id = je.id) AS transaction_id,
          (SELECT r.id FROM accounting_journal_entries r WHERE r.reversal_of_entry_id = je.id) AS reversed_by_entry_id,
          coalesce(totals.total_debit, 0) AS total_debit, coalesce(totals.total_credit, 0) AS total_credit

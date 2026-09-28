@@ -15,7 +15,9 @@
     "check": "node dist/scripts/check.js",
     "create-user": "node dist/scripts/create-user.js",
     "test:accounting": "tsx src/scripts/accounting-smoke-test.ts",
+    "test:accounting-local": "tsx src/scripts/accounting-local-test.ts",
     "test:accounting-auth": "tsx src/scripts/accounting-auth-check.ts",
+    "accounting:seed": "tsx src/scripts/accounting-seed-chart.ts",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -26,6 +28,7 @@
     "playwright-core": "^1.63.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.7.4",

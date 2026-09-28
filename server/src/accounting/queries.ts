@@ -21,7 +21,8 @@ export async function cashAccountBalance(db: DbClient, cashAccountId: string): P
 // regardless of whether the account's normal side is debit (asset/expense) or credit (liability/equity/income).
 export async function accountBalance(db: DbClient, accountId: string): Promise<number> {
   const result = await db.query(
-    `SELECT coalesce(sum(jl.debit), 0) AS total_debit, coalesce(sum(jl.credit), 0) AS total_credit, aa.normal_balance
+    `SELECT coalesce(sum(jl.debit) FILTER (WHERE je.status = 'posted'), 0) AS total_debit,
+            coalesce(sum(jl.credit) FILTER (WHERE je.status = 'posted'), 0) AS total_credit, aa.normal_balance
      FROM accounting_accounts aa
      LEFT JOIN accounting_journal_lines jl ON jl.account_id = aa.id
      LEFT JOIN accounting_journal_entries je ON je.id = jl.journal_entry_id AND je.status = 'posted'
@@ -32,7 +33,7 @@ export async function accountBalance(db: DbClient, accountId: string): Promise<n
   if (result.rows.length === 0) return 0
   const { total_debit, total_credit, normal_balance } = result.rows[0]
   const net = Number(total_debit) - Number(total_credit)
-  return roundMoney(normal_balance === 'debit' ? net : -net)
+  return roundMoney(normal_balance === 'debit' ? net : -net) || 0
 }
 
 export type TrialBalanceRow = {
@@ -40,21 +41,28 @@ export type TrialBalanceRow = {
   code: string | null
   name: string
   type: string
+  parent_id: string | null
+  parent_name: string | null
   total_debit: number
   total_credit: number
   balance: number
 }
 
+// parent_id/parent_name (e.g. every DNT/SBM/Kayfoun-style project fund ledger account filed under the
+// "Project Funds / Project Cash" grouping account) let the Reports page show related accounts together,
+// without ever posting to the parent itself - see accounting_accounts.parent_id's migration comment.
 export async function trialBalance(db: DbClient, bookId: string): Promise<TrialBalanceRow[]> {
   const result = await db.query(
-    `SELECT aa.id AS account_id, aa.code, aa.name, aa.type, aa.normal_balance,
-            coalesce(sum(jl.debit), 0) AS total_debit, coalesce(sum(jl.credit), 0) AS total_credit
+    `SELECT aa.id AS account_id, aa.code, aa.name, aa.type, aa.normal_balance, aa.parent_id, parent.name AS parent_name,
+            coalesce(sum(jl.debit) FILTER (WHERE je.status = 'posted'), 0) AS total_debit,
+            coalesce(sum(jl.credit) FILTER (WHERE je.status = 'posted'), 0) AS total_credit
      FROM accounting_accounts aa
+     LEFT JOIN accounting_accounts parent ON parent.id = aa.parent_id
      LEFT JOIN accounting_journal_lines jl ON jl.account_id = aa.id
      LEFT JOIN accounting_journal_entries je ON je.id = jl.journal_entry_id AND je.status = 'posted'
      WHERE aa.book_id = $1
-     GROUP BY aa.id, aa.code, aa.name, aa.type, aa.normal_balance
-     ORDER BY aa.type, aa.name`,
+     GROUP BY aa.id, aa.code, aa.name, aa.type, aa.normal_balance, aa.parent_id, parent.name
+     ORDER BY aa.type, coalesce(parent.name, aa.name), aa.parent_id NULLS FIRST, aa.name`,
     [bookId]
   )
   return result.rows.map((row) => {
@@ -66,6 +74,8 @@ export async function trialBalance(db: DbClient, bookId: string): Promise<TrialB
       code: row.code,
       name: row.name,
       type: row.type,
+      parent_id: row.parent_id,
+      parent_name: row.parent_name,
       total_debit: totalDebit,
       total_credit: totalCredit,
       balance: roundMoney(row.normal_balance === 'debit' ? net : -net),
@@ -78,13 +88,13 @@ export async function trialBalance(db: DbClient, bookId: string): Promise<TrialB
 // 'transfer' here) and fully reversed pairs (EXCLUDE_REVERSAL_PAIRS_SQL): a reversal corrects a mistake, it
 // is not a second genuine cash event, so a fully reversed transaction and the reversal that corrected it both
 // contribute zero here - even though both remain visible, in full, in Journal and every history/statement view.
-export async function projectTotals(db: DbClient, projectId: string): Promise<{ received: number; paid: number }> {
+export async function projectTotals(db: DbClient, projectId: string, bookId: string): Promise<{ received: number; paid: number }> {
   const result = await db.query(
     `SELECT coalesce(sum(amount) FILTER (WHERE direction = 'money_in'), 0) AS received,
             coalesce(sum(amount) FILTER (WHERE direction = 'money_out'), 0) AS paid
      FROM accounting_transactions t
-     WHERE t.project_id = $1 AND t.status = 'posted' AND ${EXCLUDE_REVERSAL_PAIRS_SQL}`,
-    [projectId]
+     WHERE t.project_id = $1 AND t.book_id = $2 AND t.status = 'posted' AND ${EXCLUDE_REVERSAL_PAIRS_SQL}`,
+    [projectId, bookId]
   )
   const row = result.rows[0]
   return { received: roundMoney(Number(row.received)), paid: roundMoney(Number(row.paid)) }
@@ -125,7 +135,7 @@ export async function payeeTotalsByProject(db: DbClient, counterpartyId: string)
   }))
 }
 
-export async function projectSpendByCategory(db: DbClient, projectId: string) {
+export async function projectSpendByCategory(db: DbClient, projectId: string, bookId: string) {
   // Read from journal lines (net debit - credit), not accounting_transactions.direction: a reversal of a
   // money_out is posted as its own money_in-direction transaction (see postingService.ts's reversalHeader),
   // which a direction = 'money_out' filter would never see - so a fully-reversed expense would keep showing
@@ -137,16 +147,30 @@ export async function projectSpendByCategory(db: DbClient, projectId: string) {
      FROM accounting_journal_lines jl
      JOIN accounting_journal_entries je ON je.id = jl.journal_entry_id
      JOIN accounting_accounts aa ON aa.id = jl.account_id
-     WHERE jl.project_id = $1 AND jl.cash_account_id IS NULL AND je.status = 'posted' AND aa.type IN ('expense', 'asset')
+     WHERE jl.project_id = $1 AND jl.book_id = $2 AND jl.cash_account_id IS NULL AND je.status = 'posted'
+       AND je.entry_kind <> 'opening_balance' AND aa.type IN ('expense', 'asset')
      GROUP BY aa.id, aa.name
      HAVING sum(jl.debit) - sum(jl.credit) <> 0
      ORDER BY amount DESC`,
-    [projectId]
+    [projectId, bookId]
   )
   return result.rows.map((row) => ({ account_id: row.account_id, account_name: row.account_name, amount: roundMoney(Number(row.amount)) }))
 }
 
-export async function projectSpendByPayee(db: DbClient, projectId: string) {
+// A separate management breakdown: classification tags describe client spending without entering P&L.
+export async function projectClientDisbursements(db: DbClient, projectId: string, bookId: string) {
+  const result = await db.query(
+    `SELECT a.id AS account_id, a.name AS account_name, sum(t.amount) AS amount
+     FROM accounting_transactions t
+     JOIN accounting_accounts a ON a.id = t.classification_account_id
+     WHERE t.project_id = $1 AND t.book_id = $2 AND t.status = 'posted' AND t.direction = 'money_out' AND ${EXCLUDE_REVERSAL_PAIRS_SQL}
+     GROUP BY a.id, a.name ORDER BY amount DESC`,
+    [projectId, bookId]
+  )
+  return result.rows.map((row) => ({ ...row, amount: roundMoney(Number(row.amount)) }))
+}
+
+export async function projectSpendByPayee(db: DbClient, projectId: string, bookId: string) {
   // Same reasoning as projectSpendByCategory above - net debit - credit over journal lines, not a
   // direction = 'money_out' filter over accounting_transactions, so a reversed payment nets to zero here too.
   const result = await db.query(
@@ -155,11 +179,12 @@ export async function projectSpendByPayee(db: DbClient, projectId: string) {
      JOIN accounting_journal_entries je ON je.id = jl.journal_entry_id
      JOIN accounting_accounts aa ON aa.id = jl.account_id
      JOIN accounting_counterparties cp ON cp.id = jl.counterparty_id
-     WHERE jl.project_id = $1 AND jl.cash_account_id IS NULL AND je.status = 'posted' AND aa.type IN ('expense', 'asset')
+     WHERE jl.project_id = $1 AND jl.book_id = $2 AND jl.cash_account_id IS NULL AND je.status = 'posted'
+       AND je.entry_kind <> 'opening_balance' AND aa.type IN ('expense', 'asset')
      GROUP BY cp.id, cp.name
      HAVING sum(jl.debit) - sum(jl.credit) <> 0
      ORDER BY amount DESC`,
-    [projectId]
+    [projectId, bookId]
   )
   return result.rows.map((row) => ({ counterparty_id: row.counterparty_id, counterparty_name: row.counterparty_name, amount: roundMoney(Number(row.amount)) }))
 }

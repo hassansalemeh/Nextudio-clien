@@ -35,7 +35,7 @@ function main() {
 
   const accountingRouteFiles = [
     'accounting/booksRoutes', 'accounting/accountsRoutes', 'accounting/cashAccountsRoutes', 'accounting/counterpartiesRoutes',
-    'accounting/transactionsRoutes', 'accounting/journalRoutes', 'accounting/dashboardRoutes', 'accounting/reportsRoutes',
+    'accounting/transactionsRoutes', 'accounting/journalRoutes', 'accounting/dashboardRoutes', 'accounting/reportsRoutes', 'accounting/openingBalanceRoutes',
   ]
   for (const file of accountingRouteFiles) {
     const source = fs.readFileSync(path.join(__dirname, `../${file}.ts`), 'utf8')
@@ -54,7 +54,7 @@ function main() {
   for (const registerCall of [
     'registerAccountingBookRoutes(app)', 'registerAccountingAccountRoutes(app)', 'registerAccountingCashAccountRoutes(app)',
     'registerAccountingCounterpartyRoutes(app)', 'registerAccountingTransactionRoutes(app)', 'registerAccountingJournalRoutes(app)',
-    'registerAccountingDashboardRoutes(app)', 'registerAccountingReportRoutes(app)',
+    'registerAccountingDashboardRoutes(app)', 'registerAccountingReportRoutes(app)', 'registerAccountingOpeningBalanceRoutes(app)',
   ]) {
     const callIndex = indexSource.indexOf(registerCall)
     if (callIndex === -1) fail(`${registerCall} is not called from index.ts`)

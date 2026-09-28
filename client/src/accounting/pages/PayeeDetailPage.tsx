@@ -17,6 +17,7 @@ type PayeeStatement = {
     status: string
     project_name: string | null
     category_name: string | null
+    classification_name: string | null
     cash_account_name: string | null
     reversed_by_transaction_id: string | null
   }[]
@@ -110,7 +111,10 @@ function PayeeDetailPage() {
                   <td>{row.transaction_date}</td>
                   <td>{DIRECTION_LABELS[row.direction]}</td>
                   <td>{row.project_name || '—'}</td>
-                  <td>{row.category_name || '—'}</td>
+                  <td>
+                    {row.category_name || '—'}
+                    {row.classification_name && <div className="empty-state">Classified: {row.classification_name}</div>}
+                  </td>
                   <td>{row.cash_account_name || '—'}</td>
                   <td>{money(row.amount, currency)}</td>
                   <td>{row.reversed_by_transaction_id && <span className="status-badge status-inactive">Reversed</span>}</td>

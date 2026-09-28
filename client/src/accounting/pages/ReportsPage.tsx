@@ -73,7 +73,9 @@ function GeneralJournalReport({ bookId, currency }: { bookId: string; currency: 
 }
 
 function TrialBalanceReport({ bookId, currency }: { bookId: string; currency: string }) {
-  const [rows, setRows] = useState<{ account_id: string; name: string; type: string; total_debit: number; total_credit: number; balance: number }[]>([])
+  const [rows, setRows] = useState<
+    { account_id: string; name: string; type: string; parent_id: string | null; parent_name: string | null; total_debit: number; total_credit: number; balance: number }[]
+  >([])
 
   useEffect(() => {
     fetchJson(`/api/accounting/reports/trial-balance?book_id=${bookId}`).then(setRows).catch(() => setRows([]))
@@ -98,7 +100,12 @@ function TrialBalanceReport({ bookId, currency }: { bookId: string; currency: st
       <tbody>
         {rows.map((row) => (
           <tr key={row.account_id}>
-            <td>{row.name}</td>
+            {/* An account filed under a grouping/control account (e.g. a project fund under "Project Funds /
+                Project Cash") is indented under it - the parent itself is never posted to directly. */}
+            <td style={row.parent_id ? { paddingLeft: '1.75rem' } : undefined}>
+              {row.name}
+              {row.parent_name && <span className="empty-state"> — {row.parent_name}</span>}
+            </td>
             <td>{row.type}</td>
             <td className="accounting-journal-line">{money(row.total_debit, currency)}</td>
             <td className="accounting-journal-line">{money(row.total_credit, currency)}</td>
@@ -245,7 +252,7 @@ function CashAccountStatementReport({ bookId, currency }: { bookId: string; curr
   )
 }
 
-function ProjectStatementReport({ currency }: { currency: string }) {
+function ProjectStatementReport({ currency, bookId }: { currency: string; bookId: string }) {
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState('')
   const [statement, setStatement] = useState<{ received: number; paid: number } | null>(null)
@@ -256,8 +263,8 @@ function ProjectStatementReport({ currency }: { currency: string }) {
 
   useEffect(() => {
     if (!projectId) { setStatement(null); return }
-    fetchJson(`/api/accounting/reports/project-statement?project_id=${projectId}`).then(setStatement).catch(() => setStatement(null))
-  }, [projectId])
+    fetchJson(`/api/accounting/reports/project-statement?project_id=${projectId}&book_id=${bookId}`).then(setStatement).catch(() => setStatement(null))
+  }, [projectId, bookId])
 
   return (
     <>
@@ -360,7 +367,7 @@ function ReportsPage() {
         {tab === 'trial-balance' && <TrialBalanceReport bookId={book.id} currency={book.currency_code} />}
         {tab === 'account-statement' && <AccountStatementReport bookId={book.id} currency={book.currency_code} />}
         {tab === 'cash-account-statement' && <CashAccountStatementReport bookId={book.id} currency={book.currency_code} />}
-        {tab === 'project-statement' && <ProjectStatementReport currency={book.currency_code} />}
+        {tab === 'project-statement' && <ProjectStatementReport currency={book.currency_code} bookId={book.id} />}
         {tab === 'payee-statement' && <PayeeStatementReport bookId={book.id} currency={book.currency_code} />}
       </div>
     </>

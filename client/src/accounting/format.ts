@@ -11,7 +11,7 @@ export const DIRECTION_LABELS: Record<string, string> = {
   money_in: 'Money In',
   money_out: 'Money Out',
   transfer: 'Transfer',
-  non_cash: 'Non-cash',
+  non_cash: 'Bill / Payable',
 }
 
 export const TRANSACTION_STATUS_LABELS: Record<string, string> = {

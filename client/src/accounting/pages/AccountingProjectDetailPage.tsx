@@ -9,6 +9,7 @@ type Statement = {
   paid: number
   fund_balances: { id: string; name: string; balance: number }[]
   spend_by_category: { account_id: string; account_name: string; amount: number }[]
+  client_disbursements_by_category: { account_id: string; account_name: string; amount: number }[]
   spend_by_payee: { counterparty_id: string; counterparty_name: string; amount: number }[]
   history: {
     id: string
@@ -20,6 +21,7 @@ type Statement = {
     counterparty_id: string | null
     counterparty_name: string | null
     category_name: string | null
+    classification_name: string | null
     cash_account_name: string | null
     reversed_by_transaction_id: string | null
   }[]
@@ -37,11 +39,11 @@ function AccountingProjectDetailPage() {
   const [dateTo, setDateTo] = useState('')
 
   useEffect(() => {
-    if (!id) return
-    fetchJson(`/api/accounting/reports/project-statement?project_id=${id}`)
+    if (!id || !book) return
+    fetchJson(`/api/accounting/reports/project-statement?project_id=${id}&book_id=${book.id}`)
       .then(setStatement)
       .catch(() => setError('Could not load this project.'))
-  }, [id])
+  }, [id, book])
 
   const filteredHistory = useMemo(() => {
     if (!statement) return []
@@ -118,7 +120,7 @@ function AccountingProjectDetailPage() {
       )}
 
       <div className="card">
-        <h2>Spending by Category</h2>
+        <h2>Nextudio Costs by Category</h2>
         {statement.spend_by_category.length === 0 ? (
           <p className="empty-state">No expenses recorded yet.</p>
         ) : (
@@ -132,7 +134,7 @@ function AccountingProjectDetailPage() {
       </div>
 
       <div className="card">
-        <h2>Spending by Payee</h2>
+        <h2>Nextudio Costs by Payee</h2>
         {statement.spend_by_payee.length === 0 ? (
           <p className="empty-state">No expenses recorded yet.</p>
         ) : (
@@ -143,6 +145,16 @@ function AccountingProjectDetailPage() {
             </div>
           ))
         )}
+      </div>
+
+      <div className="card">
+        <h2>Client Funds Disbursed by Category</h2>
+        <p>Management classification of client money spent; these amounts reduce funds held and are excluded from Nextudio costs.</p>
+        {statement.client_disbursements_by_category.map((row) => (
+          <div key={row.account_id} className="accounting-breakdown-row">
+            <span>{row.account_name}</span><span>{money(row.amount, currency)}</span>
+          </div>
+        ))}
       </div>
 
       <div className="card">
@@ -200,7 +212,10 @@ function AccountingProjectDetailPage() {
                   <td>{row.transaction_date}</td>
                   <td>{DIRECTION_LABELS[row.direction]}</td>
                   <td>{row.counterparty_name || '—'}</td>
-                  <td>{row.category_name || '—'}</td>
+                  <td>
+                    {row.category_name || '—'}
+                    {row.classification_name && <div className="empty-state">Classified: {row.classification_name}</div>}
+                  </td>
                   <td>{row.cash_account_name || '—'}</td>
                   <td>{money(row.amount, currency)}</td>
                   <td>

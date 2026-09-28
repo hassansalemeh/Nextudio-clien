@@ -36,8 +36,11 @@ export function registerAccountingAccountRoutes(app: Express) {
     try {
       const bookId = requireBookId(req.query.book_id)
       const result = await pool.query(
-        `SELECT id, book_id, code, name, type, normal_balance, description, is_active, created_at
-         FROM accounting_accounts WHERE book_id = $1 ORDER BY type, name`,
+        `SELECT aa.id, aa.book_id, aa.code, aa.name, aa.type, aa.normal_balance, aa.description, aa.is_active, aa.created_at,
+                aa.parent_id, parent.name AS parent_name
+         FROM accounting_accounts aa
+         LEFT JOIN accounting_accounts parent ON parent.id = aa.parent_id
+         WHERE aa.book_id = $1 ORDER BY aa.type, aa.name`,
         [bookId]
       )
       res.json(result.rows)
