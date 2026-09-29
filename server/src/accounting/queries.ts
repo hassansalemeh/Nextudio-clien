@@ -365,6 +365,14 @@ export async function legacyJobHistory(db: DbClient, legacyJobId: string) {
 // direction is derived from whichever OTHER line in the same entry is the cash leg (debit = money_in,
 // credit = money_out); an entry with no cash leg at all (e.g. a fee invoice recognizing revenue against an
 // existing advance) is labelled 'non_cash', matching what that direction already means for native activity.
+//
+// The "cash"/"other" lookups match by AMOUNT (jl's own debit/credit against the candidate's opposite side),
+// never just "any other line in the same journal entry" - the historical importer preserves one legacy
+// voucher as one journal entry even when that voucher bundles several unrelated people's transactions into
+// one JV (e.g. a monthly payroll run: Ghida/Reem/Omar/... all paid in a single legacy JVID), so "same entry"
+// alone does not mean "the other half of MY pair". Without the amount match, this previously picked an
+// arbitrary other person's cash/category line - e.g. showing Ghida's $1,800 salary line with a $2,000
+// (Omar's) or $1,300 (Reem's/Abbas's) amount, since Postgres has no defined order for an unqualified LIMIT 1.
 export async function payeeHistoricalHistory(db: DbClient, counterpartyId: string) {
   const result = await db.query(
     `SELECT 'je-' || je.id AS id,
@@ -378,13 +386,17 @@ export async function payeeHistoricalHistory(db: DbClient, counterpartyId: strin
      JOIN accounting_journal_entries je ON je.id = jl.journal_entry_id
      LEFT JOIN LATERAL (
        SELECT c.debit, c.credit, c.cash_account_id FROM accounting_journal_lines c
-       WHERE c.journal_entry_id = je.id AND c.cash_account_id IS NOT NULL AND c.id <> jl.id LIMIT 1
+       WHERE c.journal_entry_id = je.id AND c.cash_account_id IS NOT NULL AND c.id <> jl.id
+         AND ((jl.debit > 0 AND c.credit = jl.debit) OR (jl.credit > 0 AND c.debit = jl.credit))
+       LIMIT 1
      ) cash ON true
      LEFT JOIN accounting_cash_accounts ca ON ca.id = cash.cash_account_id
      LEFT JOIN LATERAL (
        SELECT oaa.name AS account_name, o.legacy_job_id FROM accounting_journal_lines o
        JOIN accounting_accounts oaa ON oaa.id = o.account_id
-       WHERE o.journal_entry_id = je.id AND o.id <> jl.id AND o.cash_account_id IS NULL LIMIT 1
+       WHERE o.journal_entry_id = je.id AND o.id <> jl.id AND o.cash_account_id IS NULL
+         AND ((jl.debit > 0 AND o.credit = jl.debit) OR (jl.credit > 0 AND o.debit = jl.credit))
+       LIMIT 1
      ) other ON true
      LEFT JOIN accounting_legacy_jobs lj ON lj.id = coalesce(jl.legacy_job_id, other.legacy_job_id)
      LEFT JOIN accounting_legacy_journal_line_ref lr ON lr.journal_line_id = jl.id
@@ -486,8 +498,11 @@ export async function historicalTransactionsList(db: DbClient, bookId: string, f
      JOIN accounting_cash_accounts ca ON ca.id = jl.cash_account_id
      LEFT JOIN accounting_legacy_journal_line_ref lr ON lr.journal_line_id = jl.id
      LEFT JOIN LATERAL (
+       -- Matched by amount, not just "any other line in the entry" - see payeeHistoricalHistory's comment
+       -- for why a bundled legacy voucher (e.g. a monthly payroll run) makes that ambiguous otherwise.
        SELECT o.account_id, o.counterparty_id, o.legacy_job_id FROM accounting_journal_lines o
        WHERE o.journal_entry_id = je.id AND o.id <> jl.id AND o.cash_account_id IS NULL
+         AND ((jl.debit > 0 AND o.credit = jl.debit) OR (jl.credit > 0 AND o.debit = jl.credit))
        ORDER BY (o.counterparty_id IS NOT NULL)::int DESC LIMIT 1
      ) other ON true
      LEFT JOIN accounting_accounts other_aa ON other_aa.id = other.account_id

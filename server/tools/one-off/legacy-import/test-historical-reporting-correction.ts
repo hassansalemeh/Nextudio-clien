@@ -186,6 +186,41 @@ async function main() {
   for (const row of status.rows) assert.ok(['VERIFIED', 'PRESERVED_AMBIGUOUS', 'MAPPING_ERROR'].includes(row.status))
   ok('every classification status is one of VERIFIED / PRESERVED_AMBIGUOUS / MAPPING_ERROR - no "assumed" status exists')
 
+  // Scenario 5: a legacy voucher that bundles MULTIPLE employees' salary payments into one journal entry
+  // (exactly how Polypus recorded a monthly payroll run) must never show one employee's row with another
+  // employee's dollar amount. Found live in production 2026-09-29: Ghida's ($1,800/mo) payee page showed
+  // $1,300/$2,000 rows mixed in from Reem/Abbas/Omar, because the "other line in the same entry" lookup had
+  // no amount-matching and Postgres's unordered LIMIT 1 picked an arbitrary co-bundled employee's cash leg.
+  const { payeeHistoricalHistory } = await import('../../../src/accounting/queries')
+  const opCash = await q<{ id: string }>(
+    `INSERT INTO accounting_cash_accounts (book_id, name, kind, ledger_account_id, currency_code) VALUES ($1,'Operating Cash','cash',$2,'USD') RETURNING id`,
+    [bookId, cashLedgerId]
+  )
+  const opCashId = opCash.rows[0].id
+  const salariesAcct = await acct('CEXP-SALARIES', 'Salaries', 'expense', 'debit')
+  const empA = await q<{ id: string }>(`INSERT INTO accounting_counterparties (book_id, name, kind) VALUES ($1,'Salary Ghida','employee') RETURNING id`, [bookId])
+  const empB = await q<{ id: string }>(`INSERT INTO accounting_counterparties (book_id, name, kind) VALUES ($1,'Salary Omar','employee') RETURNING id`, [bookId])
+  const empACpId = empA.rows[0].id
+  const empBCpId = empB.rows[0].id
+  const payroll = await entry() // one bundled legacy voucher, two employees, two different amounts
+  const ghidaSalaryLine = await line(payroll, salariesAcct, { debit: 1800, counterpartyId: empACpId })
+  await line(payroll, opCashId, { credit: 1800, cashAccountId: opCashId })
+  const omarSalaryLine = await line(payroll, salariesAcct, { debit: 2000, counterpartyId: empBCpId })
+  await line(payroll, opCashId, { credit: 2000, cashAccountId: opCashId })
+  for (const id of [ghidaSalaryLine, omarSalaryLine]) await classify(id, 'payroll', 'VERIFIED')
+  await q(
+    `INSERT INTO accounting_legacy_journal_line_ref (journal_line_id, legacy_book_code, legacy_jv_id, legacy_voucher_entry_id, legacy_account_id, legacy_base1_amount, legacy_narration)
+     VALUES ($1,'TESTBOOK',500,50001,9010,1800,'Ghida Salary'), ($2,'TESTBOOK',500,50002,9020,2000,'Omar Salary')`,
+    [ghidaSalaryLine, omarSalaryLine]
+  )
+  const ghidaHistory = await payeeHistoricalHistory(dbClient, empACpId)
+  const omarHistory = await payeeHistoricalHistory(dbClient, empBCpId)
+  assert.strictEqual(ghidaHistory.length, 1)
+  assert.strictEqual(ghidaHistory[0].amount, 1800)
+  assert.strictEqual(omarHistory.length, 1)
+  assert.strictEqual(omarHistory[0].amount, 2000)
+  ok('payeeHistoricalHistory matches each employee to their OWN cash amount ($1,800/$2,000) in a bundled multi-employee voucher, not an arbitrary co-bundled amount')
+
   console.log(`\n${passed} checks passed.`)
 }
 
