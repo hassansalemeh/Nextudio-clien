@@ -207,9 +207,11 @@ export async function historicalCashTotals(db: DbClient, bookId: string, month?:
   return { received: roundMoney(Number(row.received)), paid: roundMoney(Number(row.paid)) }
 }
 
-// Breakdown of historical cash movement by whatever dimension the OTHER (non-cash) line(s) of the same entry
-// carry - a complex multi-line historical voucher fans out to each dimension it actually touches, the same
-// way projectSpendByCategory/projectSpendByPayee already attribute a multi-line entry's cost across accounts.
+// Breakdown of historical cash movement by whatever dimension the OTHER (non-cash) line of the same entry
+// carries, matched by amount - not just "any dimension-carrying line in the entry" (a bundled legacy voucher,
+// e.g. one monthly payroll run paying several employees in a single JV, would otherwise fan a single cash
+// line's amount out to every co-bundled employee's dimension, multiplying it across all of them instead of
+// attributing it to the one it actually paid). The amount match reduces this to the genuine 2-line pair.
 async function historicalCashByDimension(
   db: DbClient, bookId: string, dimensionColumn: 'counterparty_id' | 'account_id' | 'legacy_job_id', month?: string | null
 ): Promise<{ dim_id: string; received: number; paid: number }[]> {
@@ -223,6 +225,7 @@ async function historicalCashByDimension(
      JOIN accounting_journal_entries je ON je.id = jl.journal_entry_id
      JOIN accounting_journal_lines other ON other.journal_entry_id = je.id AND other.id <> jl.id
        AND other.cash_account_id IS NULL AND other.${dimensionColumn} IS NOT NULL
+       AND ((jl.debit > 0 AND other.credit = jl.debit) OR (jl.credit > 0 AND other.debit = jl.credit))
      WHERE je.book_id = $1 AND ${HISTORICAL_CASH_LEG_SQL} ${monthCondition}
      GROUP BY other.${dimensionColumn}`,
     params
@@ -271,16 +274,29 @@ export async function historicalCashByCashAccount(db: DbClient, bookId: string, 
 }
 
 // A payee's historical paid/received: sum of the debit(=paid to them)/credit(=received from them) on THEIR
-// OWN journal line, restricted to entries that also have a genuine cash leg (so a pure revenue-recognition
-// entry like an invoice draw-down, which touches no cash account at all, is correctly excluded from "paid").
+// OWN journal line, counted only when THAT SPECIFIC line is matched by amount to a real cash leg in the
+// same entry (not just "the entry has a cash leg somewhere") - a bundled legacy voucher (e.g. one monthly
+// payroll run paying several employees) puts many people's accrual AND payment lines in one journal entry,
+// so "a cash leg exists in this entry" is true for everyone in the batch even though only ONE line is each
+// person's own payment. Without the amount match, an employee's own accrual credit (recognizing what's owed
+// to them, not money received) was wrongly counted as "received" whenever anyone's payment landed in the
+// same bundled entry - e.g. Salary Reem showed received=$7,760 when she never received a cent back; correctly
+// zero once each line requires its own matching cash counterpart.
 export async function payeeHistoricalTotals(db: DbClient, counterpartyId: string): Promise<{ paid: number; received: number }> {
   const result = await db.query(
-    `SELECT coalesce(sum(jl.debit), 0) AS paid, coalesce(sum(jl.credit), 0) AS received
+    `SELECT
+       coalesce(sum(jl.debit) FILTER (WHERE EXISTS (
+         SELECT 1 FROM accounting_journal_lines cash
+         WHERE cash.journal_entry_id = je.id AND cash.cash_account_id IS NOT NULL AND cash.id <> jl.id AND cash.credit = jl.debit
+       )), 0) AS paid,
+       coalesce(sum(jl.credit) FILTER (WHERE EXISTS (
+         SELECT 1 FROM accounting_journal_lines cash
+         WHERE cash.journal_entry_id = je.id AND cash.cash_account_id IS NOT NULL AND cash.id <> jl.id AND cash.debit = jl.credit
+       )), 0) AS received
      FROM accounting_journal_lines jl
      JOIN accounting_journal_entries je ON je.id = jl.journal_entry_id
      WHERE jl.counterparty_id = $1 AND je.status = 'posted' AND je.entry_kind <> 'opening_balance'
-       AND NOT EXISTS (SELECT 1 FROM accounting_transactions t WHERE t.journal_entry_id = je.id)
-       AND EXISTS (SELECT 1 FROM accounting_journal_lines cash WHERE cash.journal_entry_id = je.id AND cash.cash_account_id IS NOT NULL)`,
+       AND NOT EXISTS (SELECT 1 FROM accounting_transactions t WHERE t.journal_entry_id = je.id)`,
     [counterpartyId]
   )
   const row = result.rows[0]
@@ -289,16 +305,17 @@ export async function payeeHistoricalTotals(db: DbClient, counterpartyId: string
 
 // A legacy job's totals/breakdowns. legacy_job_id is usually only set on the COST/counterparty leg of a
 // historical voucher, not the cash leg (Polypus rarely tagged the JobID on the cash side) - so "received"/
-// "spent" for a job is attributed via the ENTRY: whenever ANY line in the entry carries this legacy_job_id,
-// the entry's own cash leg(s) count toward that job's received/spent.
+// "spent" for a job is attributed via the ENTRY, matched by amount to job_line's own debit/credit - not just
+// "any cash leg in the entry", which would fan a single job's cost line out across every OTHER unrelated cash
+// movement bundled into the same legacy voucher (e.g. a monthly payroll run) and inflate the total.
 export async function legacyJobTotals(db: DbClient, legacyJobId: string): Promise<{ received: number; paid: number }> {
   const result = await db.query(
     `SELECT coalesce(sum(cash.debit), 0) AS received, coalesce(sum(cash.credit), 0) AS paid
      FROM accounting_journal_lines job_line
      JOIN accounting_journal_entries je ON je.id = job_line.journal_entry_id
-     JOIN accounting_journal_lines cash ON cash.journal_entry_id = je.id AND cash.cash_account_id IS NOT NULL
-     WHERE job_line.legacy_job_id = $1 AND je.status = 'posted' AND je.entry_kind <> 'opening_balance'
-       AND EXISTS (SELECT 1 FROM accounting_journal_lines other WHERE other.journal_entry_id = je.id AND other.cash_account_id IS NULL)`,
+     JOIN accounting_journal_lines cash ON cash.journal_entry_id = je.id AND cash.cash_account_id IS NOT NULL AND cash.id <> job_line.id
+       AND ((job_line.debit > 0 AND cash.credit = job_line.debit) OR (job_line.credit > 0 AND cash.debit = job_line.credit))
+     WHERE job_line.legacy_job_id = $1 AND je.status = 'posted' AND je.entry_kind <> 'opening_balance'`,
     [legacyJobId]
   )
   const row = result.rows[0]

@@ -221,6 +221,48 @@ async function main() {
   assert.strictEqual(omarHistory[0].amount, 2000)
   ok('payeeHistoricalHistory matches each employee to their OWN cash amount ($1,800/$2,000) in a bundled multi-employee voucher, not an arbitrary co-bundled amount')
 
+  // Scenario 6: payeeHistoricalTotals must count "received" only when a counterparty's OWN credit line is
+  // matched by amount to a real cash inflow - not merely because SOME cash line exists elsewhere in the same
+  // bundled entry. Found live in production 2026-09-29: Salary Reem's page showed "Total Received: $7,760"
+  // (her own monthly accrual credits, wrongly counted as money received) when she never received a cent back
+  // - her accrual just happened to share a journal entry with her (or a co-bundled employee's) cash payment.
+  const { payeeHistoricalTotals, historicalCashByCounterparty, legacyJobTotals } = await import('../../../src/accounting/queries')
+  const empC = await q<{ id: string }>(`INSERT INTO accounting_counterparties (book_id, name, kind) VALUES ($1,'Salary Fatima','employee') RETURNING id`, [bookId])
+  const empCCpId = empC.rows[0].id
+  const fatimaAccrual = await line(payroll, salariesAcct, { credit: 1150, counterpartyId: empCCpId }) // accrual only, no payment in this fixture
+  await classify(fatimaAccrual, 'payroll', 'VERIFIED')
+
+  const ghidaTotals = await payeeHistoricalTotals(dbClient, empACpId)
+  const omarTotals = await payeeHistoricalTotals(dbClient, empBCpId)
+  const fatimaTotals = await payeeHistoricalTotals(dbClient, empCCpId)
+  assert.strictEqual(ghidaTotals.paid, 1800)
+  assert.strictEqual(ghidaTotals.received, 0)
+  assert.strictEqual(omarTotals.paid, 2000)
+  assert.strictEqual(omarTotals.received, 0)
+  assert.strictEqual(fatimaTotals.paid, 0)
+  assert.strictEqual(fatimaTotals.received, 0) // her accrual credit has no matching cash inflow anywhere - correctly zero, not $1,800 or $2,000
+  ok('payeeHistoricalTotals: an accrual-only credit line in a bundled entry is never counted as "received" just because someone else in the same voucher got paid')
+
+  // Scenario 7: historicalCashByCounterparty/legacyJobTotals must not fan a single cash line's amount out to
+  // every co-bundled counterparty/job in the same entry. Found live in production 2026-09-29: Btater's job
+  // total showed "paid=$754,912.86" (real figure: ~$87K-96K) and the Dashboard's payee breakdown showed
+  // "Salary Fatima: paid=$134,768" (real figure: ~$9,660) - both several times too large from this fan-out.
+  const byCp = await historicalCashByCounterparty(dbClient, bookId)
+  const ghidaBreakdown = byCp.find((r: any) => r.counterparty_id === empACpId)
+  const omarBreakdown = byCp.find((r: any) => r.counterparty_id === empBCpId)
+  assert.strictEqual(Number(ghidaBreakdown?.paid ?? 0), 1800)
+  assert.strictEqual(Number(omarBreakdown?.paid ?? 0), 2000)
+  ok('historicalCashByCounterparty attributes each cash line to its OWN matched counterparty only, never fanned out to every co-bundled counterparty')
+
+  const jobRow2 = await q<{ id: string }>(
+    `INSERT INTO accounting_legacy_jobs (book_id, legacy_job_id, legacy_job_code, legacy_job_name) VALUES ($1,2,'002','Test Job 2') RETURNING id`,
+    [bookId]
+  )
+  await q(`UPDATE accounting_journal_lines SET legacy_job_id = $1 WHERE id = $2`, [jobRow2.rows[0].id, ghidaSalaryLine])
+  const jobTotals = await legacyJobTotals(dbClient, jobRow2.rows[0].id)
+  assert.strictEqual(jobTotals.paid, 1800) // not 1800+2000 from Omar's co-bundled cash line
+  ok('legacyJobTotals attributes only the job-tagged line\'s own matched cash amount, never a co-bundled unrelated payment in the same voucher')
+
   console.log(`\n${passed} checks passed.`)
 }
 
