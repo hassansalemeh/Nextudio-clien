@@ -3,10 +3,19 @@ import { Link, useParams } from 'react-router-dom'
 import { useAccountingBook } from '../BookContext'
 import { fetchJson, money } from '../format'
 
+type FundSummary = {
+  clientFundsReceived: number
+  genuineProjectCostsPaid: number
+  confirmedFeesCollected: number
+  remainingProjectFunds: number
+  cashAccountName: string
+} | null
+
 type Statement = {
   legacy_job: { id: string; legacy_job_code: string; legacy_job_name: string; status: string; mapped_project_id: string | null }
   received: number
   paid: number
+  fund_summary: FundSummary
   spend_by_category: { account_id: string; account_name: string; amount: number }[]
   spend_by_payee: { counterparty_id: string; counterparty_name: string; amount: number }[]
   history: {
@@ -81,14 +90,41 @@ function AccountingLegacyJobDetailPage() {
 
       <div className="accounting-stat-row">
         <div className="accounting-stat">
-          <div className="accounting-stat-label">Money Received</div>
+          <div className="accounting-stat-label">Gross Money Received</div>
           <div className="accounting-stat-value">{money(statement.received, currency)}</div>
         </div>
         <div className="accounting-stat">
-          <div className="accounting-stat-label">Money Paid</div>
+          <div className="accounting-stat-label">Gross Money Paid</div>
           <div className="accounting-stat-value">{money(statement.paid, currency)}</div>
         </div>
       </div>
+
+      {statement.fund_summary ? (
+        <div className="card">
+          <h2>Fund Summary ({statement.fund_summary.cashAccountName})</h2>
+          <p className="empty-state" style={{ marginTop: 0 }}>
+            Source-proven breakdown: client funds vs. Nextudio's confirmed collected fee, never blended.
+          </p>
+          <div className="accounting-breakdown-row">
+            <span>Client Funds Received</span>
+            <span>{money(statement.fund_summary.clientFundsReceived, currency)}</span>
+          </div>
+          <div className="accounting-breakdown-row">
+            <span>Project Costs Paid</span>
+            <span>{money(statement.fund_summary.genuineProjectCostsPaid, currency)}</span>
+          </div>
+          <div className="accounting-breakdown-row">
+            <span>Confirmed Professional Fees Collected</span>
+            <span title="Only fee cash confirmed by Receipts & Payments (RCV) sweep evidence">{money(statement.fund_summary.confirmedFeesCollected, currency)}</span>
+          </div>
+          <div className="accounting-breakdown-row">
+            <span>Remaining Project Funds</span>
+            <span>{money(statement.fund_summary.remainingProjectFunds, currency)}</span>
+          </div>
+        </div>
+      ) : (
+        <p className="empty-state">No dedicated historical cash pot was identified for this job - see the transaction detail below instead.</p>
+      )}
 
       <div className="card">
         <h2>Costs by Category</h2>

@@ -14,7 +14,7 @@ function PayeesPage() {
   useEffect(() => {
     if (!book) return
     setLoading(true)
-    fetchJson(`/api/accounting/counterparties?book_id=${book.id}`)
+    fetchJson(`/api/accounting/counterparties?book_id=${book.id}&kind=payees`)
       .then(setCounterparties)
       .catch(() => setError('Could not load payees.'))
       .finally(() => setLoading(false))
@@ -32,6 +32,12 @@ function PayeesPage() {
           + Add Payee
         </Link>
       </div>
+      <nav className="accounting-subnav">
+        <span className="accounting-subnav-link active">Payees</span>
+        <Link to="/accounting/clients" className="accounting-subnav-link">Clients</Link>
+        <Link to="/accounting/partners" className="accounting-subnav-link">Partners</Link>
+      </nav>
+      <p className="empty-state" style={{ marginTop: 0 }}>Suppliers, contractors, consultants, workers, and employees - money paid FROM Nextudio/projects.</p>
       <div className="card">
         {error && <p className="error-message">{error}</p>}
         {loading ? (

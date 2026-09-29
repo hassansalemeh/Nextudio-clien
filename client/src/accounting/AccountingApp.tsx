@@ -10,8 +10,11 @@ import AccountingLegacyJobDetailPage from './pages/AccountingLegacyJobDetailPage
 import AccountingProjectDetailPage from './pages/AccountingProjectDetailPage'
 import AccountingProjectsPage from './pages/AccountingProjectsPage'
 import CashBankPage from './pages/CashBankPage'
+import ClientsPage from './pages/ClientsPage'
+import HistoricalReviewPage from './pages/HistoricalReviewPage'
 import JournalEntryDetailPage from './pages/JournalEntryDetailPage'
 import JournalPage from './pages/JournalPage'
+import PartnersPage from './pages/PartnersPage'
 import PayeeDetailPage from './pages/PayeeDetailPage'
 import PayeesPage from './pages/PayeesPage'
 import ReportsPage from './pages/ReportsPage'
@@ -22,9 +25,12 @@ const NAV_ITEMS = [
   { to: '/accounting/add', label: 'Add Transaction' },
   { to: '/accounting/projects', label: 'Projects' },
   { to: '/accounting/payees', label: 'Payees' },
+  { to: '/accounting/clients', label: 'Clients' },
+  { to: '/accounting/partners', label: 'Partners' },
   { to: '/accounting/cash-bank', label: 'Cash & Bank' },
   { to: '/accounting/journal', label: 'Journal' },
   { to: '/accounting/reports', label: 'Reports' },
+  { to: '/accounting/historical-review', label: 'Historical Review' },
   { to: '/accounting/setup', label: 'Setup' },
 ]
 
@@ -95,10 +101,13 @@ function AccountingShell() {
           <Route path="/accounting/legacy-jobs/:id" element={<AccountingLegacyJobDetailPage />} />
           <Route path="/accounting/payees" element={<PayeesPage />} />
           <Route path="/accounting/payees/:id" element={<PayeeDetailPage />} />
+          <Route path="/accounting/clients" element={<ClientsPage />} />
+          <Route path="/accounting/partners" element={<PartnersPage />} />
           <Route path="/accounting/cash-bank" element={<CashBankPage />} />
           <Route path="/accounting/journal" element={<JournalPage />} />
           <Route path="/accounting/journal/:id" element={<JournalEntryDetailPage />} />
           <Route path="/accounting/reports" element={<ReportsPage />} />
+          <Route path="/accounting/historical-review" element={<HistoricalReviewPage />} />
           <Route path="/accounting/setup" element={<SetupPage />} />
           <Route path="*" element={<Navigate to="/accounting/dashboard" replace />} />
         </Routes>

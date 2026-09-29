@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAccountingBook } from '../BookContext'
 import { fetchJson, money } from '../format'
 
-type CashBalance = { id: string; name: string; kind: string; balance: number }
+type CashBalance = { id: string; name: string; kind: string; balance: number; legacy_job_id: string | null; legacy_job_name: string | null }
 // Every breakdown carries BOTH money_in and money_out on the same row, rather than one row per direction -
 // so a reversal (which posts with the opposite direction of what it reverses) shows up right next to the
 // original it cancels out, instead of looking like an unrelated event in its own bucket.
@@ -17,6 +17,20 @@ type DashboardData = {
   by_category: (ByDimension & { account_id: string; account_name: string })[]
   by_counterparty: (ByDimension & { counterparty_id: string; counterparty_name: string })[]
   by_cash_account: (ByDimension & { cash_account_id: string; cash_account_name: string })[]
+  company: {
+    confirmed_professional_fees_collected: number
+    company_operating_expenses_paid: number
+    payroll_paid: number
+    partner_funding_in: number
+    partner_drawings_out: number
+  }
+  client_project_funds: {
+    client_funds_received: number
+    project_costs_paid: number
+    total_receivables: number
+    total_advances_held: number
+  }
+  cash_activity: { gross_money_in: number; gross_money_out: number; internal_transfers: number }
 }
 
 type Transaction = {
@@ -100,24 +114,75 @@ function AccountingDashboardPage() {
         <>
           <div className="accounting-stat-row">
             <div className="accounting-stat">
-              <div className="accounting-stat-label">Money Received</div>
+              <div className="accounting-stat-label">Gross Cash In</div>
               <button
                 type="button"
                 className="accounting-stat-value"
-                onClick={() => openDrill('Money Received', { direction: 'money_in', date_from: `${month}-01`, date_to: `${month}-31` })}
+                onClick={() => openDrill('Gross Cash In', { direction: 'money_in', date_from: `${month}-01`, date_to: `${month}-31` })}
               >
                 {money(data.money_in, currency)}
               </button>
             </div>
             <div className="accounting-stat">
-              <div className="accounting-stat-label">Money Paid</div>
+              <div className="accounting-stat-label">Gross Cash Out</div>
               <button
                 type="button"
                 className="accounting-stat-value"
-                onClick={() => openDrill('Money Paid', { direction: 'money_out', date_from: `${month}-01`, date_to: `${month}-31` })}
+                onClick={() => openDrill('Gross Cash Out', { direction: 'money_out', date_from: `${month}-01`, date_to: `${month}-31` })}
               >
                 {money(data.money_out, currency)}
               </button>
+            </div>
+          </div>
+          <p className="empty-state" style={{ marginTop: -8 }}>
+            Gross cash movement blends company revenue, expenses, payroll, partner funding, and client project funds. See the sections below for what each
+            actually is - a client's construction deposit is never company revenue.
+          </p>
+
+          <div className="card">
+            <h2>Company</h2>
+            <div className="accounting-breakdown-row">
+              <span>Confirmed Professional Fees Collected</span>
+              <span title="Only fee cash confirmed by Receipts &amp; Payments (RCV) sweep evidence - never every line mapped to fee revenue">
+                {money(data.company.confirmed_professional_fees_collected, currency)}
+              </span>
+            </div>
+            <div className="accounting-breakdown-row">
+              <span>Company Operating Expenses Paid</span>
+              <span>{money(data.company.company_operating_expenses_paid, currency)}</span>
+            </div>
+            <div className="accounting-breakdown-row">
+              <span>Payroll Paid</span>
+              <span>{money(data.company.payroll_paid, currency)}</span>
+            </div>
+            <div className="accounting-breakdown-row">
+              <span>Partner Funding In / Drawings Out</span>
+              <span>
+                {money(data.company.partner_funding_in, currency)} / {money(data.company.partner_drawings_out, currency)}
+              </span>
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>Client / Project Funds</h2>
+            <p className="empty-state" style={{ marginTop: 0 }}>
+              Money a client deposited for their project - never company revenue.
+            </p>
+            <div className="accounting-breakdown-row">
+              <span>Client Funds Received</span>
+              <span>{money(data.client_project_funds.client_funds_received, currency)}</span>
+            </div>
+            <div className="accounting-breakdown-row">
+              <span>Project Costs Paid</span>
+              <span>{money(data.client_project_funds.project_costs_paid, currency)}</span>
+            </div>
+            <div className="accounting-breakdown-row">
+              <span>Total Receivables (clients who owe Nextudio)</span>
+              <span>{money(data.client_project_funds.total_receivables, currency)}</span>
+            </div>
+            <div className="accounting-breakdown-row">
+              <span>Total Advances/Funds Held (Nextudio holds client money)</span>
+              <span>{money(data.client_project_funds.total_advances_held, currency)}</span>
             </div>
           </div>
 
@@ -137,7 +202,10 @@ function AccountingDashboardPage() {
                 <tbody>
                   {data.cash_balances.map((account) => (
                     <tr key={account.id}>
-                      <td>{account.name}</td>
+                      <td>
+                        {account.name}
+                        {account.legacy_job_name && <span className="status-badge status-draft" style={{ marginLeft: 6 }}>{account.legacy_job_name}</span>}
+                      </td>
                       <td>{account.kind}</td>
                       <td>{money(account.balance, currency)}</td>
                     </tr>
@@ -145,6 +213,14 @@ function AccountingDashboardPage() {
                 </tbody>
               </table>
             )}
+          </div>
+
+          <div className="card">
+            <h2>Cash Activity</h2>
+            <div className="accounting-breakdown-row">
+              <span>Internal Transfers (between cash/bank accounts)</span>
+              <span>{money(data.cash_activity.internal_transfers, currency)}</span>
+            </div>
           </div>
 
           <div className="card">

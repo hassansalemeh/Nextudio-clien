@@ -3,6 +3,13 @@ import { pool } from '../db'
 import { HttpError, roundMoney, sendError } from '../http'
 import { EXCLUDE_REVERSAL_PAIRS_SQL, requireBookId, queryString } from './helpers'
 import { cashAccountBalance, historicalCashTotals, historicalCashByCategory, historicalCashByCounterparty, historicalCashByCashAccount } from './queries'
+import {
+  confirmedProfessionalFeesCollected,
+  historicalCompanyCashFlow,
+  historicalClientProjectFunds,
+  historicalInternalTransfers,
+  clientControlBalances,
+} from './historicalCorrectedQueries'
 
 // Merges a native (accounting_transactions-based) breakdown with a historical (journal-lines-based) one that
 // shares the same dimension id, so e.g. a payee paid both before the import cutover and via a native
@@ -50,7 +57,10 @@ export function registerAccountingDashboardRoutes(app: Express) {
       )
 
       const cashAccounts = await pool.query(
-        `SELECT id, name, kind, project_id FROM accounting_cash_accounts WHERE book_id = $1 AND is_active ORDER BY name`,
+        `SELECT ca.id, ca.name, ca.kind, ca.project_id, ca.legacy_account_id, ca.legacy_job_id, lj.legacy_job_name
+         FROM accounting_cash_accounts ca
+         LEFT JOIN accounting_legacy_jobs lj ON lj.id = ca.legacy_job_id
+         WHERE ca.book_id = $1 AND ca.is_active ORDER BY ca.legacy_account_id IS NULL, ca.name`,
         [bookId]
       )
       const cashBalances = await Promise.all(
@@ -129,6 +139,19 @@ export function registerAccountingDashboardRoutes(app: Express) {
       const nativeByCounterparty = byCounterparty.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) }))
       const nativeByCashAccount = byCashAccount.rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) }))
 
+      // Corrected historical breakdown (2026-09-29 audit): "Money In/Out" above stays as the blended gross
+      // cash-movement figure (relabeled "Gross Cash In/Out" on the client), but a client's construction
+      // deposit must never be presented AS company revenue - these sections separate what's actually company
+      // money from what's client/project money, using the persisted classification, not the generic imported
+      // account code. Not month-filtered (the classification is a book-wide historical annotation).
+      const confirmedFees = await confirmedProfessionalFeesCollected(pool, bookId)
+      const companyCashFlow = await historicalCompanyCashFlow(pool, bookId)
+      const clientProjectFunds = await historicalClientProjectFunds(pool, bookId)
+      const internalTransfers = await historicalInternalTransfers(pool, bookId)
+      const clientBalances = await clientControlBalances(pool, bookId)
+      const totalReceivables = roundMoney(clientBalances.filter((c) => c.state === 'receivable').reduce((s, c) => s + Math.abs(c.net_balance), 0))
+      const totalAdvancesHeld = roundMoney(clientBalances.filter((c) => c.state === 'advance_held').reduce((s, c) => s + c.net_balance, 0))
+
       res.json({
         money_in: roundMoney(Number(totals.rows[0].money_in) + historicalTotals.received),
         money_out: roundMoney(Number(totals.rows[0].money_out) + historicalTotals.paid),
@@ -137,6 +160,24 @@ export function registerAccountingDashboardRoutes(app: Express) {
         by_category: mergeBreakdowns(nativeByCategory, 'account_id', historicalByCategory, 'account_id').sort((a, b) => b.money_out - a.money_out),
         by_counterparty: mergeBreakdowns(nativeByCounterparty, 'counterparty_id', historicalByCounterparty, 'counterparty_id').sort((a, b) => b.money_out - a.money_out),
         by_cash_account: mergeBreakdowns(nativeByCashAccount, 'cash_account_id', historicalByCashAccount, 'cash_account_id').sort((a, b) => b.money_out - a.money_out),
+        company: {
+          confirmed_professional_fees_collected: confirmedFees,
+          company_operating_expenses_paid: companyCashFlow.companyOperatingExpensesPaid,
+          payroll_paid: companyCashFlow.payrollPaid,
+          partner_funding_in: companyCashFlow.partnerFundingIn,
+          partner_drawings_out: companyCashFlow.partnerDrawingsOut,
+        },
+        client_project_funds: {
+          client_funds_received: clientProjectFunds.clientFundsReceived,
+          project_costs_paid: clientProjectFunds.projectCostsPaid,
+          total_receivables: totalReceivables,
+          total_advances_held: totalAdvancesHeld,
+        },
+        cash_activity: {
+          gross_money_in: roundMoney(Number(totals.rows[0].money_in) + historicalTotals.received),
+          gross_money_out: roundMoney(Number(totals.rows[0].money_out) + historicalTotals.paid),
+          internal_transfers: internalTransfers,
+        },
       })
     } catch (err) {
       sendError(res, err, 'Failed to load the accounting dashboard')

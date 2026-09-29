@@ -3,6 +3,7 @@ import { pool } from '../db'
 import { HttpError, sendError } from '../http'
 import { requireBookId, queryId } from './helpers'
 import { legacyJobTotals, legacyJobSpendByCategory, legacyJobSpendByPayee, legacyJobHistory, historicalCashByLegacyJob } from './queries'
+import { legacyJobFundSummary, historicalReviewNeeded } from './historicalCorrectedQueries'
 
 // Historical-only Polypus jobs (Btater, KZ Residence, Kayfoun, AM Appartment, Chemlen, Souk El Ghareb, ...).
 // Deliberately a SEPARATE table and a SEPARATE set of routes from /api/projects - a legacy job is drillable
@@ -17,7 +18,9 @@ export function registerAccountingLegacyJobRoutes(app: Express) {
         `SELECT id, legacy_job_code, legacy_job_name, status, mapped_project_id FROM accounting_legacy_jobs WHERE book_id = $1 ORDER BY legacy_job_code`,
         [bookId]
       )
-      const withTotals = await Promise.all(jobs.rows.map(async (row) => ({ ...row, ...(await legacyJobTotals(pool, row.id)) })))
+      const withTotals = await Promise.all(
+        jobs.rows.map(async (row) => ({ ...row, ...(await legacyJobTotals(pool, row.id)), fund_summary: await legacyJobFundSummary(pool, row.id) }))
+      )
       res.json(withTotals)
     } catch (err) {
       sendError(res, err, 'Failed to fetch historical jobs')
@@ -39,10 +42,25 @@ export function registerAccountingLegacyJobRoutes(app: Express) {
       const byCategory = await legacyJobSpendByCategory(pool, legacyJobId)
       const byPayee = await legacyJobSpendByPayee(pool, legacyJobId)
       const history = await legacyJobHistory(pool, legacyJobId)
+      // Source-proven fund breakdown (Client Funds Received / Project Costs Paid / Confirmed Fees Collected /
+      // Remaining Project Funds), from that job's dedicated historical cash pot where the audit established
+      // one exists - null (never a guessed figure) for a job with no dedicated pot.
+      const fundSummary = await legacyJobFundSummary(pool, legacyJobId)
 
-      res.json({ legacy_job: job.rows[0], ...totals, spend_by_category: byCategory, spend_by_payee: byPayee, history })
+      res.json({ legacy_job: job.rows[0], ...totals, fund_summary: fundSummary, spend_by_category: byCategory, spend_by_payee: byPayee, history })
     } catch (err) {
       sendError(res, err, 'Failed to build the historical job statement')
+    }
+  })
+
+  // Every PRESERVED_AMBIGUOUS historical line, for management to resolve later using paperwork/knowledge -
+  // never guessed into a category. See the 100% coverage audit (chat history, 2026-09-29).
+  app.get('/api/accounting/historical-review-needed', async (req, res) => {
+    try {
+      const bookId = requireBookId(req.query.book_id)
+      res.json(await historicalReviewNeeded(pool, bookId))
+    } catch (err) {
+      sendError(res, err, 'Failed to load the historical review list')
     }
   })
 

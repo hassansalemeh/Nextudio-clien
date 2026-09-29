@@ -4,6 +4,7 @@ import { HttpError, sendError, withTransaction } from '../http'
 import { writeAuditLog } from './auditLog'
 import { requireBookId, requireParamId } from './helpers'
 import { payeeTotals, payeeTotalsByProject, payeeHistoricalTotals } from './queries'
+import { clientControlBalances } from './historicalCorrectedQueries'
 import { COUNTERPARTY_KINDS } from './types'
 import type { CounterpartyKind } from './types'
 
@@ -36,28 +37,49 @@ function requireCounterpartyId(req: Request) {
 }
 
 export function registerAccountingCounterpartyRoutes(app: Express) {
+  // kind=payees|clients|partners narrows the list to the matching counterparty kinds, so the client can keep
+  // Payees (suppliers/contractors/consultants/workers/employees), Clients (funding/receivable/advance) and
+  // Partners (funding/drawings) as conceptually separate lists/pages, never mixing a client into "Payees".
+  const KIND_GROUPS: Record<string, CounterpartyKind[]> = {
+    payees: ['worker', 'contractor', 'supplier', 'consultant', 'employee'],
+    clients: ['client'],
+    partners: ['partner'],
+  }
   app.get('/api/accounting/counterparties', async (req, res) => {
     try {
       const bookId = requireBookId(req.query.book_id)
+      const group = typeof req.query.kind === 'string' ? KIND_GROUPS[req.query.kind] : undefined
+      const kindFilter = group ? ` AND cp.kind = ANY($2)` : ''
+      const params = group ? [bookId, group] : [bookId]
       const result = await pool.query(
         `SELECT cp.id, cp.book_id, cp.name, cp.kind, cp.client_id, cp.employee_id, cp.contact_info, cp.is_active, cp.created_at,
                 coalesce(sum(t.amount) FILTER (WHERE t.direction = 'money_out' AND t.status = 'posted'), 0) AS paid,
                 coalesce(sum(t.amount) FILTER (WHERE t.direction = 'money_in' AND t.status = 'posted'), 0) AS received
          FROM accounting_counterparties cp
          LEFT JOIN accounting_transactions t ON t.counterparty_id = cp.id
-         WHERE cp.book_id = $1
+         WHERE cp.book_id = $1${kindFilter}
          GROUP BY cp.id
          ORDER BY paid DESC, cp.name`,
-        [bookId]
+        params
       )
       // Adds imported historical paid/received on top of native totals - see payeeHistoricalTotals for why
-      // this never double-counts a native transaction.
+      // this never double-counts a native transaction. For a client, "Total Paid" from actual cash settlement
+      // evidence is meaningless (a client is never paid by Nextudio) - net_balance/state (from the client's
+      // COMPLETE counterparty-level running balance, never a single target-account code) replaces it instead.
       const withHistorical = await Promise.all(
         result.rows.map(async (row) => {
           const hist = await payeeHistoricalTotals(pool, row.id)
           return { ...row, paid: Number(row.paid) + hist.paid, received: Number(row.received) + hist.received }
         })
       )
+      if (req.query.kind === 'clients') {
+        const balances = await clientControlBalances(pool, bookId)
+        const byId = new Map(balances.map((b) => [b.counterparty_id, b]))
+        const withBalance = withHistorical.map((row) => ({ ...row, net_balance: byId.get(row.id)?.net_balance ?? 0, state: byId.get(row.id)?.state ?? 'settled' }))
+        withBalance.sort((a, b) => a.net_balance - b.net_balance)
+        res.json(withBalance)
+        return
+      }
       withHistorical.sort((a, b) => b.paid - a.paid)
       res.json(withHistorical)
     } catch (err) {
