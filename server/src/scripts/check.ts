@@ -3,7 +3,7 @@
 // (and whether it is encrypted), and whether a PDF can really be produced. It prints no secret values.
 import os from 'os'
 import { pool } from '../db'
-import { checkPdfEngine } from '../documents'
+import { checkPdfEngine } from '../modules/documents/documents.service'
 
 const REQUIRED_ENV = ['DATABASE_URL']
 const RECOMMENDED_ENV = ['NODE_ENV', 'PUBLIC_URL', 'PORT']

@@ -1,7 +1,7 @@
 // Usage:
 //   npx tsx src/scripts/create-user.ts admin <email> <password>
 //   npx tsx src/scripts/create-user.ts employee <email> <password> <employee_id>
-import { hashPassword } from '../auth'
+import { hashPassword } from '../modules/auth/auth.service'
 import { pool } from '../db'
 
 async function main() {

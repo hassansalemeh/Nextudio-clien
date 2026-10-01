@@ -1,15 +1,9 @@
 import fs from 'fs'
 import path from 'path'
-import type { Express } from 'express'
-import { chromium } from 'playwright-core'
-import type { Browser } from 'playwright-core'
-import { loadEstimate } from './estimates'
-import { HttpError, sendError } from './http'
-import { DIRECTION, DocumentLanguage, labelsFor } from './i18n/documentLabels'
-import { loadInvoice } from './invoices'
+import { DIRECTION, DocumentLanguage, labelsFor } from '../../shared/i18n/documentLabels'
 
 // The Nextudio logo, embedded so it prints on every page of the PDF
-const LOGO_DATA_URI = `data:image/webp;base64,${fs.readFileSync(path.resolve(__dirname, '../assets/nextudio-logo.webp')).toString('base64')}`
+const LOGO_DATA_URI = `data:image/webp;base64,${fs.readFileSync(path.resolve(__dirname, '../../../assets/nextudio-logo.webp')).toString('base64')}`
 
 // ---- Company details printed on every page (from Nextudio's existing quotations and invoices) ----
 // The company's own name/address are never translated - a company name/address isn't the kind of
@@ -32,13 +26,13 @@ function fontStack(language: DocumentLanguage) {
   return language === 'ar' ? `'${ARABIC_FONT_FAMILY}', 'Segoe UI', Arial, sans-serif` : `'Segoe UI', Arial, sans-serif`
 }
 
-const escapeHtml = (value: unknown) =>
+export const escapeHtml = (value: unknown) =>
   String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 // The only formatting an estimate/invoice section supports: **bold** spans, written by the admin in the
 // editor's Bold toolbar button. Every other character is still escaped - this never allows raw HTML through,
 // it only ever wraps escaped text in a literal <b> tag we write ourselves.
-const formatText = (value: unknown) =>
+export const formatText = (value: unknown) =>
   String(value ?? '')
     .split(/(\*\*[^*]+?\*\*)/g)
     .map((part) => {
@@ -62,11 +56,11 @@ const longDate = (isoDate: string | null, language: DocumentLanguage) =>
 
 const plainNumber = (value: string | number) => String(Number(value))
 
-type DocItem = { name: string; description: string | null; quantity: string; unit: string; unit_price: string; amount: string }
+export type DocItem = { name: string; description: string | null; quantity: string; unit: string; unit_price: string; amount: string }
 
 // A Professional Services Invoice's contract / Acceptance & Signatures block. Never set for an Estimate
 // or a Client Funds invoice - those always pass `contract: null` and the section is left out entirely.
-type ContractData = {
+export type ContractData = {
   terms: string | null
   clientRepName: string | null
   clientRepTitle: string | null
@@ -74,7 +68,7 @@ type ContractData = {
   nextudioRepTitle: string | null
 }
 
-type DocumentData = {
+export type DocumentData = {
   kind: 'quotation' | 'invoice'
   // Only set for `kind: 'invoice'`; distinguishes a Professional Services invoice from a Client Funds one
   // (filenames, and which invoices ever carry a contract) without inferring it from translated text.
@@ -109,7 +103,7 @@ type DocumentData = {
 
 // ---- Layout: modelled on Nextudio's real quotation / invoice PDFs ----
 
-const headerHtml = (doc: DocumentData) => {
+export const headerHtml = (doc: DocumentData) => {
   const t = labelsFor(doc.language)
   const dir = DIRECTION[doc.language]
   return `
@@ -135,7 +129,7 @@ const headerHtml = (doc: DocumentData) => {
 </div>`
 }
 
-const footerHtml = (doc: DocumentData) => {
+export const footerHtml = (doc: DocumentData) => {
   const t = labelsFor(doc.language)
   const word = doc.kind === 'quotation' ? t.quotation : t.invoice
   return `
@@ -144,7 +138,7 @@ const footerHtml = (doc: DocumentData) => {
 </div>`
 }
 
-function bodyHtml(doc: DocumentData) {
+export function bodyHtml(doc: DocumentData) {
   const { currency, language } = doc
   const t = labelsFor(language)
   const dir = DIRECTION[language]
@@ -319,232 +313,4 @@ function signatureSectionHtml(doc: DocumentData) {
         ${block(t.nextudioParty, 'Nextudio Architects', c.nextudioRepName, c.nextudioRepTitle)}
       </div>
     </div>`
-}
-
-// ---- PDF rendering (Chromium prints the HTML: page breaks, repeated table header, page numbers) ----
-
-function findBrowser(): string {
-  const candidates = [
-    process.env.PDF_BROWSER_PATH,
-    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-    'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-  ]
-  const found = candidates.find((path) => path && fs.existsSync(path))
-  if (!found) {
-    throw new HttpError(500, 'PDF generation needs Microsoft Edge or Google Chrome installed on the server (or set PDF_BROWSER_PATH in server/.env)')
-  }
-  return found
-}
-
-let browserPromise: Promise<Browser> | null = null
-
-function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = chromium.launch({
-      executablePath: findBrowser(),
-      headless: true,
-      // Linux servers / containers often need these; PDF_NO_SANDBOX=true is for hosts where Chrome cannot use its sandbox
-      args: ['--disable-dev-shm-usage', '--disable-gpu', ...(process.env.PDF_NO_SANDBOX === 'true' ? ['--no-sandbox'] : [])],
-    }).then((browser) => {
-      browser.on('disconnected', () => {
-        browserPromise = null
-      })
-      return browser
-    })
-    browserPromise.catch(() => {
-      browserPromise = null
-    })
-  }
-  return browserPromise
-}
-
-export async function renderPdf(doc: DocumentData): Promise<Buffer> {
-  const browser = await getBrowser()
-  const page = await browser.newPage()
-  try {
-    await page.setContent(bodyHtml(doc), { waitUntil: 'load' })
-    return await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: headerHtml(doc),
-      footerTemplate: footerHtml(doc),
-      margin: { top: '52mm', bottom: '18mm', left: '12mm', right: '12mm' },
-    })
-  } finally {
-    await page.close()
-  }
-}
-
-// Used by `npm run check` on a new host: really launches the browser and prints a small test PDF
-export async function checkPdfEngine(): Promise<{ ok: boolean; browser?: string; bytes?: number; ms?: number; error?: string }> {
-  const started = Date.now()
-  try {
-    const browser = findBrowser()
-    const pdf = await renderPdf({
-      kind: 'quotation',
-      language: 'en',
-      heading: 'Quotation',
-      subtitle: 'PDF ENGINE CHECK',
-      number: 'CHECK',
-      numberLabel: 'Estimate Number',
-      dateLabel: 'Estimate Date',
-      date: '2026-01-01',
-      secondDateLabel: 'Valid Until',
-      secondDate: null,
-      currency: 'USD',
-      billTo: { name: 'Check', contact: null, phone: null, email: null, address: null },
-      projectLocation: null,
-      introduction: null,
-      items: [{ name: 'Test service', description: 'Line one\nLine two', quantity: '1', unit: 'ls', unit_price: '1', amount: '1' }],
-      pricingMethod: 'itemized',
-      subtotal: '1',
-      discount: '0',
-      discountType: 'fixed',
-      discountValue: '0',
-      total: '1',
-      sections: [],
-      payments: [],
-      amountDue: null,
-      contract: null,
-    })
-    const valid = pdf.subarray(0, 4).toString() === '%PDF' && pdf.length > 1000
-    return valid ? { ok: true, browser, bytes: pdf.length, ms: Date.now() - started } : { ok: false, error: 'the browser ran but the result is not a valid PDF' }
-  } catch (err) {
-    return { ok: false, error: (err as Error).message }
-  }
-}
-
-// ---- Data -> document ----
-
-// The four terms sections, in the order they are printed; empty ones are left out. Only the section
-// titles are translated by Document Language - the text itself is the admin's own writing.
-function sectionsOf(source: { payment_terms: string | null; timeline: string | null; notes: string | null; exclusions: string | null }) {
-  return (
-    [
-      { key: 'paymentTerms', text: source.payment_terms },
-      { key: 'timeline', text: source.timeline },
-      { key: 'notes', text: source.notes },
-      { key: 'exclusions', text: source.exclusions },
-    ] as const
-  ).filter((section): section is { key: typeof section.key; text: string } => !!section.text && section.text.trim() !== '')
-}
-
-export async function quotationDocument(estimateId: string): Promise<DocumentData> {
-  const estimate = await loadEstimate(estimateId)
-  if (!estimate) throw new HttpError(404, 'Estimate not found')
-  const t = labelsFor(estimate.document_language)
-  return {
-    kind: 'quotation',
-    language: estimate.document_language,
-    heading: t.quotation,
-    subtitle: estimate.summary || estimate.title,
-    number: estimate.estimate_number,
-    numberLabel: t.estimateNumber,
-    dateLabel: t.estimateDate,
-    date: estimate.estimate_date,
-    secondDateLabel: t.validUntil,
-    secondDate: estimate.valid_until,
-    currency: estimate.currency,
-    // The estimate's own frozen snapshot - never a fresh Client master record lookup
-    billTo: {
-      name: estimate.client_name || '',
-      contact: estimate.contact_name,
-      phone: estimate.client_phone,
-      email: estimate.client_email,
-      address: estimate.client_address,
-    },
-    projectLocation: estimate.project_location,
-    introduction: estimate.introduction,
-    items: estimate.items,
-    pricingMethod: estimate.pricing_method,
-    subtotal: estimate.subtotal,
-    discount: estimate.discount,
-    discountType: estimate.discount_type,
-    discountValue: estimate.discount_value,
-    total: estimate.total,
-    sections: sectionsOf(estimate),
-    payments: [],
-    amountDue: null,
-    // The Acceptance & Signatures contract only ever applies to a Professional Services Invoice
-    contract: null,
-  }
-}
-
-export async function invoiceDocument(invoiceId: string): Promise<DocumentData> {
-  const invoice = await loadInvoice(invoiceId)
-  if (!invoice) throw new HttpError(404, 'Invoice not found')
-  const isClientFunds = invoice.invoice_type === 'client_funds'
-  const t = labelsFor(invoice.document_language)
-  return {
-    kind: 'invoice',
-    invoiceType: invoice.invoice_type,
-    language: invoice.document_language,
-    heading: isClientFunds ? t.clientFunds : t.invoice,
-    subtitle: isClientFunds ? t.clientFundsSubtitle : invoice.summary || invoice.title,
-    number: invoice.invoice_number,
-    numberLabel: t.invoiceNumber,
-    dateLabel: t.invoiceDate,
-    date: invoice.invoice_date,
-    secondDateLabel: t.paymentDue,
-    secondDate: invoice.due_date,
-    currency: invoice.currency,
-    billTo: { name: invoice.client_name, contact: invoice.contact_name, phone: invoice.client_phone, email: invoice.client_email, address: invoice.client_address },
-    projectLocation: invoice.project_location,
-    introduction: invoice.introduction,
-    items: invoice.items,
-    pricingMethod: invoice.pricing_method,
-    subtotal: invoice.subtotal,
-    discount: invoice.discount,
-    discountType: invoice.discount_type,
-    discountValue: invoice.discount_value,
-    total: invoice.total,
-    sections: sectionsOf(invoice),
-    payments: invoice.payments,
-    amountDue: invoice.amount_due,
-    contract: isClientFunds
-      ? null
-      : {
-          terms: invoice.contract_terms,
-          clientRepName: invoice.client_representative_name,
-          clientRepTitle: invoice.client_representative_title,
-          nextudioRepName: invoice.nextudio_representative_name,
-          nextudioRepTitle: invoice.nextudio_representative_title,
-        },
-  }
-}
-
-export function registerDocumentRoutes(app: Express) {
-  app.get('/api/estimates/:estimateId/pdf', async (req, res) => {
-    try {
-      if (!/^\d+$/.test(req.params.estimateId)) throw new HttpError(404, 'Estimate not found')
-      const doc = await quotationDocument(req.params.estimateId)
-      const pdf = await renderPdf(doc)
-      res.setHeader('Content-Type', 'application/pdf')
-      res.setHeader('Content-Disposition', `inline; filename="Quotation_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf"`)
-      res.send(pdf)
-    } catch (err) {
-      sendError(res, err, 'Failed to generate the quotation PDF')
-    }
-  })
-
-  app.get('/api/invoices/:invoiceId/pdf', async (req, res) => {
-    try {
-      if (!/^\d+$/.test(req.params.invoiceId)) throw new HttpError(404, 'Invoice not found')
-      const doc = await invoiceDocument(req.params.invoiceId)
-      const pdf = await renderPdf(doc)
-      const filePrefix = doc.invoiceType === 'client_funds' ? 'ClientFunds' : 'Invoice'
-      res.setHeader('Content-Type', 'application/pdf')
-      res.setHeader('Content-Disposition', `inline; filename="${filePrefix}_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf"`)
-      res.send(pdf)
-    } catch (err) {
-      sendError(res, err, 'Failed to generate the invoice PDF')
-    }
-  })
 }

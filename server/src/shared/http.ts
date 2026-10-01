@@ -1,26 +1,9 @@
 import type express from 'express'
-import type { PoolClient } from 'pg'
-import { pool } from './db'
 
 // An error that should be returned to the client with this status and message
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
     super(message)
-  }
-}
-
-export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    const result = await fn(client)
-    await client.query('COMMIT')
-    return result
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => undefined)
-    throw err
-  } finally {
-    client.release()
   }
 }
 

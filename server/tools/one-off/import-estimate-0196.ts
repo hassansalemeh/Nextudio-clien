@@ -2,7 +2,7 @@
 //   npx tsx src/import-estimate-0196.ts
 // Safe to run again: nothing is created if the estimate number already exists.
 // The text is copied exactly from the original document, including its typos and numbering.
-import { computeTotals } from '../../src/estimates'
+import { computeTotals } from '../../src/modules/estimates/estimates.service'
 import { pool } from '../../src/db'
 
 const NUMBER = 'NEX-QUO-DNT-AIN-CD,DD,PC- 0196'
