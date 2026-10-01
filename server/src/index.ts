@@ -5,16 +5,6 @@ import fs from 'fs'
 import path from 'path'
 import type { PoolClient } from 'pg'
 import { registerAuth, resolveEmployeeId } from './auth'
-import { registerAccountingAccountRoutes } from './accounting/accountsRoutes'
-import { registerAccountingBookRoutes } from './accounting/booksRoutes'
-import { registerAccountingCashAccountRoutes } from './accounting/cashAccountsRoutes'
-import { registerAccountingCounterpartyRoutes } from './accounting/counterpartiesRoutes'
-import { registerAccountingDashboardRoutes } from './accounting/dashboardRoutes'
-import { registerAccountingJournalRoutes } from './accounting/journalRoutes'
-import { registerAccountingLegacyJobRoutes } from './accounting/legacyJobsRoutes'
-import { registerAccountingOpeningBalanceRoutes } from './accounting/openingBalanceRoutes'
-import { registerAccountingReportRoutes } from './accounting/reportsRoutes'
-import { registerAccountingTransactionRoutes } from './accounting/transactionsRoutes'
 import { hourlyRateFromSalary } from './config'
 import { pool } from './db'
 import { HttpError, describeError, isIsoDate, roundMoney, withTransaction } from './http'
@@ -83,16 +73,6 @@ registerInvoiceEmailRoutes(app)
 registerDisbursementRoutes(app)
 registerPaymentRoutes(app)
 registerDocumentRoutes(app)
-registerAccountingBookRoutes(app)
-registerAccountingAccountRoutes(app)
-registerAccountingCashAccountRoutes(app)
-registerAccountingCounterpartyRoutes(app)
-registerAccountingTransactionRoutes(app)
-registerAccountingJournalRoutes(app)
-registerAccountingDashboardRoutes(app)
-registerAccountingReportRoutes(app)
-registerAccountingLegacyJobRoutes(app)
-registerAccountingOpeningBalanceRoutes(app)
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

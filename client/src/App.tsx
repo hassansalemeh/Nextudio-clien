@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
-import AccountingApp from './accounting/AccountingApp'
 import { useAuth } from './auth'
 import { LogoutIcon, MenuIcon, CloseIcon } from './components/icons'
 import ClientFundsInvoiceEditorPage from './pages/ClientFundsInvoiceEditorPage'
@@ -79,12 +78,6 @@ function App() {
         </main>
       </>
     )
-  }
-
-  // Accounting is a separate workspace with its own sidebar/layout, not part of the normal nav/route table
-  // above - it renders its own header/shell entirely, the same way the employee branch above does.
-  if (location.pathname.startsWith('/accounting')) {
-    return <AccountingApp />
   }
 
   return (

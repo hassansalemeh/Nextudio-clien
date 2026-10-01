@@ -14,11 +14,6 @@
     "restore": "node dist/scripts/restore.js",
     "check": "node dist/scripts/check.js",
     "create-user": "node dist/scripts/create-user.js",
-    "test:accounting": "tsx src/scripts/accounting-smoke-test.ts",
-    "test:accounting-local": "tsx src/scripts/accounting-local-test.ts",
-    "test:accounting-auth": "tsx src/scripts/accounting-auth-check.ts",
-    "accounting:seed": "tsx src/scripts/accounting-seed-chart.ts",
-    "accounting:backfill-cash": "tsx src/scripts/accounting-backfill-cash-accounts.ts",
     "lint": "eslint ."
   },
   "dependencies": {
