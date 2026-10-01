@@ -11,6 +11,10 @@ export const PRICING_METHODS = ['itemized', 'lump_sum']
 const DISCOUNT_TYPES = ['fixed', 'percent']
 const MAX_ITEMS = 200
 
+// The free-text "sections" that support **bold** formatting and "reuse previous text" (see documents.ts
+// and the Estimate editor). Kept to an explicit allowlist since it is interpolated into SQL as a column name.
+const REUSE_TEXT_FIELDS = ['introduction', 'notes', 'payment_terms', 'timeline', 'exclusions'] as const
+
 // A client's name/contact email/phone/address, frozen onto an estimate or invoice when the client is
 // selected (or changed). Editing the master Client record afterward must never alter a document that
 // already has its own snapshot - only new documents (or a document whose client selection changes) see it.
@@ -417,6 +421,31 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
+  // Previous text typed into this section across past estimates, for the editor's "Reuse previous text" picker.
+  // Must come before /api/estimates/:estimateId. Deduplicated and grouped in SQL so identical wording collapses to one row.
+  app.get('/api/estimates/reuse-text', async (req, res) => {
+    try {
+      const field = typeof req.query.field === 'string' ? req.query.field : ''
+      if (!(REUSE_TEXT_FIELDS as readonly string[]).includes(field)) {
+        throw new HttpError(400, 'Unknown section: ' + field)
+      }
+      const search = typeof req.query.q === 'string' ? req.query.q.trim() : ''
+      const result = await pool.query(
+        `SELECT ${field} AS text, count(*)::int AS use_count, max(estimate_date) AS last_used
+         FROM estimates
+         WHERE ${field} IS NOT NULL AND trim(${field}) <> ''
+         ${search ? `AND ${field} ILIKE '%' || $1 || '%'` : ''}
+         GROUP BY ${field}
+         ORDER BY max(estimate_date) DESC
+         LIMIT 30`,
+        search ? [search] : []
+      )
+      res.json(result.rows)
+    } catch (err) {
+      sendError(res, err, 'Failed to load previous text')
+    }
+  })
+
   app.get('/api/estimates/:estimateId', async (req, res) => {
     try {
       const estimate = await loadEstimate(requireId(req))
@@ -545,6 +574,44 @@ export function registerEstimateRoutes(app: Express) {
       res.status(201).json(await loadEstimate(newId))
     } catch (err) {
       sendError(res, err, 'Failed to duplicate estimate')
+    }
+  })
+
+  // Permanently removes an estimate. Blocked (not cascaded) when an invoice or project already exists for
+  // it - those are important business records and must be removed deliberately (delete the project instead;
+  // that already removes its invoice and source estimate together, see DELETE /api/projects/:projectId).
+  app.delete('/api/estimates/:estimateId', async (req, res) => {
+    try {
+      const id = requireId(req)
+      await withTransaction(async (client) => {
+        const locked = await client.query('SELECT id FROM estimates WHERE id = $1 FOR UPDATE', [id])
+        if (locked.rows.length === 0) throw new HttpError(404, 'Estimate not found')
+
+        const invoice = await client.query('SELECT invoice_number FROM invoices WHERE estimate_id = $1', [id])
+        if (invoice.rows.length > 0) {
+          throw new HttpError(
+            409,
+            `This estimate was already converted to Invoice ${invoice.rows[0].invoice_number} and cannot be deleted directly. Delete that invoice's project instead if you need to remove it entirely.`
+          )
+        }
+        const project = await client.query('SELECT name FROM projects WHERE source_estimate_id = $1', [id])
+        if (project.rows.length > 0) {
+          throw new HttpError(
+            409,
+            `This estimate created the project "${project.rows[0].name}" and cannot be deleted directly. Delete that project instead if you need to remove it entirely.`
+          )
+        }
+
+        // estimate_items and estimate_emails are removed automatically (ON DELETE CASCADE)
+        await client.query('DELETE FROM estimates WHERE id = $1', [id])
+      })
+      res.json({ ok: true })
+    } catch (err) {
+      // Safety net: any other reference we didn't anticipate still blocks deletion instead of cascading
+      if ((err as { code?: string }).code === '23503') {
+        return res.status(409).json({ error: 'This estimate is still referenced by other records and cannot be deleted.' })
+      }
+      sendError(res, err, 'Failed to delete estimate')
     }
   })
 }

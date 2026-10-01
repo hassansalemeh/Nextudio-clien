@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { COMPANY } from '../companyProfile'
 import { useConfirm } from '../components/ConfirmDialog'
-import { InvoiceIcon, MailIcon } from '../components/icons'
+import CreateClientDialog from '../components/CreateClientDialog'
+import FormattedTextField from '../components/FormattedTextField'
+import { InvoiceIcon, MailIcon, TrashIcon } from '../components/icons'
 import SendEstimateEmailDialog from '../components/SendEstimateEmailDialog'
 import { localDateString } from '../timeUtils'
 
@@ -143,6 +145,7 @@ function EstimateEditorPage() {
   const [loading, setLoading] = useState(!isNew)
   const [headerOpen, setHeaderOpen] = useState(true)
   const [pickingCustomer, setPickingCustomer] = useState(false)
+  const [creatingClient, setCreatingClient] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -283,6 +286,16 @@ function EstimateEditorPage() {
     setPickingCustomer(false)
   }
 
+  // Created from the "+ New Client" modal without leaving the estimate: add it to the picker and select it
+  // immediately. Everything else already typed into the estimate (items, terms, etc.) is untouched.
+  function handleClientCreated(newClient: Client) {
+    setClients((previous) => [newClient, ...previous])
+    setSaved(false)
+    setForm((previous) => ({ ...previous, client_id: newClient.id, contact_name: newClient.contact_name ?? '' }))
+    setPickingCustomer(false)
+    setCreatingClient(false)
+  }
+
   // Saves the estimate; returns the saved estimate, or null when something is wrong (the error is shown)
   async function save(): Promise<any | null> {
     setError('')
@@ -396,6 +409,33 @@ function EstimateEditorPage() {
     if (approved?.invoice_id) navigate(`/invoices/${approved.invoice_id}`)
   }
 
+  // Permanently removes the estimate. The server blocks this (409) if it was already converted to an
+  // invoice/project instead of silently cascading - the error message is shown as-is.
+  async function handleDelete() {
+    const ok = await confirm({
+      title: `Delete estimate ${form.estimate_number}?`,
+      message: `This will permanently delete estimate ${form.estimate_number}${client ? ` for ${client.name}` : ''}. This cannot be undone.`,
+      confirmLabel: 'Delete estimate',
+      tone: 'danger',
+    })
+    if (!ok) return
+
+    setBusy(true)
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/estimates/${id}`, { method: 'DELETE' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.error || 'Failed to delete estimate')
+      }
+      navigate('/estimates')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the estimate.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // A brand-new estimate that starts from this one's content - the original is left completely unchanged
   async function handleDuplicate() {
     setBusy(true)
@@ -449,6 +489,11 @@ function EstimateEditorPage() {
       {locked && links.invoice_id && (
         <button type="button" className="btn-convert" onClick={() => navigate(`/invoices/${links.invoice_id}`)}>
           <InvoiceIcon /> View Invoice
+        </button>
+      )}
+      {!isNew && (
+        <button type="button" className="btn-outline btn-outline-danger" disabled={busy} onClick={handleDelete} title="Permanently delete this estimate">
+          <TrashIcon /> Delete
         </button>
       )}
     </div>
@@ -544,26 +589,41 @@ function EstimateEditorPage() {
                       </option>
                     ))}
                   </select>
-                  <button type="button" className="doc-link" onClick={() => setPickingCustomer(false)}>
-                    Cancel
-                  </button>
+                  <div>
+                    <button type="button" className="doc-link" onClick={() => setPickingCustomer(false)}>
+                      Cancel
+                    </button>{' '}
+                    <button type="button" className="doc-link" onClick={() => setCreatingClient(true)}>
+                      + New Client
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <button type="button" className="doc-add-customer" onClick={() => setPickingCustomer(true)}>
-                  <span className="doc-avatar" aria-hidden="true">
-                    ◯
-                  </span>
-                  Add customer
-                </button>
+                <div className="doc-customer">
+                  <button type="button" className="doc-add-customer" onClick={() => setPickingCustomer(true)}>
+                    <span className="doc-avatar" aria-hidden="true">
+                      ◯
+                    </span>
+                    Add customer
+                  </button>
+                  <button type="button" className="doc-link" onClick={() => setCreatingClient(true)}>
+                    + New Client
+                  </button>
+                </div>
               )}
               {client && pickingCustomer && (
-                <select className="doc-customer-picker" autoFocus value={form.client_id} onChange={(e) => chooseClient(e.target.value)}>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  <select className="doc-customer-picker" autoFocus value={form.client_id} onChange={(e) => chooseClient(e.target.value)}>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="doc-link" onClick={() => setCreatingClient(true)}>
+                    + New Client
+                  </button>
+                </>
               )}
             </div>
 
@@ -655,21 +715,21 @@ function EstimateEditorPage() {
             </div>
           </div>
 
-          <div className="doc-notes tall">
-            <label htmlFor="est-introduction">Introduction</label>
-            <textarea
-              id="est-introduction"
-              value={form.introduction}
-              placeholder={
-                'e.g. Nextudio Architects is pleased to submit this proposal for the architectural design and consultancy ' +
-                'services for the above-mentioned project...'
-              }
-              onChange={(e) => update('introduction', e.target.value)}
-            />
-            <div className="doc-hint">
-              A proper opening paragraph for the quotation — separate from Summary, Notes/Terms. Shown before Services, in the
-              Preview/PDF.
-            </div>
+          <FormattedTextField
+            id="est-introduction"
+            label="Introduction"
+            tall
+            reuseField="introduction"
+            value={form.introduction}
+            placeholder={
+              'e.g. Nextudio Architects is pleased to submit this proposal for the architectural design and consultancy ' +
+              'services for the above-mentioned project...'
+            }
+            onChange={(value) => update('introduction', value)}
+          />
+          <div className="doc-hint" style={{ marginTop: '-0.75rem', marginBottom: '1rem' }}>
+            A proper opening paragraph for the quotation — separate from Summary, Notes/Terms. Shown before Services, in the
+            Preview/PDF.
           </div>
 
           <table className={`doc-items${isLumpSum ? ' doc-items-lump' : ''}`}>
@@ -838,15 +898,16 @@ function EstimateEditorPage() {
 
           <div className="doc-terms">
             {TERMS_SECTIONS.map((section) => (
-              <div key={section.field} className={`doc-notes${section.tall ? ' tall' : ''}`}>
-                <label htmlFor={`est-${section.field}`}>{section.label}</label>
-                <textarea
-                  id={`est-${section.field}`}
-                  value={form[section.field]}
-                  placeholder={section.placeholder}
-                  onChange={(e) => update(section.field, e.target.value)}
-                />
-              </div>
+              <FormattedTextField
+                key={section.field}
+                id={`est-${section.field}`}
+                label={section.label}
+                tall={section.tall}
+                reuseField={section.field}
+                value={form[section.field]}
+                placeholder={section.placeholder}
+                onChange={(value) => update(section.field, value)}
+              />
             ))}
           </div>
         </div>
@@ -869,6 +930,8 @@ function EstimateEditorPage() {
           onSent={(updated) => applyEstimate(updated)}
         />
       )}
+
+      {creatingClient && <CreateClientDialog onClose={() => setCreatingClient(false)} onCreated={handleClientCreated} />}
     </>
   )
 }

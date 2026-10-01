@@ -35,6 +35,18 @@ function fontStack(language: DocumentLanguage) {
 const escapeHtml = (value: unknown) =>
   String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+// The only formatting an estimate/invoice section supports: **bold** spans, written by the admin in the
+// editor's Bold toolbar button. Every other character is still escaped - this never allows raw HTML through,
+// it only ever wraps escaped text in a literal <b> tag we write ourselves.
+const formatText = (value: unknown) =>
+  String(value ?? '')
+    .split(/(\*\*[^*]+?\*\*)/g)
+    .map((part) => {
+      const bold = /^\*\*([^*]+?)\*\*$/.exec(part)
+      return bold ? `<b>${escapeHtml(bold[1])}</b>` : escapeHtml(part)
+    })
+    .join('')
+
 const money = (amount: number | string, currency: string) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount))
 
@@ -270,10 +282,10 @@ function bodyHtml(doc: DocumentData) {
         ${highlight}
       </table>
     </div>
-    ${doc.introduction ? `<div class="intro">${escapeHtml(doc.introduction)}</div>` : ''}
+    ${doc.introduction ? `<div class="intro">${formatText(doc.introduction)}</div>` : ''}
     ${itemsHtml}
     <div class="totals"><table>${totals}</table></div>
-    ${doc.sections.map((section) => `<div class="notes"><h4>${escapeHtml(t[section.key])}</h4><div class="text">${escapeHtml(section.text)}</div></div>`).join('')}
+    ${doc.sections.map((section) => `<div class="notes"><h4>${escapeHtml(t[section.key])}</h4><div class="text">${formatText(section.text)}</div></div>`).join('')}
     <div class="thanks">${escapeHtml(t.thankYou)}</div>
     ${signatures}
   </body></html>`

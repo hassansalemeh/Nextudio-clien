@@ -387,6 +387,15 @@ main {
   border: 1px solid var(--color-accent);
 }
 
+.btn-outline-danger {
+  color: #b3261e;
+  border-color: #b3261e;
+}
+
+.btn-outline-danger:hover {
+  background: rgba(179, 38, 30, 0.08);
+}
+
 .doc-saved {
   color: #1e7b3c;
   font-size: 0.9rem;
@@ -695,6 +704,43 @@ main {
 
 .doc-notes.tall textarea {
   min-height: 13rem;
+}
+
+.doc-notes-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.doc-notes-toolbar label {
+  margin-bottom: 0;
+}
+
+.doc-notes-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.doc-format-btn {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.doc-format-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .doc-bottombar {
@@ -1085,6 +1131,58 @@ main {
   font-family: inherit;
   font-size: 0.9rem;
   resize: vertical;
+}
+
+/* ---------- Reuse previous text dialog ---------- */
+
+.reuse-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.reuse-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.reuse-item {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.reuse-item-text {
+  white-space: pre-wrap;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  max-height: 8rem;
+  overflow-y: auto;
+}
+
+.reuse-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.6rem;
+}
+
+.reuse-item-footer .doc-hint {
+  margin: 0;
 }
 
 .email-attach-check {
