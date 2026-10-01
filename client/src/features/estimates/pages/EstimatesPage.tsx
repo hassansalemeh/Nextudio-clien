@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { OpenIcon } from '../../../shared/components/icons'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { useNavigate } from 'react-router-dom'
 import { fetchEstimates } from '../api'
 import { ESTIMATE_STATUS_LABELS } from '../constants'
@@ -18,7 +21,7 @@ function EstimatesPage() {
   useEffect(() => {
     fetchEstimates()
       .then(setEstimates)
-      .catch(() => setError('Could not load estimates.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load estimates.')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -34,9 +37,13 @@ function EstimatesPage() {
       <div className="card">
         {error && <p className="error-message">{error}</p>}
         {loading ? (
-          <p className="empty-state">Loading estimates...</p>
+          <PageLoader label="Loading estimates..." />
         ) : estimates.length === 0 ? (
-          <p className="empty-state">No open estimates. Approved estimates move to Invoices.</p>
+          <EmptyState
+            message="No open estimates. Approved estimates move to Invoices."
+            actionLabel="New Estimate"
+            onAction={() => navigate('/estimates/new')}
+          />
         ) : (
           <table className="data-table">
             <thead>

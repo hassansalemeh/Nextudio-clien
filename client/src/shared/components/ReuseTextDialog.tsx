@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet } from '../api/client'
+import { getErrorMessage } from '../lib/apiError'
 import { renderFormattedText } from '../lib/formattedText'
 import { CloseIcon } from './icons'
+import EmptyState from './EmptyState'
+import PageLoader from './PageLoader'
 
 type ReuseItem = { text: string; use_count: number; last_used: string | null }
 
@@ -24,7 +27,7 @@ function ReuseTextDialog({ field, fieldLabel, onClose, onInsert }: Props) {
     apiGet(`/api/estimates/reuse-text?field=${encodeURIComponent(field)}`)
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then(setItems)
-      .catch(() => setError('Could not load previous text.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load previous text.')))
       .finally(() => setLoading(false))
   }, [field])
 
@@ -64,9 +67,9 @@ function ReuseTextDialog({ field, fieldLabel, onClose, onInsert }: Props) {
         {error && <p className="error-message">{error}</p>}
 
         {loading ? (
-          <p className="empty-state">Loading...</p>
+          <PageLoader />
         ) : filtered.length === 0 ? (
-          <p className="empty-state">{items.length === 0 ? `No previous ${fieldLabel} text yet.` : 'No matches.'}</p>
+          <EmptyState message={items.length === 0 ? `No previous ${fieldLabel} text yet.` : 'No matches.'} />
         ) : (
           <ul className="reuse-list">
             {filtered.map((item, index) => (

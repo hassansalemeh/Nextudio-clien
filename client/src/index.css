@@ -1736,3 +1736,140 @@ main {
     font-size: 1.2rem;
   }
 }
+
+/* ---------- Spinner ---------- */
+
+.spinner {
+  display: inline-block;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.spinner-sm {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.spinner-md {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-sm .spinner,
+.btn-primary .spinner,
+.btn-pill .spinner,
+.btn-outline .spinner,
+.btn-danger .spinner,
+.btn-convert .spinner {
+  margin-right: 0.1rem;
+}
+
+/* ---------- Page / section loading state ---------- */
+
+.page-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 2.5rem 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+/* ---------- Empty state ---------- */
+
+.empty-state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+}
+
+.empty-state-block .empty-state {
+  padding: 0;
+}
+
+/* ---------- Toast messages ---------- */
+
+.toast-stack {
+  position: fixed;
+  z-index: 1100;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(22rem, calc(100vw - 2rem));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  animation: toast-in 0.15s ease-out;
+}
+
+.toast-success {
+  background: #1e7b3c;
+}
+
+.toast-error {
+  background: #b3261e;
+}
+
+.toast-message {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.toast-dismiss {
+  flex-shrink: 0;
+  display: flex;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #fff;
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+.toast-dismiss:hover {
+  opacity: 1;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .toast-stack {
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    width: auto;
+  }
+}

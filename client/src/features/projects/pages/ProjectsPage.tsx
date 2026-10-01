@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useConfirm } from '../../../shared/components/ConfirmDialog'
+import { useToast } from '../../../shared/components/Toast'
+import { useAsyncAction } from '../../../shared/hooks/useAsyncAction'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { createProject, deleteProject as deleteProjectRequest, fetchClientsForProjects, fetchProjects, updateProject } from '../api'
 import AddProjectForm from '../components/AddProjectForm'
 import ProjectsTable from '../components/ProjectsTable'
@@ -8,6 +11,7 @@ import type { Client, Project } from '../types'
 
 function ProjectsPage() {
   const confirm = useConfirm()
+  const toast = useToast()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -33,14 +37,15 @@ function ProjectsPage() {
     status: 'planning',
   })
   const [editError, setEditError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     async function loadProjects() {
       try {
         const data = await fetchProjects()
         setProjects(data)
-      } catch {
-        setError('Could not load projects.')
+      } catch (err) {
+        setError(getErrorMessage(err, 'Could not load projects.'))
       } finally {
         setLoading(false)
       }
@@ -50,8 +55,8 @@ function ProjectsPage() {
       try {
         const data = await fetchClientsForProjects()
         setClients(data)
-      } catch {
-        setError('Could not load clients.')
+      } catch (err) {
+        setError(getErrorMessage(err, 'Could not load clients.'))
       }
     }
 
@@ -59,7 +64,7 @@ function ProjectsPage() {
     loadClients()
   }, [])
 
-  async function handleSubmit(event: React.FormEvent) {
+  const [handleSubmit, submitting] = useAsyncAction(async (event: React.FormEvent) => {
     event.preventDefault()
     setError('')
 
@@ -82,10 +87,13 @@ function ProjectsPage() {
       setFeeStatus('pending')
       setStartDate('')
       setStatus('planning')
-    } catch {
-      setError('Could not create project.')
+      toast.success('Project added.')
+    } catch (err) {
+      const message = getErrorMessage(err, 'Could not create project.')
+      setError(message)
+      toast.error(message)
     }
-  }
+  })
 
   function startEdit(project: Project) {
     setEditError('')
@@ -102,23 +110,20 @@ function ProjectsPage() {
   }
 
   async function deleteProject(project: Project) {
+    setError('')
     const confirmed = await confirm({
       title: `Delete "${project.name}"?`,
       message:
         'This permanently deletes the project and everything related to it: its assignments, all recorded time entries, and its invoice (with any payments) and the quotation it was created from. This cannot be undone.\n\nThe client and employees are kept.',
       confirmLabel: 'Delete project',
       tone: 'danger',
+      onConfirm: async () => {
+        await deleteProjectRequest(project.id)
+        setProjects((previous) => previous.filter((item) => item.id !== project.id))
+        if (editingId === project.id) setEditingId(null)
+      },
     })
-    if (!confirmed) return
-
-    setError('')
-    try {
-      await deleteProjectRequest(project.id)
-      setProjects((previous) => previous.filter((item) => item.id !== project.id))
-      if (editingId === project.id) setEditingId(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete project.')
-    }
+    if (confirmed) toast.success('Project deleted.')
   }
 
   async function saveEdit() {
@@ -130,12 +135,18 @@ function ProjectsPage() {
     if (hasFee && (Number.isNaN(fee) || fee < 0)) return setEditError('Total fee must be a non-negative number.')
     if (edit.fee_status === 'confirmed' && !hasFee) return setEditError('Enter the fee to confirm it.')
 
+    setSaving(true)
     try {
       const updated = await updateProject(editingId!, { ...edit, total_fee: hasFee ? fee : null, start_date: edit.start_date || null })
       setProjects((previous) => previous.map((project) => (project.id === updated.id ? { ...project, ...updated } : project)))
       setEditingId(null)
+      toast.success('Project updated.')
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Could not update project.')
+      const message = getErrorMessage(err, 'Could not update project.')
+      setEditError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -160,6 +171,7 @@ function ProjectsPage() {
         status={status}
         setStatus={setStatus}
         error={error}
+        submitting={submitting}
         onSubmit={handleSubmit}
       />
 
@@ -170,6 +182,7 @@ function ProjectsPage() {
         editingId={editingId}
         edit={edit}
         editError={editError}
+        saving={saving}
         startEdit={startEdit}
         deleteProject={deleteProject}
         saveEdit={saveEdit}

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { fetchInvoices } from '../api'
 import { INVOICE_STATUS_LABELS, INVOICE_TYPE_LABELS } from '../types'
 import type { InvoiceListItem } from '../types'
@@ -9,6 +12,7 @@ function money(amount: number | string, currency: string) {
 }
 
 function InvoicesPage() {
+  const navigate = useNavigate()
   const [invoices, setInvoices] = useState<InvoiceListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -16,7 +20,7 @@ function InvoicesPage() {
   useEffect(() => {
     fetchInvoices()
       .then(setInvoices)
-      .catch(() => setError('Could not load invoices.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load invoices.')))
       .finally(() => setLoading(false))
   }, [])
 
@@ -33,9 +37,13 @@ function InvoicesPage() {
       <div className="card">
         {error && <p className="error-message">{error}</p>}
         {loading ? (
-          <p className="empty-state">Loading invoices...</p>
+          <PageLoader label="Loading invoices..." />
         ) : invoices.length === 0 ? (
-          <p className="empty-state">No invoices yet. An invoice is created when an estimate is approved, or directly as a Client Funds invoice.</p>
+          <EmptyState
+            message="No invoices yet. An invoice is created when an estimate is approved, or directly as a Client Funds invoice."
+            actionLabel="+ New Client Funds Invoice"
+            onAction={() => navigate('/invoices/new')}
+          />
         ) : (
           <table className="data-table">
             <thead>

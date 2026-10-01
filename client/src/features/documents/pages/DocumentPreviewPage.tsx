@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import PageLoader from '../../../shared/components/PageLoader'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { fetchDocumentPdf } from '../api'
 
 // Shows the real generated PDF (the same file the admin downloads) for a quotation or an invoice
@@ -31,7 +33,7 @@ function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' }) {
         objectUrl = URL.createObjectURL(blob)
         setUrl(objectUrl)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not generate the PDF.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not generate the PDF.')))
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
@@ -56,7 +58,7 @@ function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' }) {
         </div>
       </div>
       {error && <p className="error-message">{error}</p>}
-      {!url && !error && <p className="empty-state">Generating the PDF...</p>}
+      {!url && !error && <PageLoader label="Generating the PDF..." />}
       {url && <iframe className="doc-preview-frame" src={url} title="Document preview" />}
     </>
   )

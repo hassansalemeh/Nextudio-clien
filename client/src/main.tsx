@@ -5,17 +5,20 @@ import './index.css'
 import App from './app/App.tsx'
 import { AuthProvider, installAuthFetch } from './app/auth'
 import { ConfirmProvider } from './shared/components/ConfirmDialog'
+import { ToastProvider } from './shared/components/Toast'
 
 installAuthFetch()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <ConfirmProvider>
-          <App />
-        </ConfirmProvider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <ConfirmProvider>
+            <App />
+          </ConfirmProvider>
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   </StrictMode>,
 )

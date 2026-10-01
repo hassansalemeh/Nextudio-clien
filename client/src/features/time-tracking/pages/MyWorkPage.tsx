@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import PageLoader from '../../../shared/components/PageLoader'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { dayRange, localDateString } from '../../../shared/lib/timeUtils'
 import type { DayData } from '../../../shared/lib/timeUtils'
 import { addManualTimeEntry, fetchActiveProjectNames, fetchOwnDay, fetchTimeStatus, fetchWorkAssignmentsForDate, postTimeAction } from '../api'
@@ -10,9 +13,11 @@ import type { ActiveProject, Status, TodayAssignment } from '../types'
 
 // The server knows who is logged in and only ever returns/changes that employee's own data
 function MyWorkPage() {
+  const toast = useToast()
   const [status, setStatus] = useState<Status>({ session: null, active_entry: null })
   const [assignments, setAssignments] = useState<TodayAssignment[]>([])
   const [today, setToday] = useState<DayData>({ sessions: [], entries: [] })
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [, setTick] = useState(0)
@@ -45,8 +50,10 @@ function MyWorkPage() {
       setStatus(await statusResponse.json())
       setToday(await dayResponse.json())
       setAssignments(await assignmentsResponse.json())
-    } catch {
-      setError('Could not load your work. Please refresh.')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not load your work. Please refresh.'))
+    } finally {
+      setLoading(false)
     }
   }, [workDate])
 
@@ -87,10 +94,16 @@ function MyWorkPage() {
       const response = await postTimeAction(path, body)
       if (!response.ok) {
         const data = await response.json().catch(() => null)
-        setError(data?.error || 'Something went wrong.')
+        const message = data?.error || 'Something went wrong.'
+        setError(message)
+        toast.error(message)
+      } else {
+        toast.success('Saved.')
       }
-    } catch {
-      setError('Could not reach the server.')
+    } catch (err) {
+      const message = getErrorMessage(err, 'Could not reach the server.')
+      setError(message)
+      toast.error(message)
     } finally {
       await reload()
       setBusy(false)
@@ -124,14 +137,14 @@ function MyWorkPage() {
       setManualStart('')
       setManualEnd('')
       setManualDescription('')
-      setManualDone(
-        data?.status === 'pending'
-          ? 'Submitted — waiting for admin approval.'
-          : 'Work entry added.'
-      )
+      const message = data?.status === 'pending' ? 'Submitted — waiting for admin approval.' : 'Work entry added.'
+      setManualDone(message)
+      toast.success(message)
       await reload()
     } catch (err) {
-      setManualError(err instanceof Error ? err.message : 'Could not add the work entry.')
+      const message = getErrorMessage(err, 'Could not add the work entry.')
+      setManualError(message)
+      toast.error(message)
     } finally {
       setManualBusy(false)
     }
@@ -142,6 +155,15 @@ function MyWorkPage() {
   const assignedProjects = new Map(dateAssignments.map((a) => [String(a.project_id), a.project_name]))
   const otherActiveProjects = activeProjects.filter((project) => !assignedProjects.has(String(project.id)))
   const manualProjectIsAssigned = assignedProjects.has(manualProject)
+
+  if (loading) {
+    return (
+      <>
+        <h1>My Tasks</h1>
+        <PageLoader label="Loading your work..." />
+      </>
+    )
+  }
 
   return (
     <>

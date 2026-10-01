@@ -1,3 +1,4 @@
+import EmptyState from '../../../shared/components/EmptyState'
 import { durationMs, formatDuration, formatTime, localDateString } from '../../../shared/lib/timeUtils'
 import type { DayData } from '../../../shared/lib/timeUtils'
 
@@ -11,7 +12,7 @@ function MyWorkTable({ workDate, today }: Props) {
     <div className="card">
       <h2>{workDate === localDateString() ? 'My Work Today' : `My Work on ${workDate}`}</h2>
       {today.entries.length === 0 ? (
-        <p className="empty-state">{workDate === localDateString() ? 'No work recorded yet today.' : 'No work recorded on this date.'}</p>
+        <EmptyState message={workDate === localDateString() ? 'No work recorded yet today.' : 'No work recorded on this date.'} />
       ) : (
         <table className="data-table">
           <thead>

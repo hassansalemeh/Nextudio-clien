@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { CloseIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { invoiceEmailDefaults, type DocumentLanguage } from '../../../shared/lib/emailDefaults'
 import { fetchInvoiceEmails, sendInvoiceEmail } from '../api'
 
@@ -36,6 +39,7 @@ function formatSentAt(iso: string) {
 }
 
 function SendInvoiceEmailDialog({ invoiceId, invoiceType, clientEmail, contactName, projectTitle, documentLanguage, onClose, onSent }: Props) {
+  const toast = useToast()
   const [history, setHistory] = useState<EmailHistoryItem[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
 
@@ -91,10 +95,13 @@ function SendInvoiceEmailDialog({ invoiceId, invoiceType, clientEmail, contactNa
     try {
       const body = await sendInvoiceEmail(invoiceId, { to: to.trim(), cc: cc.trim() || null, subject: subject.trim(), message, attach_pdf: attachPdf })
       setJustSent(`Sent to ${to.trim()}.`)
+      toast.success('Invoice sent.')
       setHistory((previous) => [body.email, ...previous])
       onSent(body.invoice)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send the email.')
+      const message = getErrorMessage(err, 'Could not send the email.')
+      setError(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -154,7 +161,7 @@ function SendInvoiceEmailDialog({ invoiceId, invoiceType, clientEmail, contactNa
               Close
             </button>
             <button type="submit" className="btn-sm btn-solid" disabled={busy}>
-              {busy ? 'Sending...' : 'Send Email'}
+              {busy && <Spinner />} Send Email
             </button>
           </div>
         </form>

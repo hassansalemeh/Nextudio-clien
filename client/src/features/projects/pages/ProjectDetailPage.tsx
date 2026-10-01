@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { formatDuration } from '../../../shared/lib/timeUtils'
 import { fetchProjectDetails } from '../api'
 import type { ProjectDetails } from '../types'
@@ -32,7 +35,7 @@ function ProjectDetailPage() {
           setDetails(data)
           setError('')
         })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load project.'))
+        .catch((err) => setError(getErrorMessage(err, 'Could not load project.')))
     }
 
     load()
@@ -53,7 +56,7 @@ function ProjectDetailPage() {
   }
 
   if (!details) {
-    return <p className="empty-state">Loading project...</p>
+    return <PageLoader label="Loading project..." />
   }
 
   const { project, employees } = details
@@ -123,7 +126,7 @@ function ProjectDetailPage() {
       <div className="card">
         <h2>Payments</h2>
         {details.payments.length === 0 ? (
-          <p className="empty-state">No payments recorded for this project yet.</p>
+          <EmptyState message="No payments recorded for this project yet." />
         ) : (
           <table className="data-table">
             <thead>
@@ -201,7 +204,7 @@ function ProjectDetailPage() {
       <div className="card">
         <h2>Employees / Project Work</h2>
         {employees.length === 0 ? (
-          <p className="empty-state">No employees have been assigned to this project yet.</p>
+          <EmptyState message="No employees have been assigned to this project yet." />
         ) : (
           <table className="data-table">
             <thead>

@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import { PencilIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { useToast } from '../../../shared/components/Toast'
+import { useAsyncAction } from '../../../shared/hooks/useAsyncAction'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { createClient, fetchClients, updateClient } from '../api'
 import type { Client, ClientForm } from '../types'
 
 const emptyForm = (): ClientForm => ({ name: '', contact_name: '', email: '', phone: '', address: '' })
 
 function ClientsPage() {
+  const toast = useToast()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -22,8 +29,8 @@ function ClientsPage() {
       try {
         const data = await fetchClients()
         setClients(data)
-      } catch {
-        setError('Could not load clients.')
+      } catch (err) {
+        setError(getErrorMessage(err, 'Could not load clients.'))
       } finally {
         setLoading(false)
       }
@@ -32,7 +39,7 @@ function ClientsPage() {
     loadClients()
   }, [])
 
-  async function handleSubmit(event: React.FormEvent) {
+  const [handleSubmit, submitting] = useAsyncAction(async (event: React.FormEvent) => {
     event.preventDefault()
     setError('')
 
@@ -40,10 +47,13 @@ function ClientsPage() {
       const newClient = await createClient(form)
       setClients((previousClients) => [newClient, ...previousClients])
       setForm(emptyForm())
+      toast.success('Client added.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create client.')
+      const message = getErrorMessage(err, 'Could not create client.')
+      setError(message)
+      toast.error(message)
     }
-  }
+  })
 
   function startEdit(client: Client) {
     setEditError('')
@@ -66,8 +76,11 @@ function ClientsPage() {
       const updated = await updateClient(editingId!, edit)
       setClients((previous) => previous.map((c) => (c.id === editingId ? updated : c)))
       setEditingId(null)
+      toast.success('Client updated.')
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Could not update client.')
+      const message = getErrorMessage(err, 'Could not update client.')
+      setEditError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -102,8 +115,8 @@ function ClientsPage() {
               <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
             </label>
           </div>
-          <button type="submit" className="btn-primary">
-            Add Client
+          <button type="submit" className="btn-primary" disabled={submitting}>
+            {submitting && <Spinner />} Add Client
           </button>
           {error && <p className="error-message">{error}</p>}
         </form>
@@ -112,9 +125,9 @@ function ClientsPage() {
       <div className="card">
         <h2>Existing Clients</h2>
         {loading ? (
-          <p className="empty-state">Loading clients...</p>
+          <PageLoader label="Loading clients..." />
         ) : clients.length === 0 ? (
-          <p className="empty-state">No clients yet.</p>
+          <EmptyState message="No clients yet." />
         ) : (
           <table className="data-table">
             <thead>
@@ -156,7 +169,7 @@ function ClientsPage() {
                       </div>
                       <div className="edit-actions">
                         <button type="button" className="btn-sm btn-solid" disabled={saving} onClick={saveEdit}>
-                          Save
+                          {saving && <Spinner />} Save
                         </button>
                         <button type="button" className="btn-sm btn-ghost" disabled={saving} onClick={() => setEditingId(null)}>
                           Cancel

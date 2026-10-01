@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import { fetchClientsForInvoices, fetchInvoice, fetchNextClientFundsInvoiceNumber, fetchProjectsForInvoices, saveClientFundsInvoice } from '../api'
 import type { ClientFundsClient, ClientFundsItemForm, ClientFundsProject } from '../types'
@@ -35,6 +37,7 @@ const newItem = (): ClientFundsItemForm => ({ key: nextKey++, name: '', descript
 // Everything the Client Funds invoice editor page needs: form state, derived totals, and every handler the
 // page's sections call. Kept as one hook so the page itself stays presentational.
 export function useClientFundsInvoiceEditor() {
+  const toast = useToast()
   const { id } = useParams()
   const navigate = useNavigate()
   const isNew = !id
@@ -61,10 +64,10 @@ export function useClientFundsInvoiceEditor() {
   useEffect(() => {
     fetchClientsForInvoices()
       .then(setClients)
-      .catch(() => setError('Could not load clients.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load clients.')))
     fetchProjectsForInvoices()
       .then(setProjects)
-      .catch(() => setError('Could not load projects.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load projects.')))
   }, [])
 
   function applyInvoice(invoice: any) {
@@ -110,7 +113,7 @@ export function useClientFundsInvoiceEditor() {
     setLoading(true)
     fetchInvoice(id)
       .then(applyInvoice)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load invoice.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load invoice.')))
       .finally(() => setLoading(false))
   }, [id, isNew])
 
@@ -214,15 +217,18 @@ export function useClientFundsInvoiceEditor() {
       }
       return invoice
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the invoice.')
+      const message = getErrorMessage(err, 'Could not save the invoice.')
+      setError(message)
+      toast.error(message)
       return null
     }
   }
 
   async function handleSave() {
     setBusy(true)
-    await save()
+    const invoice = await save()
     setBusy(false)
+    if (invoice) toast.success('Invoice saved.')
   }
 
   async function handlePreview() {

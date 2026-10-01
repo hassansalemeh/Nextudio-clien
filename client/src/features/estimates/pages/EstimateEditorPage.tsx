@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import PageLoader from '../../../shared/components/PageLoader'
 import CreateClientDialog from '../components/CreateClientDialog'
 import EstimateActions from '../components/EstimateActions'
 import EstimateCustomerAndMeta from '../components/EstimateCustomerAndMeta'
@@ -69,7 +70,7 @@ function EstimateEditorPage() {
   )
 
   if (loading) {
-    return <p className="empty-state">Loading estimate...</p>
+    return <PageLoader label="Loading estimate..." />
   }
 
   const daysValid = form.valid_until && form.estimate_date ? daysBetween(form.estimate_date, form.valid_until) : null

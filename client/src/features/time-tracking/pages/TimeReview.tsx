@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckIcon, CloseIcon, PencilIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import EmptyState from '../../../shared/components/EmptyState'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import {
   dayRange,
   durationMs,
@@ -14,17 +18,19 @@ import { fetchEmployeeDay, fetchEmployeesForReview, saveTimeEdit } from '../api'
 import type { Editing, Employee } from '../types'
 
 function TimeReview() {
+  const toast = useToast()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [employeeId, setEmployeeId] = useState('')
   const [date, setDate] = useState(localDateString())
   const [data, setData] = useState<DayData>({ sessions: [], entries: [] })
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<Editing | null>(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchEmployeesForReview()
       .then(setEmployees)
-      .catch(() => setError('Could not load employees.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load employees.')))
   }, [])
 
   const load = useCallback(async () => {
@@ -35,8 +41,8 @@ function TimeReview() {
     const { from, to } = dayRange(date)
     try {
       setData(await fetchEmployeeDay(employeeId, from, to))
-    } catch {
-      setError('Could not load time records.')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not load time records.'))
     }
   }, [employeeId, date])
 
@@ -52,12 +58,18 @@ function TimeReview() {
       setError('Start time is required.')
       return
     }
+    setSaving(true)
     try {
       await saveTimeEdit(editing, fromLocalInput(editing.start), fromLocalInput(editing.end))
       setEditing(null)
       await load()
+      toast.success('Time record updated.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      const message = getErrorMessage(err, 'Failed to save')
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -90,10 +102,10 @@ function TimeReview() {
           </label>
         </div>
         <div className="edit-actions">
-          <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
-            <CheckIcon /> Save
+          <button type="button" className="btn-sm btn-solid" disabled={saving} onClick={saveEdit}>
+            {saving ? <Spinner /> : <CheckIcon />} Save
           </button>
-          <button type="button" className="btn-sm btn-ghost" onClick={() => setEditing(null)}>
+          <button type="button" className="btn-sm btn-ghost" disabled={saving} onClick={() => setEditing(null)}>
             <CloseIcon /> Cancel
           </button>
         </div>
@@ -135,7 +147,7 @@ function TimeReview() {
         <>
           <h3>Clock In / Out</h3>
           {data.sessions.length === 0 ? (
-            <p className="empty-state">No clock-in on this date.</p>
+            <EmptyState message="No clock-in on this date." />
           ) : (
             <table className="data-table">
               <thead>
@@ -170,7 +182,7 @@ function TimeReview() {
 
           <h3>Project Time</h3>
           {data.entries.length === 0 ? (
-            <p className="empty-state">No project time on this date.</p>
+            <EmptyState message="No project time on this date." />
           ) : (
             <table className="data-table">
               <thead>

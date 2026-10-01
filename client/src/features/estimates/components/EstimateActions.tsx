@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { InvoiceIcon, MailIcon, TrashIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
 import type { EstimateLinks } from '../types'
 
 type Props = {
@@ -26,7 +27,7 @@ function EstimateActions({ busy, isNew, locked, status, id, links, onPreview, on
         Back
       </button>
       <button type="button" className="btn-outline" disabled={busy} onClick={locked ? () => navigate(`/estimates/${id}/preview`) : onPreview}>
-        Preview
+        {busy && <Spinner />} Preview
       </button>
       {!isNew && (
         <button type="button" className="btn-outline" disabled={busy} onClick={onOpenEmail}>
@@ -41,17 +42,17 @@ function EstimateActions({ busy, isNew, locked, status, id, links, onPreview, on
           onClick={onDuplicate}
           title="Create a new, independent estimate starting from this one's content"
         >
-          Duplicate
+          {busy && <Spinner />} Duplicate
         </button>
       )}
       {!locked && (
         <button type="button" className="btn-pill" disabled={busy} onClick={onSave}>
-          Save and continue
+          {busy && <Spinner />} Save and continue
         </button>
       )}
       {!isNew && !locked && status !== 'rejected' && (
         <button type="button" className="btn-convert" disabled={busy} onClick={onConvert} title="Use this when the client has approved the quotation">
-          <InvoiceIcon /> Convert to Invoice
+          {busy ? <Spinner /> : <InvoiceIcon />} Convert to Invoice
         </button>
       )}
       {locked && links.invoice_id && (
@@ -61,7 +62,7 @@ function EstimateActions({ busy, isNew, locked, status, id, links, onPreview, on
       )}
       {!isNew && (
         <button type="button" className="btn-outline btn-outline-danger" disabled={busy} onClick={onDelete} title="Permanently delete this estimate">
-          <TrashIcon /> Delete
+          {busy ? <Spinner /> : <TrashIcon />} Delete
         </button>
       )}
     </div>

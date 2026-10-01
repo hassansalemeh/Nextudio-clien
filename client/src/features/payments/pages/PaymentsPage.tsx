@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CloseIcon, PencilIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import { fetchPaymentsAndInvoices, fetchProjectsForPayments, savePayment } from '../api'
 import type { InvoiceRow, Payment, Project } from '../types'
@@ -19,6 +24,7 @@ const METHOD_LABELS: Record<string, string> = Object.fromEntries(METHODS.map((m)
 const REASON_SUGGESTIONS = ['Down payment', 'Concept Design payment', 'Permit phase payment', 'Final payment', 'Other']
 
 function PaymentsPage() {
+  const toast = useToast()
   const [searchParams] = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
@@ -44,8 +50,8 @@ function PaymentsPage() {
       setPayments(payments)
       setInvoices(invoices)
       setLoadError('')
-    } catch {
-      setLoadError('Could not load payments.')
+    } catch (err) {
+      setLoadError(getErrorMessage(err, 'Could not load payments.'))
     } finally {
       setLoading(false)
     }
@@ -56,7 +62,7 @@ function PaymentsPage() {
     fetchProjectsForPayments()
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: Project[]) => setProjects([...data].sort((a, b) => a.name.localeCompare(b.name))))
-      .catch(() => setLoadError('Could not load projects.'))
+      .catch((err) => setLoadError(getErrorMessage(err, 'Could not load projects.')))
   }, [load])
 
   // The selected project's Professional Services invoice (a project has at most one), and what is still due on
@@ -115,11 +121,15 @@ function PaymentsPage() {
         method: method || null,
         reference,
       })
-      setDone(editing ? 'Payment corrected.' : 'Payment recorded.')
+      const message = editing ? 'Payment corrected.' : 'Payment recorded.'
+      setDone(message)
+      toast.success(message)
       resetForm()
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the payment.')
+      const message = getErrorMessage(err, 'Could not save the payment.')
+      setError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -193,7 +203,7 @@ function PaymentsPage() {
 
           <div className="edit-actions">
             <button type="submit" className="btn-primary" disabled={saving}>
-              {editing ? 'Save Correction' : 'Add Payment'}
+              {saving && <Spinner />} {editing ? 'Save Correction' : 'Add Payment'}
             </button>
             {editing && (
               <button type="button" className="btn-sm btn-ghost" onClick={resetForm}>
@@ -210,9 +220,9 @@ function PaymentsPage() {
         <h2>Payments</h2>
         {loadError && <p className="error-message">{loadError}</p>}
         {loading ? (
-          <p className="empty-state">Loading payments...</p>
+          <PageLoader label="Loading payments..." />
         ) : payments.length === 0 ? (
-          <p className="empty-state">No payments recorded yet.</p>
+          <EmptyState message="No payments recorded yet." />
         ) : (
           <table className="data-table">
             <thead>

@@ -1,3 +1,4 @@
+import Spinner from '../../../shared/components/Spinner'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import type { ActiveProject } from '../types'
 
@@ -107,7 +108,7 @@ function AddWorkManuallyForm({
           </p>
         )}
         <button type="submit" className="btn-primary" disabled={manualBusy}>
-          Add Work Entry
+          {manualBusy && <Spinner />} Add Work Entry
         </button>
         {manualError && <p className="error-message">{manualError}</p>}
         {manualDone && <p className="doc-saved">{manualDone}</p>}

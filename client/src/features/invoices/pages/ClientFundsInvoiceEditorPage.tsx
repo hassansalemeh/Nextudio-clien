@@ -1,4 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
+import PageLoader from '../../../shared/components/PageLoader'
+import Spinner from '../../../shared/components/Spinner'
 import { COMPANY } from '../../../shared/lib/companyProfile'
 import ClientFundsCustomerAndMeta from '../components/ClientFundsCustomerAndMeta'
 import ClientFundsItemsSection from '../components/ClientFundsItemsSection'
@@ -43,11 +45,11 @@ function ClientFundsInvoiceEditorPage() {
         Back
       </button>
       <button type="button" className="btn-outline" disabled={busy} onClick={locked ? () => navigate(`/invoices/${id}/preview`) : handlePreview}>
-        Preview
+        {busy && <Spinner />} Preview
       </button>
       {!locked && (
         <button type="button" className="btn-pill" disabled={busy} onClick={handleSave}>
-          Save and continue
+          {busy && <Spinner />} Save and continue
         </button>
       )}
       {!isNew && (
@@ -72,7 +74,7 @@ function ClientFundsInvoiceEditorPage() {
   }
 
   if (loading) {
-    return <p className="empty-state">Loading invoice...</p>
+    return <PageLoader label="Loading invoice..." />
   }
 
   return (

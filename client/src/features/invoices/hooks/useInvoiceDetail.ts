@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import {
   addInvoiceDisbursement,
@@ -14,6 +16,7 @@ import type { Disbursement, InvoiceDetail } from '../types'
 // Everything the invoice detail page needs: the invoice itself, its disbursements, and every form/handler
 // its cards (payments, disbursements, contract) call.
 export function useInvoiceDetail() {
+  const toast = useToast()
   const { id } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null)
@@ -53,7 +56,7 @@ export function useInvoiceDetail() {
         setInvoice(data)
         setError('')
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load invoice.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load invoice.')))
   }, [id])
 
   const loadDisbursements = useCallback(() => {
@@ -106,8 +109,11 @@ export function useInvoiceDetail() {
       load()
       setAmount('')
       setReference('')
+      toast.success('Payment recorded.')
     } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : 'Could not record the payment.')
+      const message = getErrorMessage(err, 'Could not record the payment.')
+      setPaymentError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -137,8 +143,11 @@ export function useInvoiceDetail() {
       setDCategory('')
       setDAmount('')
       setDReference('')
+      toast.success('Disbursement recorded.')
     } catch (err) {
-      setDError(err instanceof Error ? err.message : 'Could not record the disbursement.')
+      const message = getErrorMessage(err, 'Could not record the disbursement.')
+      setDError(message)
+      toast.error(message)
     } finally {
       setDSaving(false)
     }
@@ -148,8 +157,11 @@ export function useInvoiceDetail() {
     try {
       await deleteInvoiceDisbursement(id!, disbursementId)
       loadDisbursements()
-    } catch {
-      setDError('Could not delete the disbursement.')
+      toast.success('Disbursement deleted.')
+    } catch (err) {
+      const message = getErrorMessage(err, 'Could not delete the disbursement.')
+      setDError(message)
+      toast.error(message)
     }
   }
 
@@ -178,8 +190,11 @@ export function useInvoiceDetail() {
       })
       setInvoice(updated)
       setContractEditing(false)
+      toast.success('Contract saved.')
     } catch (err) {
-      setContractError(err instanceof Error ? err.message : 'Could not save the contract.')
+      const message = getErrorMessage(err, 'Could not save the contract.')
+      setContractError(message)
+      toast.error(message)
     } finally {
       setContractSaving(false)
     }

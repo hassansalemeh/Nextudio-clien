@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { MailIcon, PencilIcon } from '../../../shared/components/icons'
+import PageLoader from '../../../shared/components/PageLoader'
 import InvoiceContractCard from '../components/InvoiceContractCard'
 import InvoiceDetailsCard from '../components/InvoiceDetailsCard'
 import InvoiceDisbursementsCard from '../components/InvoiceDisbursementsCard'
@@ -74,7 +75,7 @@ function InvoiceDetailPage() {
       </>
     )
   }
-  if (!invoice) return <p className="empty-state">Loading invoice...</p>
+  if (!invoice) return <PageLoader label="Loading invoice..." />
 
   const money = (value: number | string) => new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(Number(value))
   const hasDiscount = Number(invoice.discount) > 0

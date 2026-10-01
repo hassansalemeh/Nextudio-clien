@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../../app/auth'
+import Spinner from '../../../shared/components/Spinner'
 
 function LoginPage() {
   const { login } = useAuth()
@@ -35,7 +36,7 @@ function LoginPage() {
           </label>
         </div>
         <button type="submit" className="btn-primary" disabled={submitting}>
-          Log in
+          {submitting && <Spinner />} Log in
         </button>
         {error && <p className="error-message">{error}</p>}
       </form>

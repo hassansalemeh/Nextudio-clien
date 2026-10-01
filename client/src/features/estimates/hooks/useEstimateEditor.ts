@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useConfirm } from '../../../shared/components/ConfirmDialog'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import {
   approveEstimate,
@@ -62,6 +64,7 @@ const newItem = (): ItemForm => ({ key: nextKey++, name: '', description: '', qu
 // same save/approve/duplicate/delete workflow and the live total calculations.
 export function useEstimateEditor() {
   const confirm = useConfirm()
+  const toast = useToast()
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -159,7 +162,7 @@ export function useEstimateEditor() {
     setLoading(true)
     fetchEstimate(id!)
       .then(applyEstimate)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load estimate.'))
+      .catch((err) => setError(getErrorMessage(err, 'Could not load estimate.')))
       .finally(() => setLoading(false))
   }, [id, isNew])
 
@@ -282,15 +285,18 @@ export function useEstimateEditor() {
       }
       return estimate
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save estimate.')
+      const message = getErrorMessage(err, 'Could not save estimate.')
+      setError(message)
+      toast.error(message)
       return null
     }
   }
 
   async function handleSave() {
     setBusy(true)
-    await save()
+    const estimate = await save()
     setBusy(false)
+    if (estimate) toast.success('Estimate saved.')
   }
 
   async function handlePreview() {
@@ -319,8 +325,11 @@ export function useEstimateEditor() {
         applyEstimate(body)
         setSaved(false)
         approved = body
+        toast.success('Estimate approved.')
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not approve the estimate.')
+        const message = getErrorMessage(err, 'Could not approve the estimate.')
+        setError(message)
+        toast.error(message)
       }
     }
     setBusy(false)
@@ -341,24 +350,19 @@ export function useEstimateEditor() {
   // Permanently removes the estimate. The server blocks this (409) if it was already converted to an
   // invoice/project instead of silently cascading - the error message is shown as-is.
   async function handleDelete() {
+    setError('')
     const ok = await confirm({
       title: `Delete estimate ${form.estimate_number}?`,
       message: `This will permanently delete estimate ${form.estimate_number}${client ? ` for ${client.name}` : ''}. This cannot be undone.`,
       confirmLabel: 'Delete estimate',
       tone: 'danger',
+      onConfirm: async () => {
+        await deleteEstimate(id!)
+      },
     })
     if (!ok) return
-
-    setBusy(true)
-    setError('')
-    try {
-      await deleteEstimate(id!)
-      navigate('/estimates')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete the estimate.')
-    } finally {
-      setBusy(false)
-    }
+    toast.success('Estimate deleted.')
+    navigate('/estimates')
   }
 
   // A brand-new estimate that starts from this one's content - the original is left completely unchanged
@@ -367,9 +371,12 @@ export function useEstimateEditor() {
     setError('')
     try {
       const body = await duplicateEstimate(id!)
+      toast.success('Estimate duplicated.')
       navigate(`/estimates/${body.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not duplicate the estimate.')
+      const message = getErrorMessage(err, 'Could not duplicate the estimate.')
+      setError(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }

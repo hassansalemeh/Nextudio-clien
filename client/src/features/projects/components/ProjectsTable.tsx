@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom'
 import { CheckIcon, CloseIcon, PencilIcon, TrashIcon } from '../../../shared/components/icons'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import Spinner from '../../../shared/components/Spinner'
 import { FEE_STATUS_OPTIONS, STATUS_LABELS, STATUS_OPTIONS } from '../constants'
 import type { Client, Project } from '../types'
 
@@ -25,6 +28,7 @@ type Props = {
   editingId: string | null
   edit: ProjectEdit
   editError: string
+  saving: boolean
   startEdit: (project: Project) => void
   deleteProject: (project: Project) => void
   saveEdit: () => void
@@ -32,14 +36,27 @@ type Props = {
   setEdit: (edit: ProjectEdit) => void
 }
 
-function ProjectsTable({ loading, projects, clients, editingId, edit, editError, startEdit, deleteProject, saveEdit, setEditingId, setEdit }: Props) {
+function ProjectsTable({
+  loading,
+  projects,
+  clients,
+  editingId,
+  edit,
+  editError,
+  saving,
+  startEdit,
+  deleteProject,
+  saveEdit,
+  setEditingId,
+  setEdit,
+}: Props) {
   return (
     <div className="card">
       <h2>Existing Projects</h2>
       {loading ? (
-        <p className="empty-state">Loading projects...</p>
+        <PageLoader label="Loading projects..." />
       ) : projects.length === 0 ? (
-        <p className="empty-state">No projects yet.</p>
+        <EmptyState message="No projects yet." />
       ) : (
         <table className="data-table">
           <thead>
@@ -146,10 +163,10 @@ function ProjectsTable({ loading, projects, clients, editingId, edit, editError,
                       </label>
                     </div>
                     <p className="empty-state">Only a Confirmed fee counts as project amount in the Financial Summary.</p>
-                    <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
-<CheckIcon /> Save
+                    <button type="button" className="btn-sm btn-solid" disabled={saving} onClick={saveEdit}>
+{saving ? <Spinner /> : <CheckIcon />} Save
 </button>
-                    <button type="button" className="btn-sm btn-ghost" onClick={() => setEditingId(null)}>
+                    <button type="button" className="btn-sm btn-ghost" disabled={saving} onClick={() => setEditingId(null)}>
 <CloseIcon /> Cancel
 </button>
                     {editError && <p className="error-message">{editError}</p>}

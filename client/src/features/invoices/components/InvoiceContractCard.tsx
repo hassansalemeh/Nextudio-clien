@@ -1,4 +1,5 @@
 import { PencilIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
 import type { InvoiceDetail } from '../types'
 
 type Props = {
@@ -72,7 +73,7 @@ function InvoiceContractCard({
           </div>
           <div className="modal-actions" style={{ marginTop: '1rem' }}>
             <button type="button" className="btn-sm btn-solid" disabled={contractSaving} onClick={saveContract}>
-              Save
+              {contractSaving && <Spinner />} Save
             </button>
             <button type="button" className="btn-sm btn-ghost" disabled={contractSaving} onClick={() => setContractEditing(false)}>
               Cancel

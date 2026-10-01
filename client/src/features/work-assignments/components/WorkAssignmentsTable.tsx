@@ -1,4 +1,7 @@
 import { CheckIcon, CloseIcon, PencilIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import type { Employee, Project, WorkAssignment, WorkAssignmentEdit } from '../types'
 
@@ -10,6 +13,7 @@ type Props = {
   edit: WorkAssignmentEdit
   setEdit: (edit: WorkAssignmentEdit) => void
   saveEdit: () => void
+  saving: boolean
   setEditingId: (id: string | null) => void
   editError: string
   projects: Project[]
@@ -24,6 +28,7 @@ function WorkAssignmentsTable({
   edit,
   setEdit,
   saveEdit,
+  saving,
   setEditingId,
   editError,
   projects,
@@ -33,9 +38,9 @@ function WorkAssignmentsTable({
     <div className="card">
       <h2>Work Assignments</h2>
       {workAssignmentsLoading ? (
-        <p className="empty-state">Loading work assignments...</p>
+        <PageLoader label="Loading work assignments..." />
       ) : workAssignments.length === 0 ? (
-        <p className="empty-state">No work assignments yet.</p>
+        <EmptyState message="No work assignments yet." />
       ) : (
         <table className="data-table">
           <thead>
@@ -122,10 +127,10 @@ function WorkAssignmentsTable({
             </label>
           </div>
           <div className="edit-actions">
-            <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
-              <CheckIcon /> Save
+            <button type="button" className="btn-sm btn-solid" disabled={saving} onClick={saveEdit}>
+              {saving ? <Spinner /> : <CheckIcon />} Save
             </button>
-            <button type="button" className="btn-sm btn-ghost" onClick={() => setEditingId(null)}>
+            <button type="button" className="btn-sm btn-ghost" disabled={saving} onClick={() => setEditingId(null)}>
               <CloseIcon /> Cancel
             </button>
           </div>

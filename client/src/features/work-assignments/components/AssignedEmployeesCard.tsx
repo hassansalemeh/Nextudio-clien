@@ -1,3 +1,5 @@
+import Spinner from '../../../shared/components/Spinner'
+import EmptyState from '../../../shared/components/EmptyState'
 import type { Assignment, Employee } from '../types'
 
 type Props = {
@@ -6,10 +8,19 @@ type Props = {
   employeeToAssign: string
   setEmployeeToAssign: (value: string) => void
   allEmployees: Employee[]
+  submitting: boolean
   onSubmit: (event: React.FormEvent) => void
 }
 
-function AssignedEmployeesCard({ assignments, assignmentsError, employeeToAssign, setEmployeeToAssign, allEmployees, onSubmit }: Props) {
+function AssignedEmployeesCard({
+  assignments,
+  assignmentsError,
+  employeeToAssign,
+  setEmployeeToAssign,
+  allEmployees,
+  submitting,
+  onSubmit,
+}: Props) {
   return (
     <div className="card">
       <h2>Assigned Employees</h2>
@@ -37,14 +48,14 @@ function AssignedEmployeesCard({ assignments, assignmentsError, employeeToAssign
             </select>
           </label>
         </div>
-        <button type="submit" className="btn-primary">
-          Assign
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting && <Spinner />} Assign
         </button>
         {assignmentsError && <p className="error-message">{assignmentsError}</p>}
       </form>
 
       {assignments.length === 0 ? (
-        <p className="empty-state">No employees assigned yet.</p>
+        <EmptyState message="No employees assigned yet." />
       ) : (
         <table className="data-table">
           <thead>

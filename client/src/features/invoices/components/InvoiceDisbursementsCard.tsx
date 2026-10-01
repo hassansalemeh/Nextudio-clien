@@ -1,3 +1,5 @@
+import Spinner from '../../../shared/components/Spinner'
+import EmptyState from '../../../shared/components/EmptyState'
 import { DISBURSEMENT_CATEGORY_SUGGESTIONS } from '../constants'
 import type { Disbursement, InvoiceDetail } from '../types'
 
@@ -63,7 +65,7 @@ function InvoiceDisbursementsCard({
       </div>
 
       {disbursements.length === 0 ? (
-        <p className="empty-state">No disbursements recorded yet.</p>
+        <EmptyState message="No disbursements recorded yet." />
       ) : (
         <table className="data-table">
           <thead>
@@ -136,7 +138,7 @@ function InvoiceDisbursementsCard({
           <input value={dDescription} onChange={(e) => setDDescription(e.target.value)} />
         </label>
         <button type="submit" className="btn-primary" disabled={dSaving}>
-          Record Disbursement
+          {dSaving && <Spinner />} Record Disbursement
         </button>
         {dError && <p className="error-message">{dError}</p>}
       </form>

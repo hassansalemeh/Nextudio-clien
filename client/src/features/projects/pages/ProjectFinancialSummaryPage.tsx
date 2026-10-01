@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { fetchProjectFinancialSummary } from '../api'
 import type { SummaryRow } from '../types'
 
@@ -19,7 +22,7 @@ function ProjectFinancialSummaryPage() {
           setRows(data)
           setError('')
         })
-        .catch(() => setError('Could not load the financial summary.'))
+        .catch((err) => setError(getErrorMessage(err, 'Could not load the financial summary.')))
         .finally(() => setLoading(false))
     }
 
@@ -38,9 +41,9 @@ function ProjectFinancialSummaryPage() {
       <div className="card">
         {error && <p className="error-message">{error}</p>}
         {loading ? (
-          <p className="empty-state">Loading...</p>
+          <PageLoader />
         ) : rows.length === 0 ? (
-          <p className="empty-state">No projects yet.</p>
+          <EmptyState message="No projects yet." />
         ) : (
           <table className="data-table">
             <thead>

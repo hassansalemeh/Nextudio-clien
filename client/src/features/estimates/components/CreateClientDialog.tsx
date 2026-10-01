@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { CloseIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { createClient } from '../api'
 import type { NewClient } from '../types'
 
@@ -15,6 +18,7 @@ type Props = {
 // Same fields/validation/endpoint as the Clients page's "Add Client" form (ClientsPage.tsx), just reachable
 // without leaving the estimate editor.
 function CreateClientDialog({ onClose, onCreated }: Props) {
+  const toast = useToast()
   const [form, setForm] = useState<ClientForm>(emptyForm())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -27,9 +31,12 @@ function CreateClientDialog({ onClose, onCreated }: Props) {
     setBusy(true)
     try {
       const newClient = await createClient(form)
+      toast.success('Client added.')
       onCreated(newClient)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create client.')
+      const message = getErrorMessage(err, 'Could not create client.')
+      setError(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -73,7 +80,7 @@ function CreateClientDialog({ onClose, onCreated }: Props) {
               Cancel
             </button>
             <button type="submit" className="btn-sm btn-solid" disabled={busy}>
-              {busy ? 'Creating...' : 'Create Client'}
+              {busy && <Spinner />} Create Client
             </button>
           </div>
         </form>

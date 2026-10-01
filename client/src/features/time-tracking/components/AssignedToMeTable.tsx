@@ -1,3 +1,5 @@
+import Spinner from '../../../shared/components/Spinner'
+import EmptyState from '../../../shared/components/EmptyState'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import type { Status, TodayAssignment } from '../types'
 
@@ -16,7 +18,7 @@ function AssignedToMeTable({ assignments, status, busy, act }: Props) {
     <div className="card">
       <h2>Assigned to Me</h2>
       {assignments.length === 0 ? (
-        <p className="empty-state">Nothing is assigned to you today.</p>
+        <EmptyState message="Nothing is assigned to you today." />
       ) : (
         <table className="data-table">
           <thead>
@@ -48,7 +50,7 @@ function AssignedToMeTable({ assignments, status, busy, act }: Props) {
                         title={clockedIn ? undefined : 'Clock in first'}
                         onClick={() => act('start', { project_id: assignment.project_id, date: localDateString() })}
                       >
-                        Start Work
+                        {busy && <Spinner />} Start Work
                       </button>
                     )}
                   </td>

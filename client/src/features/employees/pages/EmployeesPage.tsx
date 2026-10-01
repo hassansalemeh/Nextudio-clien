@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
 import { CheckIcon, CloseIcon, PencilIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { useToast } from '../../../shared/components/Toast'
+import { useAsyncAction } from '../../../shared/hooks/useAsyncAction'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { createEmployee, fetchEmployees, updateEmployee } from '../api'
 import type { Employee } from '../types'
 
@@ -9,6 +15,7 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 })
 
 function EmployeesPage() {
+  const toast = useToast()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [employeesLoading, setEmployeesLoading] = useState(true)
   const [employeesError, setEmployeesError] = useState('')
@@ -20,14 +27,15 @@ function EmployeesPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [edit, setEdit] = useState({ full_name: '', position: '', monthly_salary: '', is_active: true })
   const [editError, setEditError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     async function loadEmployees() {
       try {
         const data = await fetchEmployees()
         setEmployees(data)
-      } catch {
-        setEmployeesError('Could not load employees.')
+      } catch (err) {
+        setEmployeesError(getErrorMessage(err, 'Could not load employees.'))
       } finally {
         setEmployeesLoading(false)
       }
@@ -36,7 +44,7 @@ function EmployeesPage() {
     loadEmployees()
   }, [])
 
-  async function handleEmployeeSubmit(event: React.FormEvent) {
+  const [handleEmployeeSubmit, submitting] = useAsyncAction(async (event: React.FormEvent) => {
     event.preventDefault()
     setEmployeesError('')
 
@@ -51,10 +59,13 @@ function EmployeesPage() {
       setFullName('')
       setPosition('')
       setMonthlySalary('')
-    } catch {
-      setEmployeesError('Could not create employee.')
+      toast.success('Employee added.')
+    } catch (err) {
+      const message = getErrorMessage(err, 'Could not create employee.')
+      setEmployeesError(message)
+      toast.error(message)
     }
-  }
+  })
 
   function startEdit(employee: Employee) {
     setEditError('')
@@ -76,12 +87,18 @@ function EmployeesPage() {
       return setEditError('Monthly salary must be a non-negative number.')
     }
 
+    setSaving(true)
     try {
       const updated = await updateEmployee(editingId!, { ...edit, monthly_salary: salary })
       setEmployees((previous) => previous.map((employee) => (employee.id === updated.id ? updated : employee)))
       setEditingId(null)
+      toast.success('Employee updated.')
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Could not update employee.')
+      const message = getErrorMessage(err, 'Could not update employee.')
+      setEditError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -113,8 +130,8 @@ function EmployeesPage() {
               />
             </label>
           </div>
-          <button type="submit" className="btn-primary">
-            Add Employee
+          <button type="submit" className="btn-primary" disabled={submitting}>
+            {submitting && <Spinner />} Add Employee
           </button>
           {employeesError && <p className="error-message">{employeesError}</p>}
         </form>
@@ -123,9 +140,9 @@ function EmployeesPage() {
       <div className="card">
         <h2>Existing Employees</h2>
         {employeesLoading ? (
-          <p className="empty-state">Loading employees...</p>
+          <PageLoader label="Loading employees..." />
         ) : employees.length === 0 ? (
-          <p className="empty-state">No employees yet.</p>
+          <EmptyState message="No employees yet." />
         ) : (
           <table className="data-table">
             <thead>
@@ -188,10 +205,10 @@ function EmployeesPage() {
                         </label>
                       </div>
                       <p className="empty-state">A new salary applies to future work only. Past project costs are not changed.</p>
-                      <button type="button" className="btn-sm btn-solid" onClick={saveEdit}>
-<CheckIcon /> Save
+                      <button type="button" className="btn-sm btn-solid" disabled={saving} onClick={saveEdit}>
+{saving ? <Spinner /> : <CheckIcon />} Save
 </button>
-                      <button type="button" className="btn-sm btn-ghost" onClick={() => setEditingId(null)}>
+                      <button type="button" className="btn-sm btn-ghost" disabled={saving} onClick={() => setEditingId(null)}>
 <CloseIcon /> Cancel
 </button>
                       {editError && <p className="error-message">{editError}</p>}

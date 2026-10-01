@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { dayRange, formatDuration, formatTime, localDateString } from '../../../shared/lib/timeUtils'
 import { INVOICE_STATUS_LABELS } from '../../invoices/types'
 import { fetchDashboard } from '../api'
@@ -64,7 +67,7 @@ function DashboardPage() {
           setData(json)
           setError('')
         })
-        .catch(() => setError('Could not load the dashboard.'))
+        .catch((err) => setError(getErrorMessage(err, 'Could not load the dashboard.')))
     }
 
     load()
@@ -78,7 +81,7 @@ function DashboardPage() {
   }, [])
 
   if (error && !data) return <p className="error-message">{error}</p>
-  if (!data) return <p className="empty-state">Loading dashboard...</p>
+  if (!data) return <PageLoader label="Loading dashboard..." />
 
   const { cards, projects, invoices, today, recent_payments: recentPayments } = data
   const pendingCount = projects.filter((project) => project.fee_status !== 'confirmed').length
@@ -128,7 +131,7 @@ function DashboardPage() {
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h2>Projects Financial Overview</h2>
         {projects.length === 0 ? (
-          <p className="empty-state">No projects yet.</p>
+          <EmptyState message="No projects yet." />
         ) : (
           <table className="data-table">
             <thead>
@@ -166,7 +169,7 @@ function DashboardPage() {
       <div className="card">
         <h2>Invoices</h2>
         {invoices.length === 0 ? (
-          <p className="empty-state">No invoices yet.</p>
+          <EmptyState message="No invoices yet." />
         ) : (
           <table className="data-table">
             <thead>
@@ -205,7 +208,7 @@ function DashboardPage() {
       <div className="card">
         <h2>Recent Payments</h2>
         {recentPayments.length === 0 ? (
-          <p className="empty-state">No payments recorded yet.</p>
+          <EmptyState message="No payments recorded yet." />
         ) : (
           <table className="data-table">
             <thead>

@@ -1,3 +1,4 @@
+import Spinner from '../../../shared/components/Spinner'
 import { durationMs, formatDuration, formatTime } from '../../../shared/lib/timeUtils'
 import type { Status } from '../types'
 
@@ -24,11 +25,11 @@ function ClockStatusCard({ status, busy, act }: Props) {
         )}
         {clockedIn ? (
           <button type="button" className="btn-primary" disabled={busy} onClick={() => act('clock-out')}>
-            Clock Out
+            {busy && <Spinner />} Clock Out
           </button>
         ) : (
           <button type="button" className="btn-primary" disabled={busy} onClick={() => act('clock-in')}>
-            Clock In
+            {busy && <Spinner />} Clock In
           </button>
         )}
       </div>
@@ -43,7 +44,7 @@ function ClockStatusCard({ status, busy, act }: Props) {
                 {formatDuration(durationMs(active.started_at, null))})
               </p>
               <button type="button" className="btn-primary" disabled={busy} onClick={() => act('stop')}>
-                Stop Work / Break
+                {busy && <Spinner />} Stop Work / Break
               </button>
             </>
           ) : (

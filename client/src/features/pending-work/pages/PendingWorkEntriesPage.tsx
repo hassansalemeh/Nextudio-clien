@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckIcon, CloseIcon } from '../../../shared/components/icons'
+import Spinner from '../../../shared/components/Spinner'
+import PageLoader from '../../../shared/components/PageLoader'
+import EmptyState from '../../../shared/components/EmptyState'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import { durationMs, formatDuration, formatTime, localDateString } from '../../../shared/lib/timeUtils'
 import { approvePendingWorkEntry, fetchPendingWorkEntries, rejectPendingWorkEntry } from '../api'
 import type { PendingEntry } from '../types'
@@ -7,7 +12,9 @@ import type { PendingEntry } from '../types'
 // Manual work entries an employee added for a project they weren't yet assigned to on that date.
 // They never count toward hours, labor cost, Financial Summary or the Dashboard until an admin approves them.
 function PendingWorkEntriesPage() {
+  const toast = useToast()
   const [entries, setEntries] = useState<PendingEntry[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -20,8 +27,10 @@ function PendingWorkEntriesPage() {
   const load = useCallback(async () => {
     try {
       setEntries(await fetchPendingWorkEntries())
-    } catch {
-      setError('Could not load pending work entries.')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not load pending work entries.'))
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -46,8 +55,11 @@ function PendingWorkEntriesPage() {
     try {
       await rejectPendingWorkEntry(entry.id)
       await load()
+      toast.success('Entry rejected.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reject this request.')
+      const message = getErrorMessage(err, 'Could not reject this request.')
+      setError(message)
+      toast.error(message)
     } finally {
       setBusyId(null)
     }
@@ -66,8 +78,11 @@ function PendingWorkEntriesPage() {
       await approvePendingWorkEntry(approving.id, { start_date: assignStart, end_date: assignEnd, description: assignDescription.trim() })
       setApproving(null)
       await load()
+      toast.success('Entry approved.')
     } catch (err) {
-      setApproveError(err instanceof Error ? err.message : 'Could not approve this request.')
+      const message = getErrorMessage(err, 'Could not approve this request.')
+      setApproveError(message)
+      toast.error(message)
     } finally {
       setBusyId(null)
     }
@@ -101,7 +116,7 @@ function PendingWorkEntriesPage() {
                 <CheckIcon /> Approve & Assign
               </button>
               <button type="button" className="btn-sm btn-ghost" disabled={busyId === entry.id} onClick={() => reject(entry)}>
-                <CloseIcon /> Reject
+                {busyId === entry.id ? <Spinner /> : <CloseIcon />} Reject
               </button>
             </div>
           )}
@@ -121,8 +136,10 @@ function PendingWorkEntriesPage() {
         </p>
         {error && <p className="error-message">{error}</p>}
 
-        {entries.length === 0 ? (
-          <p className="empty-state">Nothing waiting for review.</p>
+        {loading ? (
+          <PageLoader label="Loading pending work entries..." />
+        ) : entries.length === 0 ? (
+          <EmptyState message="Nothing waiting for review." />
         ) : (
           <table className="data-table pending-table">
             <thead>
@@ -176,9 +193,9 @@ function PendingWorkEntriesPage() {
           </p>
           <div className="edit-actions">
             <button type="button" className="btn-sm btn-solid" disabled={busyId === approving.id} onClick={confirmApprove}>
-              <CheckIcon /> Confirm
+              {busyId === approving.id ? <Spinner /> : <CheckIcon />} Confirm
             </button>
-            <button type="button" className="btn-sm btn-ghost" onClick={() => setApproving(null)}>
+            <button type="button" className="btn-sm btn-ghost" disabled={busyId === approving.id} onClick={() => setApproving(null)}>
               <CloseIcon /> Cancel
             </button>
           </div>

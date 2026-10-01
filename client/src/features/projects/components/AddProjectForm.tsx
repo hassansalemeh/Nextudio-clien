@@ -1,3 +1,4 @@
+import Spinner from '../../../shared/components/Spinner'
 import { FEE_STATUS_OPTIONS, STATUS_OPTIONS } from '../constants'
 import type { Client } from '../types'
 
@@ -18,6 +19,7 @@ type Props = {
   status: string
   setStatus: (value: string) => void
   error: string
+  submitting: boolean
   onSubmit: (event: React.FormEvent) => void
 }
 
@@ -38,6 +40,7 @@ function AddProjectForm({
   status,
   setStatus,
   error,
+  submitting,
   onSubmit,
 }: Props) {
   return (
@@ -107,8 +110,8 @@ function AddProjectForm({
           </label>
         </div>
         <p className="empty-state">Only a Confirmed fee counts as project amount in the Financial Summary.</p>
-        <button type="submit" className="btn-primary">
-          Add Project
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting && <Spinner />} Add Project
         </button>
         {error && <p className="error-message">{error}</p>}
       </form>

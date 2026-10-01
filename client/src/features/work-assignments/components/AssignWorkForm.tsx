@@ -1,3 +1,4 @@
+import Spinner from '../../../shared/components/Spinner'
 import type { Assignment } from '../types'
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   taskDescription: string
   setTaskDescription: (value: string) => void
   workAssignmentsError: string
+  submitting: boolean
   onSubmit: (event: React.FormEvent) => void
 }
 
@@ -25,6 +27,7 @@ function AssignWorkForm({
   taskDescription,
   setTaskDescription,
   workAssignmentsError,
+  submitting,
   onSubmit,
 }: Props) {
   return (
@@ -67,8 +70,8 @@ function AssignWorkForm({
             />
           </label>
         </div>
-        <button type="submit" className="btn-primary">
-          Assign Work
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting && <Spinner />} Assign Work
         </button>
         {workAssignmentsError && <p className="error-message">{workAssignmentsError}</p>}
       </form>

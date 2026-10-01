@@ -1,3 +1,5 @@
+import Spinner from '../../../shared/components/Spinner'
+import EmptyState from '../../../shared/components/EmptyState'
 import { METHODS, METHOD_LABELS } from '../constants'
 import type { InvoiceDetail } from '../types'
 
@@ -40,7 +42,7 @@ function InvoicePaymentsCard({
     <div className="card">
       <h2>Payments</h2>
       {invoice.payments.length === 0 ? (
-        <p className="empty-state">No payments recorded yet.</p>
+        <EmptyState message="No payments recorded yet." />
       ) : (
         <table className="data-table">
           <thead>
@@ -99,7 +101,7 @@ function InvoicePaymentsCard({
             </label>
           </div>
           <button type="submit" className="btn-primary" disabled={saving}>
-            Record Payment
+            {saving && <Spinner />} Record Payment
           </button>
           {paymentError && <p className="error-message">{paymentError}</p>}
           <p className="empty-state">Payments are recorded once: they also appear on the Payments page and on the project.</p>

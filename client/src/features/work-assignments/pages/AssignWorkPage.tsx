@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useToast } from '../../../shared/components/Toast'
+import { useAsyncAction } from '../../../shared/hooks/useAsyncAction'
+import { getErrorMessage } from '../../../shared/lib/apiError'
 import {
   assignEmployeeToProject,
   createWorkAssignment,
@@ -14,6 +17,7 @@ import WorkAssignmentsTable from '../components/WorkAssignmentsTable'
 import type { Assignment, Employee, Project, WorkAssignment, WorkAssignmentEdit } from '../types'
 
 function AssignWorkPage() {
+  const toast = useToast()
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState('')
 
@@ -35,21 +39,22 @@ function AssignWorkPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [edit, setEdit] = useState<WorkAssignmentEdit>({ project_id: '', employee_id: '', start_date: '', end_date: '', description: '' })
   const [editError, setEditError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     async function loadProjects() {
       try {
         setProjects(await fetchProjects())
-      } catch {
-        setWorkAssignmentsError('Could not load projects.')
+      } catch (err) {
+        setWorkAssignmentsError(getErrorMessage(err, 'Could not load projects.'))
       }
     }
 
     async function loadEmployees() {
       try {
         setAllEmployees(await fetchAllEmployees())
-      } catch {
-        setAssignmentsError('Could not load employees.')
+      } catch (err) {
+        setAssignmentsError(getErrorMessage(err, 'Could not load employees.'))
       }
     }
 
@@ -67,8 +72,8 @@ function AssignWorkPage() {
     async function loadAssignments() {
       try {
         setAssignments(await fetchProjectAssignments(projectId))
-      } catch {
-        setAssignmentsError('Could not load assigned employees.')
+      } catch (err) {
+        setAssignmentsError(getErrorMessage(err, 'Could not load assigned employees.'))
       }
     }
 
@@ -76,8 +81,8 @@ function AssignWorkPage() {
       setWorkAssignmentsLoading(true)
       try {
         setWorkAssignments(await fetchWorkAssignments(projectId))
-      } catch {
-        setWorkAssignmentsError('Could not load work assignments.')
+      } catch (err) {
+        setWorkAssignmentsError(getErrorMessage(err, 'Could not load work assignments.'))
       } finally {
         setWorkAssignmentsLoading(false)
       }
@@ -87,7 +92,7 @@ function AssignWorkPage() {
     loadWorkAssignments()
   }, [projectId])
 
-  async function handleAssignSubmit(event: React.FormEvent) {
+  const [handleAssignSubmit, assignSubmitting] = useAsyncAction(async (event: React.FormEvent) => {
     event.preventDefault()
     setAssignmentsError('')
 
@@ -98,12 +103,15 @@ function AssignWorkPage() {
         return [...withoutExisting, newAssignment].sort((a, b) => a.employee_name.localeCompare(b.employee_name))
       })
       setEmployeeToAssign('')
+      toast.success('Employee assigned.')
     } catch (err) {
-      setAssignmentsError(err instanceof Error ? err.message : 'Could not assign employee.')
+      const message = getErrorMessage(err, 'Could not assign employee.')
+      setAssignmentsError(message)
+      toast.error(message)
     }
-  }
+  })
 
-  async function handleWorkAssignmentSubmit(event: React.FormEvent) {
+  const [handleWorkAssignmentSubmit, workSubmitting] = useAsyncAction(async (event: React.FormEvent) => {
     event.preventDefault()
     setWorkAssignmentsError('')
 
@@ -142,10 +150,13 @@ function AssignWorkPage() {
       setStartDate('')
       setEndDate('')
       setTaskDescription('')
+      toast.success('Work assigned.')
     } catch (err) {
-      setWorkAssignmentsError(err instanceof Error ? err.message : 'Could not assign work.')
+      const message = getErrorMessage(err, 'Could not assign work.')
+      setWorkAssignmentsError(message)
+      toast.error(message)
     }
-  }
+  })
 
   function startEdit(workAssignment: WorkAssignment) {
     setEditError('')
@@ -168,6 +179,7 @@ function AssignWorkPage() {
     if (edit.end_date < edit.start_date) return setEditError('End date cannot be before start date.')
     if (!edit.description.trim()) return setEditError('Task description is required.')
 
+    setSaving(true)
     try {
       const updated = await updateWorkAssignment(editingId!, { ...edit, description: edit.description.trim() })
       // If it was moved to another project it no longer belongs in this project's list
@@ -177,8 +189,13 @@ function AssignWorkPage() {
           .filter((item) => String(item.project_id) === String(projectId))
       )
       setEditingId(null)
+      toast.success('Assignment updated.')
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Could not update assignment.')
+      const message = getErrorMessage(err, 'Could not update assignment.')
+      setEditError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -211,6 +228,7 @@ function AssignWorkPage() {
             employeeToAssign={employeeToAssign}
             setEmployeeToAssign={setEmployeeToAssign}
             allEmployees={allEmployees}
+            submitting={assignSubmitting}
             onSubmit={handleAssignSubmit}
           />
 
@@ -225,6 +243,7 @@ function AssignWorkPage() {
             taskDescription={taskDescription}
             setTaskDescription={setTaskDescription}
             workAssignmentsError={workAssignmentsError}
+            submitting={workSubmitting}
             onSubmit={handleWorkAssignmentSubmit}
           />
 
@@ -236,6 +255,7 @@ function AssignWorkPage() {
             edit={edit}
             setEdit={setEdit}
             saveEdit={saveEdit}
+            saving={saving}
             setEditingId={setEditingId}
             editError={editError}
             projects={projects}
