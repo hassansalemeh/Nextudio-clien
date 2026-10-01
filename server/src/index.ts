@@ -1400,6 +1400,20 @@ app.delete('/api/projects/:projectId', async (req, res) => {
         throw new HttpError(404, 'Project not found')
       }
       const { source_invoice_id: invoiceId, source_estimate_id: estimateId } = project.rows[0]
+            // Money records are never deleted silently: block the delete if the project has any
+      const financial = await client.query(
+        `SELECT 1 FROM money_movements
+         WHERE project_id = $1
+            OR location_id IN (SELECT id FROM money_locations WHERE project_id = $1)
+            OR to_location_id IN (SELECT id FROM money_locations WHERE project_id = $1)
+         UNION ALL
+         SELECT 1 FROM supplier_agreements WHERE project_id = $1
+         LIMIT 1`,
+        [projectId]
+      )
+      if (financial.rows.length > 0) {
+        throw new HttpError(400, "This project has financial records and can't be deleted.")
+      }
 
       // Every payment recorded against the project (applied to its invoice or not) goes with it, then the invoice (items go with it)
       await client.query('DELETE FROM payments WHERE project_id = $1 OR ($2::bigint IS NOT NULL AND invoice_id = $2)', [projectId, invoiceId])
@@ -1407,13 +1421,14 @@ app.delete('/api/projects/:projectId', async (req, res) => {
         await client.query('DELETE FROM invoices WHERE id = $1', [invoiceId])
       }
       // Every table that references projects (all foreign keys are RESTRICT, so children go first)
-      for (const table of [
+            for (const table of [
         'time_entries',
         'work_assignments',
         'project_assignments',
         'work_entries',
         'project_services',
-      ]) {
+        'money_locations',
+      ]) { 
         await client.query(`DELETE FROM ${table} WHERE project_id = $1`, [projectId])
       }
       await client.query('DELETE FROM projects WHERE id = $1', [projectId])
