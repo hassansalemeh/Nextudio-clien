@@ -20,7 +20,6 @@ import ProjectFinancialSummaryPage from './pages/ProjectFinancialSummaryPage'
 import ProjectsPage from './pages/ProjectsPage'
 import AssignWorkPage from './pages/AssignWorkPage'
 import TimeTrackingPage from './pages/TimeTrackingPage'
-// import FinancePage from './pages/FinancePage'
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -127,7 +126,6 @@ function App() {
           <Route path="/invoices/:id/preview" element={<DocumentPreviewPage kind="invoice" />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/financial-summary" element={<ProjectFinancialSummaryPage />} />
-          {/* <Route path="/finance" element={<FinancePage />} /> */}
         </Routes>
       </main>
     </>

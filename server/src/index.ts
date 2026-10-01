@@ -1413,7 +1413,6 @@ app.delete('/api/projects/:projectId', async (req, res) => {
         'project_assignments',
         'work_entries',
         'project_services',
-        'transactions',
       ]) {
         await client.query(`DELETE FROM ${table} WHERE project_id = $1`, [projectId])
       }
@@ -1533,112 +1532,6 @@ app.put('/api/work-assignments/:assignmentId', async (req, res) => {
     res.json(row.rows[0])
   } catch {
     res.status(500).json({ error: 'Failed to update assignment' })
-  }
-})
-
-const TRANSACTION_TYPES = ['income', 'expense']
-const TRANSACTION_SCOPES = ['project', 'general']
-
-app.get('/api/transactions', async (req, res) => {
-  const { from, to } = req.query
-
-  const conditions: string[] = []
-  const params: string[] = []
-
-  if (typeof from === 'string' && from) {
-    params.push(from)
-    conditions.push(`transaction_date >= $${params.length}`)
-  }
-
-  if (typeof to === 'string' && to) {
-    params.push(to)
-    conditions.push(`transaction_date <= $${params.length}`)
-  }
-
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-
-  try {
-    const result = await pool.query(
-      `SELECT transactions.id, transactions.type, transactions.scope, transactions.project_id,
-              projects.name AS project_name, transactions.amount,
-              to_char(transactions.transaction_date, 'YYYY-MM-DD') AS transaction_date,
-              transactions.party_name, transactions.description, transactions.created_at
-       FROM transactions
-       LEFT JOIN projects ON projects.id = transactions.project_id
-       ${whereClause}
-       ORDER BY transactions.transaction_date DESC, transactions.created_at DESC`,
-      params
-    )
-    res.json(result.rows)
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch transactions' })
-  }
-})
-
-app.post('/api/transactions', async (req, res) => {
-  const type = req.body.type
-  const scope = req.body.scope
-  const project_id = req.body.project_id ?? null
-  const amount = req.body.amount
-  const transaction_date = typeof req.body.transaction_date === 'string' ? req.body.transaction_date.trim() : ''
-  const party_name = typeof req.body.party_name === 'string' ? req.body.party_name.trim() : ''
-  const description = typeof req.body.description === 'string' ? req.body.description.trim() : null
-
-  if (!TRANSACTION_TYPES.includes(type)) {
-    return res.status(400).json({ error: 'type must be income or expense' })
-  }
-
-  if (!TRANSACTION_SCOPES.includes(scope)) {
-    return res.status(400).json({ error: 'scope must be project or general' })
-  }
-
-  if (typeof amount !== 'number' || Number.isNaN(amount) || amount <= 0) {
-    return res.status(400).json({ error: 'amount must be a positive number' })
-  }
-
-  if (!transaction_date) {
-    return res.status(400).json({ error: 'transaction_date is required' })
-  }
-
-  if (!party_name) {
-    return res.status(400).json({ error: 'party_name is required' })
-  }
-
-  if (scope === 'project' && !project_id) {
-    return res.status(400).json({ error: 'project_id is required when scope is project' })
-  }
-
-  if (scope === 'general' && project_id) {
-    return res.status(400).json({ error: 'project_id must not be set when scope is general' })
-  }
-
-  try {
-    if (scope === 'project') {
-      const projectResult = await pool.query('SELECT id FROM projects WHERE id = $1', [project_id])
-      if (projectResult.rows.length === 0) {
-        return res.status(400).json({ error: 'Project does not exist' })
-      }
-    }
-
-    const result = await pool.query(
-      `INSERT INTO transactions (type, scope, project_id, amount, transaction_date, party_name, description)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, type, scope, project_id, amount,
-                 to_char(transaction_date, 'YYYY-MM-DD') AS transaction_date,
-                 party_name, description, created_at`,
-      [type, scope, scope === 'project' ? project_id : null, amount, transaction_date, party_name, description]
-    )
-
-    const transaction = result.rows[0]
-    let project_name = null
-    if (transaction.project_id) {
-      const projectResult = await pool.query('SELECT name FROM projects WHERE id = $1', [transaction.project_id])
-      project_name = projectResult.rows[0]?.name ?? null
-    }
-
-    res.status(201).json({ ...transaction, project_name })
-  } catch {
-    res.status(500).json({ error: 'Failed to create transaction' })
   }
 })
 

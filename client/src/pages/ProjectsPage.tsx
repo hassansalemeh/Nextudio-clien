@@ -164,7 +164,7 @@ function ProjectsPage() {
     const confirmed = await confirm({
       title: `Delete "${project.name}"?`,
       message:
-        'This permanently deletes the project and everything related to it: its assignments, all recorded time entries, its financial transactions, and its invoice (with any payments) and the quotation it was created from. This cannot be undone.\n\nThe client and employees are kept.',
+        'This permanently deletes the project and everything related to it: its assignments, all recorded time entries, and its invoice (with any payments) and the quotation it was created from. This cannot be undone.\n\nThe client and employees are kept.',
       confirmLabel: 'Delete project',
       tone: 'danger',
     })
