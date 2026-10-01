@@ -2,9 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
-import App from './App.tsx'
-import { AuthProvider, installAuthFetch } from './auth'
-import { ConfirmProvider } from './components/ConfirmDialog'
+import App from './app/App.tsx'
+import { AuthProvider, installAuthFetch } from './app/auth'
+import { ConfirmProvider } from './shared/components/ConfirmDialog'
 
 installAuthFetch()
 
