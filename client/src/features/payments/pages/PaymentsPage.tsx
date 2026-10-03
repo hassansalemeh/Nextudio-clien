@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CloseIcon, PencilIcon } from '../../../shared/components/icons'
+import { CloseIcon, PencilIcon, PlusIcon } from '../../../shared/components/icons'
 import Spinner from '../../../shared/components/Spinner'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -33,6 +34,7 @@ function PaymentsPage() {
   const [loadError, setLoadError] = useState('')
 
   const [editing, setEditing] = useState<Payment | null>(null)
+  const [formOpen, setFormOpen] = useState(Boolean(searchParams.get('project')))
   const [projectId, setProjectId] = useState(searchParams.get('project') ?? '')
   const [paymentDate, setPaymentDate] = useState(localDateString())
   const [amount, setAmount] = useState('')
@@ -74,6 +76,7 @@ function PaymentsPage() {
 
   function resetForm() {
     setEditing(null)
+    setFormOpen(false)
     setProjectId('')
     setPaymentDate(localDateString())
     setAmount('')
@@ -88,6 +91,7 @@ function PaymentsPage() {
     setDone('')
     setError('')
     setEditing(payment)
+    setFormOpen(true)
     setProjectId(payment.project_id)
     setPaymentDate(payment.payment_date)
     setAmount(String(Number(payment.amount)))
@@ -137,9 +141,15 @@ function PaymentsPage() {
 
   return (
     <>
-      <h1>Payments</h1>
+      <PageHeader
+        title="Payments"
+        description="Record money received from clients and see where it was applied. Select a payment to correct it."
+        action={<button type="button" className="btn-primary header-action" aria-expanded={formOpen} aria-controls="payment-entry" onClick={() => formOpen ? resetForm() : setFormOpen(true)}>
+          {formOpen ? <CloseIcon /> : <PlusIcon />} {formOpen ? 'Close form' : 'Add Payment'}
+        </button>}
+      />
 
-      <div className="card">
+      {formOpen && <div className="card entry-panel" id="payment-entry">
         <h2>{editing ? 'Correct Payment' : 'Add Payment'}</h2>
         <p className="empty-state">Record money received from a client against a project.</p>
         <form onSubmit={handleSubmit} noValidate>
@@ -214,7 +224,7 @@ function PaymentsPage() {
           {error && <p className="error-message">{error}</p>}
           {done && <p className="doc-saved">{done}</p>}
         </form>
-      </div>
+      </div>}
 
       <div className="card">
         <h2>Payments</h2>
@@ -231,25 +241,25 @@ function PaymentsPage() {
                 <th>Project</th>
                 <th>Client</th>
                 <th>Reason</th>
-                <th>Amount</th>
+                <th className="num">Amount</th>
                 <th>Method</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {payments.map((payment) => (
-                <tr key={payment.id}>
-                  <td>{payment.payment_date}</td>
-                  <td>
-                    <Link to={`/projects/${payment.project_id}`}>{payment.project_name}</Link>
+                <tr key={payment.id} className="clickable-row" onClick={() => startEdit(payment)}>
+                  <td data-label="Date"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(payment) }}>{payment.payment_date}</button></td>
+                  <td data-label="Project">
+                    <Link to={`/projects/${payment.project_id}`} onClick={(event) => event.stopPropagation()}>{payment.project_name}</Link>
                     {payment.invoice_number && (
                       <div className="stat-note">
-                        <Link to={`/invoices/${payment.invoice_id}`}>{payment.invoice_number}</Link>
+                        <Link to={`/invoices/${payment.invoice_id}`} onClick={(event) => event.stopPropagation()}>{payment.invoice_number}</Link>
                       </div>
                     )}
                   </td>
-                  <td>{payment.client_name}</td>
-                  <td>
+                  <td data-label="Client">{payment.client_name}</td>
+                  <td data-label="Reason">
                     {payment.reason}
                     {payment.reference && <div className="stat-note">{payment.reference}</div>}
                     {payment.edits > 0 && (
@@ -258,10 +268,10 @@ function PaymentsPage() {
                       </span>
                     )}
                   </td>
-                  <td>{usd.format(Number(payment.amount))}</td>
-                  <td>{payment.method ? METHOD_LABELS[payment.method] : '—'}</td>
-                  <td>
-                    <button type="button" className="btn-sm btn-ghost" onClick={() => startEdit(payment)}>
+                  <td data-label="Amount" className="num">{usd.format(Number(payment.amount))}</td>
+                  <td data-label="Method">{payment.method ? METHOD_LABELS[payment.method] : '—'}</td>
+                  <td data-label="Actions">
+                    <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); startEdit(payment) }}>
                       <PencilIcon /> Correct
                     </button>
                   </td>

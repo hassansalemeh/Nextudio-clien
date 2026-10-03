@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import PageHeader from '../../../shared/components/PageHeader'
 import { MailIcon, PencilIcon } from '../../../shared/components/icons'
 import PageLoader from '../../../shared/components/PageLoader'
 import InvoiceContractCard from '../components/InvoiceContractCard'
@@ -86,7 +87,12 @@ function InvoiceDetailPage() {
   return (
     <>
       <div className="doc-topbar">
-        <h1>{isClientFunds ? 'Client Funds Invoice' : 'Invoice'} {invoice.invoice_number}</h1>
+        <PageHeader
+          title={`${isClientFunds ? 'Client Funds Invoice' : 'Invoice'} ${invoice.invoice_number}`}
+          description={isClientFunds
+            ? 'See client money received, spent, and still available.'
+            : 'Review what was billed, paid, and still due on this invoice.'}
+        />
         <div className="doc-actions">
           <button type="button" className="btn-outline" onClick={() => navigate('/invoices')}>
             Back

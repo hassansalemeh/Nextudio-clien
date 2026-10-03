@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { CheckIcon, CloseIcon, PencilIcon, TrashIcon } from '../../../shared/components/icons'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -50,6 +50,7 @@ function ProjectsTable({
   setEditingId,
   setEdit,
 }: Props) {
+  const navigate = useNavigate()
   return (
     <div className="card">
       <h2>Existing Projects</h2>
@@ -63,7 +64,7 @@ function ProjectsTable({
             <tr>
               <th>Project</th>
               <th>Client</th>
-              <th>Total Fee</th>
+              <th className="num">Total Fee</th>
               <th>Fee Status</th>
               <th>Start Date</th>
               <th>Status</th>
@@ -72,28 +73,28 @@ function ProjectsTable({
           </thead>
           <tbody>
             {projects.map((project) => [
-              <tr key={project.id}>
-                <td>
-                  <Link to={`/projects/${project.id}`}>{project.name}</Link>
+              <tr key={project.id} className="clickable-row" onClick={() => navigate(`/projects/${project.id}`)}>
+                <td data-label="Project">
+                  <Link to={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()}>{project.name}</Link>
                 </td>
-                <td>{project.client_name}</td>
-                <td>{project.total_fee === null ? '—' : currencyFormatter.format(Number(project.total_fee))}</td>
-                <td>
+                <td data-label="Client">{project.client_name}</td>
+                <td data-label="Total Fee" className="num">{project.total_fee === null ? '—' : currencyFormatter.format(Number(project.total_fee))}</td>
+                <td data-label="Fee Status">
                   <span className={`status-badge status-${project.fee_status}`}>
                     {project.fee_status === 'confirmed' ? 'Confirmed' : 'Pending'}
                   </span>
                 </td>
-                <td>{project.start_date || '—'}</td>
-                <td>
+                <td data-label="Start Date">{project.start_date || '—'}</td>
+                <td data-label="Status">
                   <span className={`status-badge status-${project.status}`}>
                     {STATUS_LABELS[project.status] ?? project.status}
                   </span>
                 </td>
-                <td>
-                  <button type="button" className="btn-sm btn-ghost" onClick={() => startEdit(project)}>
+                <td data-label="Actions">
+                  <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); startEdit(project) }}>
 <PencilIcon /> Edit
 </button>{' '}
-                  <button type="button" className="btn-sm btn-ghost-danger" onClick={() => deleteProject(project)}>
+                  <button type="button" className="btn-sm btn-ghost-danger" onClick={(event) => { event.stopPropagation(); deleteProject(project) }}>
 <TrashIcon /> Delete
 </button>
                 </td>

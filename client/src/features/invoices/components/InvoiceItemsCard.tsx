@@ -32,23 +32,23 @@ function InvoiceItemsCard({ invoice, isClientFunds, isLumpSum, hasDiscount, mone
           <thead>
             <tr>
               <th>{isClientFunds ? 'Description' : 'Service'}</th>
-              <th>Quantity</th>
+              <th className="num">Quantity</th>
               <th>Unit</th>
-              <th>Unit Price</th>
-              <th>Amount</th>
+              <th className="num">Unit Price</th>
+              <th className="num">Amount</th>
             </tr>
           </thead>
           <tbody>
             {invoice.items.map((item) => (
               <tr key={item.id}>
-                <td className="col-wrap">
+                <td data-label={isClientFunds ? 'Description' : 'Service'} className="col-wrap">
                   <strong>{item.name}</strong>
                   {item.description && <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}>{item.description}</div>}
                 </td>
-                <td>{Number(item.quantity)}</td>
-                <td>{UNIT_LABELS[item.unit] ?? item.unit}</td>
-                <td>{money(item.unit_price)}</td>
-                <td>{money(item.amount)}</td>
+                <td data-label="Quantity" className="num">{Number(item.quantity)}</td>
+                <td data-label="Unit">{UNIT_LABELS[item.unit] ?? item.unit}</td>
+                <td data-label="Unit Price" className="num">{money(item.unit_price)}</td>
+                <td data-label="Amount" className="num">{money(item.amount)}</td>
               </tr>
             ))}
           </tbody>

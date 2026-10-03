@@ -250,6 +250,11 @@ async function main() {
     await screenshot(page, 'clients-empty-state')
     record('clients empty state renders', true, `page-loader seen: ${clientsLoader > 0}`)
 
+    const clientFormHiddenByDefault = (await page.locator('#client-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Client' }).click()
+    await page.waitForSelector('#client-entry')
+    record('add-client form hidden by default and opens on click', clientFormHiddenByDefault)
+
     await page.getByLabel('Client Name').fill('UI Verify Client')
     // Two raw DOM clicks dispatched in the same tick - a true double-click, faster than React can
     // re-render the `disabled` attribute. Proves the handler-level guard (useAsyncAction), not just the
@@ -277,6 +282,11 @@ async function main() {
     await screenshot(page, 'projects-empty-state')
     record('projects empty state renders', true)
 
+    const projectFormHiddenByDefault = (await page.locator('#project-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('#project-entry')
+    record('add-project form hidden by default and opens on click', projectFormHiddenByDefault)
+
     const addProjectCard = cardByHeading(page, 'Add Project')
     await addProjectCard.locator('select').first().selectOption({ label: 'UI Verify Client' })
     await addProjectCard.locator('input').first().fill('UI Verify Project')
@@ -287,6 +297,9 @@ async function main() {
     record('project create success toast', projectToastText.includes('Project added'), projectToastText)
     await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
 
+    // The form closes itself on successful submit, so it has to be reopened for the second project.
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('#project-entry')
     await addProjectCard.locator('select').first().selectOption({ label: 'UI Verify Client' })
     await addProjectCard.locator('input').first().fill('UI Verify Unassigned Project')
     await page.getByRole('button', { name: 'Add Project' }).click()
@@ -311,6 +324,11 @@ async function main() {
     await screenshot(page, 'payments-empty-state')
     record('payments empty state renders', true)
 
+    const paymentFormHiddenByDefault = (await page.locator('#payment-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Payment' }).click()
+    await page.waitForSelector('#payment-entry')
+    record('add-payment form hidden by default and opens on click', paymentFormHiddenByDefault)
+
     await page.locator('form').locator('select').first().selectOption({ label: 'UI Verify Project' })
     await page.getByLabel('Amount Received').fill('500')
     await page.getByLabel('Reason / Description').fill('UI verify payment')
@@ -328,6 +346,11 @@ async function main() {
     await goToRoute(page, '/employees', 'admin', 'No employees yet.')
     await screenshot(page, 'employees-empty-state')
     record('employees empty state renders', true)
+
+    const employeeFormHiddenByDefault = (await page.locator('#employee-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Employee' }).click()
+    await page.waitForSelector('#employee-entry')
+    record('add-employee form hidden by default and opens on click', employeeFormHiddenByDefault)
 
     // ---- error toast: abort the next create-employee request to simulate "server unreachable" ----
     await context.route('**/api/employees', (route) => route.abort('failed'), { times: 1 })
@@ -442,7 +465,7 @@ async function main() {
     // ======================================================================
     await page.getByRole('link', { name: 'Invoices', exact: true }).click()
     await goToRoute(page, '/invoices', 'admin', 'No invoices yet')
-    await page.getByRole('link', { name: '+ New Client Funds Invoice' }).click()
+    await page.getByRole('link', { name: 'New Client Funds Invoice' }).click()
     await page.waitForSelector('text=New Client Funds Invoice')
     recordRoute('/invoices/new', 'admin', true, 'renders')
 
@@ -490,7 +513,7 @@ async function main() {
     // Financial Summary: render check
     // ======================================================================
     await page.getByRole('link', { name: 'Financial Summary', exact: true }).click()
-    await goToRoute(page, '/financial-summary', 'admin', 'Project Financial Summary')
+    await goToRoute(page, '/financial-summary', 'admin', 'All project figures')
     await screenshot(page, 'financial-summary')
 
     // ======================================================================
@@ -553,7 +576,7 @@ async function main() {
     await page.click('button[type="submit"]')
     await page.waitForSelector('text=Dashboard')
 
-    await page.getByRole('link', { name: 'Pending Work', exact: true }).click()
+    await page.getByRole('link', { name: 'Approvals', exact: true }).click()
     await goToRoute(page, '/pending-work', 'admin', 'UI Verify Employee')
     await screenshot(page, 'pending-work-entry')
     await page.getByRole('button', { name: 'Approve & Assign' }).click()
@@ -583,6 +606,92 @@ async function main() {
     await page.waitForSelector('text=UI Verify Project', { timeout: 10000 })
     await screenshot(page, 'time-tracking-review')
     record('time tracking review shows the employee\'s real sessions and entries', true)
+
+    // ======================================================================
+    // Extra: a very long project name (chart/table wrapping), dashboard with real data,
+    // horizontal-overflow checks, sidebar-stays-fixed-while-scrolling.
+    // ======================================================================
+    async function hasHorizontalOverflow(p) {
+      return p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
+    }
+
+    const LONG_PROJECT_NAME =
+      'A Very Long Project Name That Keeps Going To See If The Chart Axis And Table Column Truncate Or Wrap Instead Of Breaking The Page Layout'
+
+    await page.getByRole('link', { name: 'Projects', exact: true }).click()
+    await page.waitForSelector('h1:has-text("Projects")')
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('#project-entry')
+    const longNameCard = cardByHeading(page, 'Add Project')
+    await longNameCard.locator('select').first().selectOption({ label: 'UI Verify Client' })
+    await longNameCard.locator('input').nth(0).fill(LONG_PROJECT_NAME)
+    await longNameCard.getByLabel('Total Fee').fill('5000')
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('.toast-success')
+    await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
+    record('project with a very long name created', true)
+    await screenshot(page, 'projects-long-name-desktop')
+    record('projects page has no horizontal overflow (long name, desktop)', !(await hasHorizontalOverflow(page)))
+
+    await page.getByRole('link', { name: 'Dashboard', exact: true }).click()
+    await page.waitForSelector('text=Confirmed Project Value')
+    await page.waitForTimeout(500) // let the lazy-loaded chart chunks mount and recharts measure its container
+    await screenshot(page, 'dashboard-real-data')
+    const chartSvgCount = await page.locator('.dashboard-charts svg').count()
+    record('dashboard charts render with real data (svg present)', chartSvgCount > 0, `svg count=${chartSvgCount}`)
+    record('dashboard has no horizontal overflow (long project name, desktop)', !(await hasHorizontalOverflow(page)))
+
+    const sidebarBefore = await page.locator('.app-sidebar').boundingBox()
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    const sidebarAfter = await page.locator('.app-sidebar').boundingBox()
+    record(
+      'sidebar stays fixed in place while the page scrolls',
+      Boolean(sidebarBefore && sidebarAfter && sidebarBefore.y === sidebarAfter.y && sidebarBefore.x === sidebarAfter.x),
+      `before=${JSON.stringify(sidebarBefore)} after=${JSON.stringify(sidebarAfter)}`
+    )
+    await page.evaluate(() => window.scrollTo(0, 0))
+
+    // ======================================================================
+    // Phone-width pass: revisit every route at a phone viewport, screenshot each, and
+    // check for horizontal overflow at each one.
+    // ======================================================================
+    await page.setViewportSize({ width: 390, height: 844 })
+
+    const mobileRoutes = [
+      ['/dashboard', 'Confirmed Project Value'],
+      ['/clients', 'UI Verify Client'],
+      ['/projects', LONG_PROJECT_NAME],
+      ['/payments', 'UI Verify Project'],
+      ['/employees', 'UI Verify Employee'],
+      ['/assignments', 'Select Project'],
+      ['/estimates', 'UI Verify Client'],
+      ['/invoices', 'UI Verify Client'],
+      ['/financial-summary', 'All project figures'],
+      ['/time-tracking', 'Review when employees clocked in'],
+      ['/pending-work', 'Nothing waiting for review.'],
+    ]
+    for (const [route, waitText] of mobileRoutes) {
+      await page.goto(baseUrl + route)
+      await page.waitForSelector(`text=${waitText}`, { timeout: 10000 })
+      await page.waitForTimeout(300)
+      await screenshot(page, `mobile${route.replace(/\//g, '-')}`)
+      record(`mobile ${route} has no horizontal overflow`, !(await hasHorizontalOverflow(page)))
+    }
+
+    // ---- mobile menu: hidden by default, opens via hamburger, closes after following a link ----
+    await page.goto(baseUrl + '/dashboard')
+    await page.waitForSelector('text=Confirmed Project Value')
+    const sidebarHiddenInitially = (await page.locator('#app-sidebar.sidebar-open').count()) === 0
+    await page.getByRole('button', { name: 'Open menu' }).click()
+    await page.waitForSelector('#app-sidebar.sidebar-open')
+    await page.waitForTimeout(300) // let the 160ms slide-in transition finish before screenshotting
+    await screenshot(page, 'mobile-menu-open')
+    await page.getByRole('link', { name: 'Clients', exact: true }).click()
+    await page.waitForSelector('h1:has-text("Clients")')
+    const sidebarClosedAfterNav = (await page.locator('#app-sidebar.sidebar-open').count()) === 0
+    record('mobile menu hidden by default, opens via hamburger, closes after following a link', sidebarHiddenInitially && sidebarClosedAfterNav)
+
+    await page.setViewportSize({ width: 1280, height: 900 })
 
     await context.close()
   } catch (err) {

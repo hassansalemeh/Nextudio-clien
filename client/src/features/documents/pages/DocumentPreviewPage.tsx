@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageLoader from '../../../shared/components/PageLoader'
 import { getErrorMessage } from '../../../shared/lib/apiError'
@@ -42,7 +43,12 @@ function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' }) {
   return (
     <>
       <div className="doc-topbar">
-        <h1>{kind === 'estimate' ? 'Quotation preview' : 'Invoice preview'}</h1>
+        <PageHeader
+          title={kind === 'estimate' ? 'Quotation preview' : 'Invoice preview'}
+          description={kind === 'estimate'
+            ? 'Check how this estimate will look when shared or downloaded.'
+            : 'Check how this invoice will look when shared or downloaded.'}
+        />
         <div className="doc-actions">
           <button type="button" className="btn-outline" onClick={() => navigate(`/${collection}/${id}`)}>
             Back

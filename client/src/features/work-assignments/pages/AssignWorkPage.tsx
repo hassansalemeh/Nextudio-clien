@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import { useToast } from '../../../shared/components/Toast'
 import { useAsyncAction } from '../../../shared/hooks/useAsyncAction'
 import { getErrorMessage } from '../../../shared/lib/apiError'
@@ -201,7 +202,7 @@ function AssignWorkPage() {
 
   return (
     <>
-      <h1>Assignments</h1>
+      <PageHeader title="Assignments" description="Choose a project, then give team members the work they're responsible for." />
 
       <div className="card">
         <h2>Select Project</h2>

@@ -54,10 +54,10 @@ function WorkAssignmentsTable({
           </thead>
           <tbody>
             {workAssignments.map((workAssignment) => (
-              <tr key={workAssignment.id}>
-                <td>{workAssignment.employee_name}</td>
-                <td>{workAssignment.start_date}</td>
-                <td>
+              <tr key={workAssignment.id} className="clickable-row" onClick={() => startEdit(workAssignment)}>
+                <td data-label="Employee"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(workAssignment) }}>{workAssignment.employee_name}</button></td>
+                <td data-label="Start Date">{workAssignment.start_date}</td>
+                <td data-label="End Date">
                   {workAssignment.end_date}
                   {workAssignment.end_date < localDateString() && (
                     <span
@@ -69,9 +69,9 @@ function WorkAssignmentsTable({
                     </span>
                   )}
                 </td>
-                <td className="col-wrap">{workAssignment.description}</td>
-                <td>
-                  <button type="button" className="btn-sm btn-ghost" onClick={() => startEdit(workAssignment)}>
+                <td data-label="Description" className="col-wrap">{workAssignment.description}</td>
+                <td data-label="Actions">
+                  <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); startEdit(workAssignment) }}>
 <PencilIcon /> Edit
 </button>
                 </td>
@@ -81,8 +81,7 @@ function WorkAssignmentsTable({
         </table>
       )}
 
-      {/* Kept outside the table on purpose: a whole form doesn't belong inside a horizontally-scrolling
-          table row — it would force every column wider to match it and could scroll off-screen. */}
+      {/* Keep the edit form outside the table so the details remain easy to read. */}
       {editingId && (
         <div className="edit-panel">
           <div className="form-grid">

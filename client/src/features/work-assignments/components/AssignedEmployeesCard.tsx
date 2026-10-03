@@ -67,8 +67,8 @@ function AssignedEmployeesCard({
           <tbody>
             {assignments.map((assignment) => (
               <tr key={assignment.id}>
-                <td>{assignment.employee_name}</td>
-                <td>{assignment.position}</td>
+                <td data-label="Employee">{assignment.employee_name}</td>
+                <td data-label="Position">{assignment.position}</td>
               </tr>
             ))}
           </tbody>

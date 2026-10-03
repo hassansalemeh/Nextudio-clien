@@ -21,23 +21,31 @@ import ProjectsPage from '../features/projects/pages/ProjectsPage'
 import AssignWorkPage from '../features/work-assignments/pages/AssignWorkPage'
 import TimeTrackingPage from '../features/time-tracking/pages/TimeTrackingPage'
 
-const NAV_LINKS = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/clients', label: 'Clients' },
-  { to: '/employees', label: 'Employees' },
-  { to: '/projects', label: 'Projects' },
-  { to: '/assignments', label: 'Assignments' },
-  { to: '/time-tracking', label: 'Time Tracking' },
-  { to: '/pending-work', label: 'Pending Work' },
-  { to: '/estimates', label: 'Estimates' },
-  { to: '/invoices', label: 'Invoices' },
-  { to: '/payments', label: 'Payments' },
-  { to: '/financial-summary', label: 'Financial Summary' },
+const NAV_SECTIONS = [
+  { title: 'Overview', links: [{ to: '/dashboard', label: 'Dashboard' }] },
+  { title: 'Clients & Projects', links: [
+    { to: '/clients', label: 'Clients' },
+    { to: '/projects', label: 'Projects' },
+    { to: '/estimates', label: 'Estimates' },
+    { to: '/invoices', label: 'Invoices' },
+  ] },
+  { title: 'Money', links: [
+    { to: '/payments', label: 'Payments' },
+    { to: '/financial-summary', label: 'Financial Summary' },
+  ] },
+  { title: 'Team', links: [
+    { to: '/employees', label: 'Employees' },
+    { to: '/assignments', label: 'Assignments' },
+    { to: '/time-tracking', label: 'Time Tracking' },
+    { to: '/pending-work', label: 'Approvals' },
+  ] },
 ]
 
 function App() {
   const { user, loading, logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<string[]>([])
+  const [pendingCount, setPendingCount] = useState<number | null>(null)
   const location = useLocation()
 
   // Close the mobile menu whenever the route changes (a link was followed, or the browser back/forward was used)
@@ -57,56 +65,80 @@ function App() {
     )
   }
 
-  // Employees get a single page. The server also blocks every admin API route for them.
-  if (user.role === 'employee') {
-    return (
-      <>
-        <header className="app-header">
-          <img className="app-logo" src="/nextudio-logo.webp" alt="Nextudio architects" />
-          <span className="nav-link employee-name">{user.employeeName}</span>
-          <button type="button" className="btn-sm btn-ghost header-logout" onClick={logout}>
-            <LogoutIcon /> Log out
-          </button>
-        </header>
-
-        <main>
-          <Routes>
-            <Route path="/" element={<MyWorkPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-      </>
-    )
-  }
+  const isEmployee = user.role === 'employee'
+  const sections = isEmployee ? [{ title: 'My work', links: [{ to: '/', label: 'My Work' }] }] : NAV_SECTIONS
 
   return (
-    <>
-      <header className="app-header">
-        <img className="app-logo" src="/nextudio-logo.webp" alt="Nextudio architects" />
+    <div className="app-shell">
+      <header className="mobile-toolbar">
         <button
           type="button"
           className="menu-toggle"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={menuOpen}
+          aria-controls="app-sidebar"
           onClick={() => setMenuOpen((open) => !open)}
         >
           {menuOpen ? <CloseIcon /> : <MenuIcon />}
         </button>
-        <nav className={menuOpen ? 'nav-open' : ''}>
-          {NAV_LINKS.map((link) => (
-            <NavLink key={link.to} to={link.to} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>
-              {link.label}
-            </NavLink>
-          ))}
-        </nav>
-        <button type="button" className="btn-sm btn-ghost header-logout" onClick={logout}>
-          <LogoutIcon /> Log out
-        </button>
+        <img className="app-logo" src="/nextudio-logo.webp" alt="Nextudio architects" />
       </header>
       {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
+      <aside id="app-sidebar" className={'app-sidebar' + (menuOpen ? ' sidebar-open' : '')}>
+        <div className="sidebar-brand">
+          <img className="app-logo" src="/nextudio-logo.webp" alt="Nextudio architects" />
+          <button type="button" className="sidebar-close" aria-label="Close menu" onClick={() => setMenuOpen(false)}>
+            <CloseIcon />
+          </button>
+        </div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          {sections.map((section) => {
+            const collapsed = collapsedSections.includes(section.title)
+            const activeSection = section.links.some((link) =>
+              link.to === '/' ? location.pathname === '/' : location.pathname === link.to || location.pathname.startsWith(link.to + '/')
+            )
+            return (
+              <div className="nav-section" key={section.title}>
+                <button
+                  type="button"
+                  className={'nav-section-toggle' + (activeSection && collapsed ? ' section-active' : '')}
+                  aria-expanded={!collapsed}
+                  onClick={() => setCollapsedSections((current) =>
+                    collapsed ? current.filter((title) => title !== section.title) : [...current, section.title]
+                  )}
+                >
+                  <span>{section.title}</span>
+                  <span className={'section-chevron' + (collapsed ? ' collapsed' : '')} aria-hidden="true">⌄</span>
+                </button>
+                {!collapsed && <div className="nav-section-links">
+                  {section.links.map((link) => (
+                    <NavLink
+                      key={link.to}
+                      to={link.to}
+                      end={link.to === '/' || link.to === '/dashboard'}
+                      className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
+                    >
+                      <span>{link.label}</span>
+                      {link.to === '/pending-work' && pendingCount !== null && pendingCount > 0 &&
+                        <span className="nav-count" aria-label={`${pendingCount} pending`}>{pendingCount}</span>}
+                    </NavLink>
+                  ))}
+                </div>}
+              </div>
+            )
+          })}
+        </nav>
+        <div className="sidebar-footer">
+          {isEmployee && <span className="employee-name">{user.employeeName}</span>}
+          <button type="button" className="sidebar-logout" onClick={logout}><LogoutIcon /> Log out</button>
+        </div>
+      </aside>
 
-      <main>
-        <Routes>
+      <main className="app-main">
+        {isEmployee ? <Routes>
+          <Route path="/" element={<MyWorkPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes> : <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/clients" element={<ClientsPage />} />
@@ -115,7 +147,7 @@ function App() {
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
           <Route path="/assignments" element={<AssignWorkPage />} />
           <Route path="/time-tracking" element={<TimeTrackingPage />} />
-          <Route path="/pending-work" element={<PendingWorkEntriesPage />} />
+          <Route path="/pending-work" element={<PendingWorkEntriesPage onPendingCountChange={setPendingCount} />} />
           <Route path="/estimates" element={<EstimatesPage />} />
           <Route path="/estimates/:id" element={<EstimateEditorPage />} />
           <Route path="/estimates/:id/preview" element={<DocumentPreviewPage kind="estimate" />} />
@@ -126,9 +158,9 @@ function App() {
           <Route path="/invoices/:id/preview" element={<DocumentPreviewPage kind="invoice" />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/financial-summary" element={<ProjectFinancialSummaryPage />} />
-        </Routes>
+        </Routes>}
       </main>
-    </>
+    </div>
   )
 }
 

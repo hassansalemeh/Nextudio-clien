@@ -51,17 +51,17 @@ function InvoicePaymentsCard({
               <th>Reason</th>
               <th>Method</th>
               <th>Reference / Note</th>
-              <th>Amount</th>
+              <th className="num">Amount</th>
             </tr>
           </thead>
           <tbody>
             {invoice.payments.map((payment) => (
               <tr key={payment.id}>
-                <td>{payment.payment_date}</td>
-                <td>{payment.reason}</td>
-                <td>{payment.method ? (METHOD_LABELS[payment.method] ?? payment.method) : '—'}</td>
-                <td>{payment.reference || '—'}</td>
-                <td>{money(payment.amount)}</td>
+                <td data-label="Date">{payment.payment_date}</td>
+                <td data-label="Reason">{payment.reason}</td>
+                <td data-label="Method">{payment.method ? (METHOD_LABELS[payment.method] ?? payment.method) : '—'}</td>
+                <td data-label="Reference / Note">{payment.reference || '—'}</td>
+                <td data-label="Amount" className="num">{money(payment.amount)}</td>
               </tr>
             ))}
           </tbody>

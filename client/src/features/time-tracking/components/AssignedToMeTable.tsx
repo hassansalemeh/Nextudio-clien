@@ -35,11 +35,11 @@ function AssignedToMeTable({ assignments, status, busy, act }: Props) {
               const isActive = active !== null && String(active.project_id) === String(assignment.project_id)
               return (
                 <tr key={assignment.id}>
-                  <td>{assignment.project_name}</td>
-                  <td className="col-wrap">{assignment.description}</td>
-                  <td>{assignment.start_date}</td>
-                  <td>{assignment.end_date}</td>
-                  <td>
+                  <td data-label="Project">{assignment.project_name}</td>
+                  <td data-label="Task" className="col-wrap">{assignment.description}</td>
+                  <td data-label="Start Date">{assignment.start_date}</td>
+                  <td data-label="End Date">{assignment.end_date}</td>
+                  <td data-label="Actions">
                     {isActive ? (
                       <strong>Working</strong>
                     ) : (

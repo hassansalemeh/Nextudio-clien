@@ -1,9 +1,10 @@
 import TimeReview from './TimeReview'
+import PageHeader from '../../../shared/components/PageHeader'
 
 function TimeTrackingPage() {
   return (
     <>
-      <h1>Time Tracking</h1>
+      <PageHeader title="Time Tracking" description="Review when employees clocked in and the time they recorded on projects." />
       <TimeReview />
     </>
   )

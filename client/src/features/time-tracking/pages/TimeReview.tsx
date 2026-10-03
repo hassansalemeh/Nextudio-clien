@@ -160,15 +160,15 @@ function TimeReview() {
               </thead>
               <tbody>
                 {data.sessions.map((session) => (
-                  <tr key={session.id}>
-                    <td>{formatTime(session.clock_in)}</td>
-                    <td>{session.clock_out ? formatTime(session.clock_out) : 'still clocked in'}</td>
-                    <td>{formatDuration(durationMs(session.clock_in, session.clock_out))}</td>
-                    <td>
+                  <tr key={session.id} className="clickable-row" onClick={() => startEdit('sessions', session.id, session.clock_in, session.clock_out)}>
+                    <td data-label="Clock In"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit('sessions', session.id, session.clock_in, session.clock_out) }}>{formatTime(session.clock_in)}</button></td>
+                    <td data-label="Clock Out">{session.clock_out ? formatTime(session.clock_out) : 'still clocked in'}</td>
+                    <td data-label="Duration">{formatDuration(durationMs(session.clock_in, session.clock_out))}</td>
+                    <td data-label="Actions">
                       <button
                         type="button"
                         className="btn-sm btn-ghost"
-                        onClick={() => startEdit('sessions', session.id, session.clock_in, session.clock_out)}
+                        onClick={(event) => { event.stopPropagation(); startEdit('sessions', session.id, session.clock_in, session.clock_out) }}
                       >
                         <PencilIcon /> Edit
                       </button>
@@ -197,12 +197,12 @@ function TimeReview() {
               </thead>
               <tbody>
                 {data.entries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{entry.project_name}</td>
-                    <td>{formatTime(entry.started_at)}</td>
-                    <td>{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
-                    <td>{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
-                    <td>
+                  <tr key={entry.id} className="clickable-row" onClick={() => startEdit('entries', entry.id, entry.started_at, entry.ended_at)}>
+                    <td data-label="Project"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit('entries', entry.id, entry.started_at, entry.ended_at) }}>{entry.project_name}</button></td>
+                    <td data-label="Start">{formatTime(entry.started_at)}</td>
+                    <td data-label="End">{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
+                    <td data-label="Duration">{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
+                    <td data-label="Status">
                       {entry.status && entry.status !== 'approved' && (
                         <span
                           className={`status-badge status-${entry.status}`}
@@ -216,11 +216,11 @@ function TimeReview() {
                         </span>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Actions">
                       <button
                         type="button"
                         className="btn-sm btn-ghost"
-                        onClick={() => startEdit('entries', entry.id, entry.started_at, entry.ended_at)}
+                        onClick={(event) => { event.stopPropagation(); startEdit('entries', entry.id, entry.started_at, entry.ended_at) }}
                       >
                         <PencilIcon /> Edit
                       </button>
