@@ -43,7 +43,13 @@ export function registerAuthRoutes(app: Express) {
         console.warn(`[auth] failed login for ${emailKey} from ${req.ip}`)
         return res.status(401).json({ error: 'Invalid email or password' })
       }
-      const token = await createSession(row.id)
+            // The company this session opens. One company: that one. Several: the oldest for now
+      // (a company switcher comes later). None: the user can't open anything.
+      const organizationMembers = await authRepository.selectOrganizationMembersByUser(row.id)
+      if (organizationMembers.length === 0) {
+        return res.status(403).json({ error: 'This account does not belong to any company' })
+      }
+      const token = await createSession(row.id, organizationMembers[0].organization_id)
       const user = await loadUser(token)
       if (!user) {
         return res.status(401).json({ error: 'This account is inactive' })

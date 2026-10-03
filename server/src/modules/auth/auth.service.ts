@@ -52,9 +52,9 @@ export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex')
 }
 
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(userId: string, organizationId: string): Promise<string> {
   const token = crypto.randomBytes(32).toString('hex')
-  await authRepository.insertSession(hashToken(token), userId, SESSION_DAYS)
+  await authRepository.insertSession(hashToken(token), userId, organizationId, SESSION_DAYS)
   return token
 }
 
