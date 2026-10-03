@@ -7,7 +7,7 @@ import EstimateCustomerAndMeta from '../components/EstimateCustomerAndMeta'
 import EstimateHeaderPanel from '../components/EstimateHeaderPanel'
 import EstimateItemsSection from '../components/EstimateItemsSection'
 import SendEstimateEmailDialog from '../components/SendEstimateEmailDialog'
-import { daysBetween, useEstimateEditor } from '../hooks/useEstimateEditor'
+import { useEstimateEditor } from '../hooks/useEstimateEditor'
 
 function EstimateEditorPage() {
   const {
@@ -32,6 +32,7 @@ function EstimateEditorPage() {
     busy,
     locked,
     update,
+    updateEstimateDate,
     updateItem,
     moveItem,
     addItem,
@@ -74,7 +75,6 @@ function EstimateEditorPage() {
     return <PageLoader label="Loading estimate..." />
   }
 
-  const daysValid = form.valid_until && form.estimate_date ? daysBetween(form.estimate_date, form.valid_until) : null
   const availableProjects = projects.filter((p) => !p.source_estimate_id || p.id === form.project_id)
 
   return (
@@ -133,10 +133,9 @@ function EstimateEditorPage() {
             customerRef={form.customer_ref}
             onCustomerRefChange={(value) => update('customer_ref', value)}
             estimateDate={form.estimate_date}
-            onEstimateDateChange={(value) => update('estimate_date', value)}
+            onEstimateDateChange={updateEstimateDate}
             validUntil={form.valid_until}
             onValidUntilChange={(value) => update('valid_until', value)}
-            daysValid={daysValid}
             pricingMethod={form.pricing_method}
             onPricingMethodChange={(value) => update('pricing_method', value)}
             isLumpSum={isLumpSum}

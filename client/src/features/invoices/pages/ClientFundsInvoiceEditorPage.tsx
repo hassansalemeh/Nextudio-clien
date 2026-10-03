@@ -24,6 +24,7 @@ function ClientFundsInvoiceEditorPage() {
     saved,
     busy,
     update,
+    updateInvoiceDate,
     updateItem,
     moveItem,
     addItem,
@@ -115,7 +116,7 @@ function ClientFundsInvoiceEditorPage() {
             customerRef={form.customer_ref}
             onCustomerRefChange={(value) => update('customer_ref', value)}
             invoiceDate={form.invoice_date}
-            onInvoiceDateChange={(value) => update('invoice_date', value)}
+            onInvoiceDateChange={updateInvoiceDate}
             dueDate={form.due_date}
             onDueDateChange={(value) => update('due_date', value)}
             projectId={form.project_id}

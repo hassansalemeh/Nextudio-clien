@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
-import { localDateString } from '../../../shared/lib/timeUtils'
+import { addDays, daysBetween, localDateString } from '../../../shared/lib/timeUtils'
 import { fetchClientsForInvoices, fetchInvoice, fetchNextClientFundsInvoiceNumber, fetchProjectsForInvoices, saveClientFundsInvoice } from '../api'
 import type { ClientFundsClient, ClientFundsItemForm, ClientFundsProject } from '../types'
 
@@ -120,6 +120,17 @@ export function useClientFundsInvoiceEditor() {
   const update = (field: keyof ReturnType<typeof emptyForm>, value: string) => {
     setSaved(false)
     setForm((previous) => ({ ...previous, [field]: value }))
+  }
+
+  // Changing the invoice date shifts the payment due date by the same number of days, so the chosen
+  // duration (a preset or a custom one) stays the same instead of silently changing.
+  const updateInvoiceDate = (value: string) => {
+    setSaved(false)
+    setForm((previous) => {
+      if (!previous.invoice_date || !previous.due_date) return { ...previous, invoice_date: value }
+      const duration = daysBetween(previous.invoice_date, previous.due_date)
+      return { ...previous, invoice_date: value, due_date: addDays(value, duration) }
+    })
   }
 
   const updateItem = (key: number, field: keyof ClientFundsItemForm, value: string) => {
@@ -253,6 +264,7 @@ export function useClientFundsInvoiceEditor() {
     saved,
     busy,
     update,
+    updateInvoiceDate,
     updateItem,
     moveItem,
     addItem,

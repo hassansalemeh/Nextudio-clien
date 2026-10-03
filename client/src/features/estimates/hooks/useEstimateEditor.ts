@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useConfirm } from '../../../shared/components/ConfirmDialog'
 import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
-import { localDateString } from '../../../shared/lib/timeUtils'
+import { addDays, daysBetween, localDateString } from '../../../shared/lib/timeUtils'
 import {
   approveEstimate,
   deleteEstimate,
@@ -18,16 +18,8 @@ import type { Client, EstimateLinks, ItemForm, Project } from '../types'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-// New estimates are valid for 30 days by default
-function defaultValidUntil() {
-  const date = new Date()
-  date.setDate(date.getDate() + 30)
-  return localDateString(date)
-}
-
-export function daysBetween(from: string, to: string) {
-  return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000)
-}
+// New estimates are valid for 14 days by default
+const DEFAULT_VALID_DAYS = 14
 
 function emptyForm() {
   return {
@@ -38,7 +30,7 @@ function emptyForm() {
     customer_ref: '',
     estimate_number: '',
     estimate_date: localDateString(),
-    valid_until: defaultValidUntil(),
+    valid_until: addDays(localDateString(), DEFAULT_VALID_DAYS),
     currency: 'USD',
     status: 'draft',
     notes: '',
@@ -181,6 +173,17 @@ export function useEstimateEditor() {
   const update = (field: keyof ReturnType<typeof emptyForm>, value: string) => {
     setSaved(false)
     setForm((previous) => ({ ...previous, [field]: value }))
+  }
+
+  // Changing the estimate date shifts "Valid until" by the same number of days, so the chosen
+  // duration (a preset or a custom one) stays the same instead of silently changing.
+  const updateEstimateDate = (value: string) => {
+    setSaved(false)
+    setForm((previous) => {
+      if (!previous.estimate_date || !previous.valid_until) return { ...previous, estimate_date: value }
+      const duration = daysBetween(previous.estimate_date, previous.valid_until)
+      return { ...previous, estimate_date: value, valid_until: addDays(value, duration) }
+    })
   }
 
   const updateItem = (key: number, field: keyof ItemForm, value: string) => {
@@ -404,6 +407,7 @@ export function useEstimateEditor() {
     busy,
     locked,
     update,
+    updateEstimateDate,
     updateItem,
     moveItem,
     addItem,
