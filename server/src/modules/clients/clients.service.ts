@@ -22,16 +22,16 @@ export function parseClientInput(body: Record<string, unknown>): ClientInput {
   return { name, contact_name, email, phone, address }
 }
 
-export async function listClients() {
-  return clientsRepository.selectClients()
+export async function listClients(organizationId: string) {
+  return clientsRepository.selectClients(organizationId)
 }
 
-export async function createClient(input: ClientInput) {
-  return clientsRepository.insertClient(input)
+export async function createClient(organizationId: string, input: ClientInput) {
+  return clientsRepository.insertClient(organizationId, input)
 }
 
-export async function updateClient(clientId: string, input: ClientInput) {
-  return clientsRepository.updateClient(clientId, input)
+export async function updateClient(organizationId: string, clientId: string, input: ClientInput) {
+  return clientsRepository.updateClient(organizationId, clientId, input)
 }
 
 // A client's name/contact email/phone/address, frozen onto an estimate or invoice when the client is

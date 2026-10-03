@@ -3,6 +3,7 @@ import type { AuthUser } from '../modules/auth/auth.service'
 import { loadUser, sessionToken } from '../modules/auth/auth.service'
 
 declare global {
+   // eslint-disable-next-line @typescript-eslint/no-namespace -- standard way to add req.user to Express
   namespace Express {
     interface Request {
       user?: AuthUser
@@ -50,4 +51,10 @@ export function enforceRole(req: Request, res: Response, next: NextFunction) {
 // whatever the client sent. Admins choose the employee.
 export function resolveEmployeeId(req: Request, supplied: unknown): unknown {
   return req.user?.role === 'employee' ? req.user.employeeId : supplied
+}
+
+// The company the current request works in (set by authenticate from the session).
+// Every query that reads or writes company data must use this.
+export function organizationIdOf(req: Request): string {
+  return req.user!.organizationId
 }

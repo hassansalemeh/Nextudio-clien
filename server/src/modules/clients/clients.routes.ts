@@ -1,11 +1,12 @@
 import type { Express } from 'express'
 import { HttpError } from '../../shared'
 import { createClient, listClients, parseClientInput, updateClient } from './clients.service'
+import { organizationIdOf } from '../../middleware/auth'
 
 export function registerClientRoutes(app: Express) {
-  app.get('/api/clients', async (_req, res) => {
+  app.get('/api/clients', async (req, res) => {
     try {
-      res.json(await listClients())
+      res.json(await listClients(organizationIdOf(req)))
     } catch {
       res.status(500).json({ error: 'Failed to fetch clients' })
     }
@@ -21,7 +22,7 @@ export function registerClientRoutes(app: Express) {
     }
 
     try {
-      res.status(201).json(await createClient(input))
+      res.status(201).json(await createClient(organizationIdOf(req), input))
     } catch {
       res.status(500).json({ error: 'Failed to create client' })
     }
@@ -45,7 +46,7 @@ export function registerClientRoutes(app: Express) {
     }
 
     try {
-      const client = await updateClient(clientId, input)
+      const client = await updateClient(organizationIdOf(req), clientId, input)
       if (!client) {
         return res.status(404).json({ error: 'Client not found' })
       }
