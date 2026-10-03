@@ -28,6 +28,31 @@ export function localDateString(date: Date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
+// Parses a YYYY-MM-DD string as a local date (midnight in the browser's own timezone), not UTC -
+// new Date("YYYY-MM-DD") parses as UTC, which can land on the wrong calendar day once formatted back
+// for a timezone behind UTC. Every date-only helper below goes through this instead.
+function parseDateString(dateString: string) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+// Whole number of calendar days between two YYYY-MM-DD dates (to - from), in local time
+export function daysBetween(from: string, to: string) {
+  return Math.round((parseDateString(to).getTime() - parseDateString(from).getTime()) / 86400000)
+}
+
+// A YYYY-MM-DD date, `days` calendar days after `dateString`, in local time
+export function addDays(dateString: string, days: number) {
+  const date = parseDateString(dateString)
+  date.setDate(date.getDate() + days)
+  return localDateString(date)
+}
+
+// "October 17, 2026", for a YYYY-MM-DD date, in local time
+export function formatLongDate(dateString: string) {
+  return parseDateString(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 // ISO instants for the start of the given local day and the start of the next one
 export function dayRange(dateString: string) {
   const [year, month, day] = dateString.split('-').map(Number)

@@ -1,3 +1,4 @@
+import DurationPicker from '../../../shared/components/DurationPicker'
 import { DOCUMENT_LANGUAGES, PRICING_METHODS, STATUS_OPTIONS } from '../constants'
 import type { Client, Project } from '../types'
 
@@ -20,7 +21,6 @@ type Props = {
   onEstimateDateChange: (value: string) => void
   validUntil: string
   onValidUntilChange: (value: string) => void
-  daysValid: number | null
   pricingMethod: string
   onPricingMethodChange: (value: string) => void
   isLumpSum: boolean
@@ -54,7 +54,6 @@ function EstimateCustomerAndMeta({
   onEstimateDateChange,
   validUntil,
   onValidUntilChange,
-  daysValid,
   pricingMethod,
   onPricingMethodChange,
   isLumpSum,
@@ -148,17 +147,8 @@ function EstimateCustomerAndMeta({
         <label htmlFor="est-date">Date</label>
         <input id="est-date" type="date" value={estimateDate} onChange={(e) => onEstimateDateChange(e.target.value)} />
 
-        <label htmlFor="est-valid">Valid until</label>
-        <div>
-          <input
-            id="est-valid"
-            type="date"
-            value={validUntil}
-            min={estimateDate || undefined}
-            onChange={(e) => onValidUntilChange(e.target.value)}
-          />
-          {daysValid !== null && daysValid >= 0 && <div className="doc-hint">Within {daysValid} days</div>}
-        </div>
+        <label>Valid until</label>
+        <DurationPicker resultLabel="Valid until" baseDate={estimateDate} value={validUntil} onChange={onValidUntilChange} />
 
         <label htmlFor="est-pricing-method">Pricing Method</label>
         <div>

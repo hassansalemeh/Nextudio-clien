@@ -1,3 +1,4 @@
+import DurationPicker from '../../../shared/components/DurationPicker'
 import type { ClientFundsClient, ClientFundsProject } from '../types'
 
 type Props = {
@@ -112,14 +113,8 @@ function ClientFundsCustomerAndMeta({
         <label htmlFor="cf-date">Invoice date</label>
         <input id="cf-date" type="date" value={invoiceDate} onChange={(e) => onInvoiceDateChange(e.target.value)} />
 
-        <label htmlFor="cf-due">Payment due date</label>
-        <input
-          id="cf-due"
-          type="date"
-          value={dueDate}
-          min={invoiceDate || undefined}
-          onChange={(e) => onDueDateChange(e.target.value)}
-        />
+        <label>Payment due date</label>
+        <DurationPicker resultLabel="Payment due" baseDate={invoiceDate} value={dueDate} onChange={onDueDateChange} />
 
         <label htmlFor="cf-project">Project</label>
         <div>
