@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
+import { CloseIcon, PlusIcon } from '../../../shared/components/icons'
 import { useConfirm } from '../../../shared/components/ConfirmDialog'
 import { useToast } from '../../../shared/components/Toast'
 import { useAsyncAction } from '../../../shared/hooks/useAsyncAction'
@@ -25,6 +27,7 @@ function ProjectsPage() {
   const [feeStatus, setFeeStatus] = useState('pending')
   const [startDate, setStartDate] = useState('')
   const [status, setStatus] = useState('planning')
+  const [formOpen, setFormOpen] = useState(false)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [edit, setEdit] = useState<ProjectEdit>({
@@ -87,6 +90,7 @@ function ProjectsPage() {
       setFeeStatus('pending')
       setStartDate('')
       setStatus('planning')
+      setFormOpen(false)
       toast.success('Project added.')
     } catch (err) {
       const message = getErrorMessage(err, 'Could not create project.')
@@ -152,9 +156,15 @@ function ProjectsPage() {
 
   return (
     <>
-      <h1>Projects</h1>
+      <PageHeader
+        title="Projects"
+        description="Create projects and see the work you're managing for each client. Select a project to open its full record."
+        action={<button type="button" className="btn-primary header-action" aria-expanded={formOpen} aria-controls="project-entry" onClick={() => setFormOpen((open) => !open)}>
+          {formOpen ? <CloseIcon /> : <PlusIcon />} {formOpen ? 'Close form' : 'Add Project'}
+        </button>}
+      />
 
-      <AddProjectForm
+      {formOpen && <div id="project-entry" className="entry-panel"><AddProjectForm
         clients={clients}
         clientId={clientId}
         setClientId={setClientId}
@@ -173,7 +183,9 @@ function ProjectsPage() {
         error={error}
         submitting={submitting}
         onSubmit={handleSubmit}
-      />
+      /></div>}
+
+      {error && !formOpen && <p className="error-message">{error}</p>}
 
       <ProjectsTable
         loading={loading}

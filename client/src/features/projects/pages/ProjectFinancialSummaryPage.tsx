@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { fetchProjectFinancialSummary } from '../api'
 import type { SummaryRow } from '../types'
+
+const ProjectValueChart = lazy(() => import('../../../shared/components/ProjectValueChart'))
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -36,9 +39,16 @@ function ProjectFinancialSummaryPage() {
 
   return (
     <>
-      <h1>Project Financial Summary</h1>
+      <PageHeader title="Financial Summary" description="How much each project earned compared to what it cost in staff time." />
+
+      {!loading && rows.length > 0 && (
+        <Suspense fallback={<PageLoader label="Loading chart..." />}>
+          <div className="financial-chart"><ProjectValueChart projects={rows} limit={8} /></div>
+        </Suspense>
+      )}
 
       <div className="card">
+        <h2>All project figures</h2>
         {error && <p className="error-message">{error}</p>}
         {loading ? (
           <PageLoader />
@@ -49,18 +59,18 @@ function ProjectFinancialSummaryPage() {
             <thead>
               <tr>
                 <th>Project</th>
-                <th>Project Amount</th>
-                <th>Labor Cost Deducted</th>
-                <th>Remaining</th>
+                <th className="num">Project Amount</th>
+                <th className="num">Labor Cost Deducted</th>
+                <th className="num">Remaining</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.project_id}>
-                  <td>{row.name}</td>
-                  <td>{currencyFormatter.format(row.amount)}</td>
-                  <td>{currencyFormatter.format(row.deducted)}</td>
-                  <td style={{ color: row.remaining < 0 ? '#b3261e' : undefined, fontWeight: 600 }}>
+                  <td data-label="Project">{row.name}</td>
+                  <td data-label="Project Amount" className="num">{currencyFormatter.format(row.amount)}</td>
+                  <td data-label="Labor Cost" className="num">{currencyFormatter.format(row.deducted)}</td>
+                  <td data-label="Remaining" className={'num' + (row.remaining < 0 ? ' negative' : '')} style={{ fontWeight: 600 }}>
                     {currencyFormatter.format(row.remaining)}
                   </td>
                 </tr>

@@ -75,20 +75,20 @@ function InvoiceDisbursementsCard({
               <th>Description</th>
               <th>Category</th>
               <th>Reference</th>
-              <th>Amount</th>
+              <th className="num">Amount</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {disbursements.map((d) => (
               <tr key={d.id}>
-                <td>{d.disbursement_date}</td>
-                <td>{d.payee}</td>
-                <td className="col-wrap">{d.description || '—'}</td>
-                <td>{d.category || '—'}</td>
-                <td>{d.reference || '—'}</td>
-                <td>{money(d.amount)}</td>
-                <td>
+                <td data-label="Date">{d.disbursement_date}</td>
+                <td data-label="Payee">{d.payee}</td>
+                <td data-label="Description" className="col-wrap">{d.description || '—'}</td>
+                <td data-label="Category">{d.category || '—'}</td>
+                <td data-label="Reference">{d.reference || '—'}</td>
+                <td data-label="Amount" className="num">{money(d.amount)}</td>
+                <td data-label="Actions">
                   <button type="button" className="btn-sm btn-ghost" onClick={() => deleteDisbursement(d.id)}>
                     Delete
                   </button>

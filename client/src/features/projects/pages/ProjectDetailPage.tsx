@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import { Link, useParams } from 'react-router-dom'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -66,7 +67,7 @@ function ProjectDetailPage() {
       <p>
         <Link to="/projects">← Back to Projects</Link>
       </p>
-      <h1>{project.name}</h1>
+      <PageHeader title={project.name} description="See this project's details, payments, invoices, and team work in one place." />
 
       <div className="card">
         <h2>Project Details</h2>
@@ -107,7 +108,7 @@ function ProjectDetailPage() {
         </p>
         <p>
           Client Balance Due:{' '}
-          <strong style={{ color: details.client_balance_due < 0 ? '#b3261e' : undefined }}>
+          <strong className={details.client_balance_due < 0 ? 'negative' : undefined}>
             {currencyFormatter.format(details.client_balance_due)}
           </strong>
         </p>
@@ -117,7 +118,7 @@ function ProjectDetailPage() {
         </p>
         <p>
           Project Remaining After Labor:{' '}
-          <strong style={{ color: details.current_position < 0 ? '#b3261e' : undefined }}>
+          <strong className={details.current_position < 0 ? 'negative' : undefined}>
             {currencyFormatter.format(details.current_position)}
           </strong>
         </p>
@@ -133,15 +134,15 @@ function ProjectDetailPage() {
               <tr>
                 <th>Date</th>
                 <th>Reason</th>
-                <th>Amount</th>
+                <th className="num">Amount</th>
               </tr>
             </thead>
             <tbody>
               {details.payments.map((payment) => (
                 <tr key={payment.id}>
-                  <td>{payment.payment_date}</td>
-                  <td>{payment.reason}</td>
-                  <td>{currencyFormatter.format(Number(payment.amount))}</td>
+                  <td data-label="Date">{payment.payment_date}</td>
+                  <td data-label="Reason">{payment.reason}</td>
+                  <td data-label="Amount" className="num">{currencyFormatter.format(Number(payment.amount))}</td>
                 </tr>
               ))}
             </tbody>
@@ -176,22 +177,22 @@ function ProjectDetailPage() {
             <thead>
               <tr>
                 <th>Invoice Number</th>
-                <th>Total</th>
-                <th>Paid</th>
-                <th>Amount Due</th>
+                <th className="num">Total</th>
+                <th className="num">Paid</th>
+                <th className="num">Amount Due</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {details.client_funds.invoices.map((invoice) => (
                 <tr key={invoice.id}>
-                  <td>
+                  <td data-label="Invoice">
                     <Link to={`/invoices/${invoice.id}`}>{invoice.invoice_number}</Link>
                   </td>
-                  <td>{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.total)}</td>
-                  <td>{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.paid)}</td>
-                  <td>{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.amount_due)}</td>
-                  <td>
+                  <td data-label="Total" className="num">{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.total)}</td>
+                  <td data-label="Paid" className="num">{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.paid)}</td>
+                  <td data-label="Amount Due" className="num">{new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency }).format(invoice.amount_due)}</td>
+                  <td data-label="Status">
                     <span className={`status-badge status-${invoice.status}`}>{invoice.status}</span>
                   </td>
                 </tr>
@@ -212,17 +213,17 @@ function ProjectDetailPage() {
                 <th>Employee</th>
                 <th>Position</th>
                 <th>Assignment</th>
-                <th>Hours Worked</th>
-                <th>Hourly Cost</th>
-                <th>Labor Cost</th>
+                <th className="num">Hours Worked</th>
+                <th className="num">Hourly Cost</th>
+                <th className="num">Labor Cost</th>
               </tr>
             </thead>
             <tbody>
               {employees.map((employee) => (
                 <tr key={employee.employee_id}>
-                  <td>{employee.full_name}</td>
-                  <td>{employee.position}</td>
-                  <td className="col-wrap">
+                  <td data-label="Employee">{employee.full_name}</td>
+                  <td data-label="Position">{employee.position}</td>
+                  <td data-label="Assignment" className="col-wrap">
                     {employee.assignments.length === 0
                       ? '—'
                       : employee.assignments.map((assignment, index) => (
@@ -231,9 +232,9 @@ function ProjectDetailPage() {
                           </div>
                         ))}
                   </td>
-                  <td>{formatHours(employee.hours_worked)}</td>
-                  <td>{currencyFormatter.format(employee.hourly_cost)}</td>
-                  <td>{currencyFormatter.format(employee.labor_cost)}</td>
+                  <td data-label="Hours Worked" className="num">{formatHours(employee.hours_worked)}</td>
+                  <td data-label="Hourly Cost" className="num">{currencyFormatter.format(employee.hourly_cost)}</td>
+                  <td data-label="Labor Cost" className="num">{currencyFormatter.format(employee.labor_cost)}</td>
                 </tr>
               ))}
             </tbody>

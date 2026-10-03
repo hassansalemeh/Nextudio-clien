@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { OpenIcon } from '../../../shared/components/icons'
+import PageHeader from '../../../shared/components/PageHeader'
+import { OpenIcon, PlusIcon } from '../../../shared/components/icons'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
 import { getErrorMessage } from '../../../shared/lib/apiError'
@@ -28,9 +29,9 @@ function EstimatesPage() {
   return (
     <>
       <div className="doc-topbar">
-        <h1>Estimates</h1>
+        <PageHeader title="Estimates" description="Prepare and review prices before a client approves the work." />
         <button type="button" className="btn-pill" onClick={() => navigate('/estimates/new')}>
-          New Estimate
+          <PlusIcon /> New Estimate
         </button>
       </div>
 
@@ -52,26 +53,26 @@ function EstimatesPage() {
                 <th>Client</th>
                 <th>Project / Title</th>
                 <th>Date</th>
-                <th>Total</th>
+                <th className="num">Total</th>
                 <th>Status</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {estimates.map((estimate) => (
-                <tr key={estimate.id}>
-                  <td>{estimate.estimate_number}</td>
-                  <td>{estimate.client_name || '—'}</td>
-                  <td>{estimate.summary || estimate.title}</td>
-                  <td>{estimate.estimate_date}</td>
-                  <td>{formatMoney(estimate.total, estimate.currency)}</td>
-                  <td>
+                <tr key={estimate.id} className="clickable-row" onClick={() => navigate(`/estimates/${estimate.id}`)}>
+                  <td data-label="Estimate">{estimate.estimate_number}</td>
+                  <td data-label="Client">{estimate.client_name || '—'}</td>
+                  <td data-label="Project / Title">{estimate.summary || estimate.title}</td>
+                  <td data-label="Date">{estimate.estimate_date}</td>
+                  <td data-label="Total" className="num">{formatMoney(estimate.total, estimate.currency)}</td>
+                  <td data-label="Status">
                     <span className={`status-badge status-${estimate.status}`}>
                       {ESTIMATE_STATUS_LABELS[estimate.status] ?? estimate.status}
                     </span>
                   </td>
-                  <td>
-                    <button type="button" className="btn-sm btn-ghost" onClick={() => navigate(`/estimates/${estimate.id}`)}>
+                  <td data-label="Actions">
+                    <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); navigate(`/estimates/${estimate.id}`) }}>
 Open <OpenIcon />
 </button>
                   </td>

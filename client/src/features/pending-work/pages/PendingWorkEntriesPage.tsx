@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import { CheckIcon, CloseIcon } from '../../../shared/components/icons'
 import Spinner from '../../../shared/components/Spinner'
 import PageLoader from '../../../shared/components/PageLoader'
@@ -11,7 +12,7 @@ import type { PendingEntry } from '../types'
 
 // Manual work entries an employee added for a project they weren't yet assigned to on that date.
 // They never count toward hours, labor cost, Financial Summary or the Dashboard until an admin approves them.
-function PendingWorkEntriesPage() {
+function PendingWorkEntriesPage({ onPendingCountChange }: { onPendingCountChange?: (count: number) => void }) {
   const toast = useToast()
   const [entries, setEntries] = useState<PendingEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,13 +27,15 @@ function PendingWorkEntriesPage() {
 
   const load = useCallback(async () => {
     try {
-      setEntries(await fetchPendingWorkEntries())
+      const loadedEntries = await fetchPendingWorkEntries()
+      setEntries(loadedEntries)
+      onPendingCountChange?.(loadedEntries.filter((entry) => entry.status === 'pending').length)
     } catch (err) {
       setError(getErrorMessage(err, 'Could not load pending work entries.'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [onPendingCountChange])
 
   useEffect(() => {
     load()
@@ -127,7 +130,7 @@ function PendingWorkEntriesPage() {
 
   return (
     <>
-      <h1>Pending Work Entries</h1>
+      <PageHeader title="Approvals" description="Review work added outside assignments before it counts toward project costs." />
 
       <div className="card">
         <p className="empty-state">

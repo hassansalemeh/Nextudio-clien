@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { PencilIcon } from '../../../shared/components/icons'
+import PageHeader from '../../../shared/components/PageHeader'
+import { CloseIcon, PencilIcon, PlusIcon } from '../../../shared/components/icons'
 import Spinner from '../../../shared/components/Spinner'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -18,6 +19,7 @@ function ClientsPage() {
   const [error, setError] = useState('')
 
   const [form, setForm] = useState<ClientForm>(emptyForm())
+  const [formOpen, setFormOpen] = useState(false)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [edit, setEdit] = useState<ClientForm>(emptyForm())
@@ -47,6 +49,7 @@ function ClientsPage() {
       const newClient = await createClient(form)
       setClients((previousClients) => [newClient, ...previousClients])
       setForm(emptyForm())
+      setFormOpen(false)
       toast.success('Client added.')
     } catch (err) {
       const message = getErrorMessage(err, 'Could not create client.')
@@ -88,15 +91,21 @@ function ClientsPage() {
 
   return (
     <>
-      <h1>Clients</h1>
+      <PageHeader
+        title="Clients"
+        description="Keep client details together so you can find and update them quickly. Select a client to see and edit all details."
+        action={<button type="button" className="btn-primary header-action" aria-expanded={formOpen} aria-controls="client-entry" onClick={() => setFormOpen((open) => !open)}>
+          {formOpen ? <CloseIcon /> : <PlusIcon />} {formOpen ? 'Close form' : 'Add Client'}
+        </button>}
+      />
 
-      <div className="card">
+      {formOpen && <div className="card entry-panel" id="client-entry">
         <h2>Add Client</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <label className="form-field">
               Client Name
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
             </label>
             <label className="form-field">
               Contact Person
@@ -120,7 +129,7 @@ function ClientsPage() {
           </button>
           {error && <p className="error-message">{error}</p>}
         </form>
-      </div>
+      </div>}
 
       <div className="card">
         <h2>Existing Clients</h2>
@@ -129,7 +138,7 @@ function ClientsPage() {
         ) : clients.length === 0 ? (
           <EmptyState message="No clients yet." />
         ) : (
-          <table className="data-table">
+          <table className="data-table clients-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -179,14 +188,14 @@ function ClientsPage() {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={client.id}>
-                    <td>{client.name}</td>
-                    <td>{client.contact_name || '—'}</td>
-                    <td>{client.email || '—'}</td>
-                    <td>{client.phone || '—'}</td>
-                    <td>{client.address || '—'}</td>
-                    <td>
-                      <button type="button" className="btn-sm btn-ghost" onClick={() => startEdit(client)}>
+                  <tr key={client.id} className="clickable-row" onClick={() => startEdit(client)}>
+                    <td data-label="Name"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(client) }}>{client.name}</button></td>
+                    <td data-label="Contact">{client.contact_name || '—'}</td>
+                    <td data-label="Email">{client.email || '—'}</td>
+                    <td data-label="Phone">{client.phone || '—'}</td>
+                    <td data-label="Address">{client.address || '—'}</td>
+                    <td data-label="Actions">
+                      <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); startEdit(client) }}>
                         <PencilIcon /> Edit
                       </button>
                     </td>

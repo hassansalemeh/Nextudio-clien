@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import PageHeader from '../../../shared/components/PageHeader'
 import PageLoader from '../../../shared/components/PageLoader'
 import CreateClientDialog from '../components/CreateClientDialog'
 import EstimateActions from '../components/EstimateActions'
@@ -79,7 +80,14 @@ function EstimateEditorPage() {
   return (
     <>
       <div className="doc-topbar">
-        <h1>{isNew ? 'New estimate' : locked ? 'Approved estimate' : 'Edit estimate'}</h1>
+        <PageHeader
+          title={isNew ? 'New estimate' : locked ? 'Approved estimate' : 'Edit estimate'}
+          description={isNew
+            ? 'Choose a client, describe the work, and set the price.'
+            : locked
+              ? 'Review the work and prices in this approved estimate.'
+              : 'Update the client, work, and prices before approval.'}
+        />
         {actions}
       </div>
       {error && <p className="error-message">{error}</p>}

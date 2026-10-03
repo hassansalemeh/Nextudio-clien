@@ -28,12 +28,12 @@ function MyWorkTable({ workDate, today }: Props) {
           <tbody>
             {today.entries.map((entry) => (
               <tr key={entry.id}>
-                <td>{entry.project_name}</td>
-                <td className="col-wrap">{entry.description || '—'}</td>
-                <td>{formatTime(entry.started_at)}</td>
-                <td>{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
-                <td>{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
-                <td>
+                <td data-label="Project">{entry.project_name}</td>
+                <td data-label="Description" className="col-wrap">{entry.description || '—'}</td>
+                <td data-label="Start">{formatTime(entry.started_at)}</td>
+                <td data-label="End">{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
+                <td data-label="Duration">{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
+                <td data-label="Status">
                   {entry.status === 'pending' && (
                     <span className="status-badge status-pending">Waiting for approval</span>
                   )}

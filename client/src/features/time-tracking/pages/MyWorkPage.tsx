@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import PageLoader from '../../../shared/components/PageLoader'
 import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
@@ -159,7 +160,7 @@ function MyWorkPage() {
   if (loading) {
     return (
       <>
-        <h1>My Tasks</h1>
+        <PageHeader title="My Tasks" description="See your assigned work, track your time, and add work you completed." />
         <PageLoader label="Loading your work..." />
       </>
     )
@@ -167,7 +168,7 @@ function MyWorkPage() {
 
   return (
     <>
-      <h1>My Tasks</h1>
+      <PageHeader title="My Tasks" description="See your assigned work, track your time, and add work you completed." />
       {error && <p className="error-message">{error}</p>}
 
       <ClockStatusCard status={status} busy={busy} act={act} />

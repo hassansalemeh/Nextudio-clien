@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
+import { PlusIcon } from '../../../shared/components/icons'
 import { Link, useNavigate } from 'react-router-dom'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -27,10 +29,10 @@ function InvoicesPage() {
   return (
     <>
       <div className="doc-topbar">
-        <h1>Invoices</h1>
+        <PageHeader title="Invoices" description="See what you've billed clients and how much is still due." />
         <div className="doc-actions">
           <Link to="/invoices/new" className="btn-pill">
-            + New Client Funds Invoice
+            <PlusIcon /> New Client Funds Invoice
           </Link>
         </div>
       </div>
@@ -52,29 +54,29 @@ function InvoicesPage() {
                 <th>Type</th>
                 <th>Client</th>
                 <th>Project</th>
-                <th>Total</th>
-                <th>Paid</th>
-                <th>Amount Due</th>
+                <th className="num">Total</th>
+                <th className="num">Paid</th>
+                <th className="num">Amount Due</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {invoices.map((invoice) => (
-                <tr key={invoice.id}>
-                  <td>
-                    <Link to={`/invoices/${invoice.id}`}>{invoice.invoice_number}</Link>
+                <tr key={invoice.id} className="clickable-row" onClick={() => navigate(`/invoices/${invoice.id}`)}>
+                  <td data-label="Invoice">
+                    <Link to={`/invoices/${invoice.id}`} onClick={(event) => event.stopPropagation()}>{invoice.invoice_number}</Link>
                   </td>
-                  <td>
+                  <td data-label="Type">
                     <span className={`status-badge ${invoice.invoice_type === 'client_funds' ? 'status-draft' : 'status-approved'}`}>
                       {INVOICE_TYPE_LABELS[invoice.invoice_type] ?? invoice.invoice_type}
                     </span>
                   </td>
-                  <td>{invoice.client_name}</td>
-                  <td>{invoice.project_id ? <Link to={`/projects/${invoice.project_id}`}>{invoice.project_name}</Link> : '—'}</td>
-                  <td>{money(invoice.total, invoice.currency)}</td>
-                  <td>{money(invoice.paid, invoice.currency)}</td>
-                  <td>{money(invoice.amount_due, invoice.currency)}</td>
-                  <td>
+                  <td data-label="Client">{invoice.client_name}</td>
+                  <td data-label="Project">{invoice.project_id ? <Link to={`/projects/${invoice.project_id}`} onClick={(event) => event.stopPropagation()}>{invoice.project_name}</Link> : '—'}</td>
+                  <td data-label="Total" className="num">{money(invoice.total, invoice.currency)}</td>
+                  <td data-label="Paid" className="num">{money(invoice.paid, invoice.currency)}</td>
+                  <td data-label="Amount Due" className="num">{money(invoice.amount_due, invoice.currency)}</td>
+                  <td data-label="Status">
                     <span className={`status-badge status-${invoice.status}`}>{INVOICE_STATUS_LABELS[invoice.status] ?? invoice.status}</span>
                   </td>
                 </tr>

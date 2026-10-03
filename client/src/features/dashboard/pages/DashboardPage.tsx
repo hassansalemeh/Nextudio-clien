@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import PageHeader from '../../../shared/components/PageHeader'
 import { Link } from 'react-router-dom'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -6,6 +7,9 @@ import { getErrorMessage } from '../../../shared/lib/apiError'
 import { dayRange, formatDuration, formatTime, localDateString } from '../../../shared/lib/timeUtils'
 import { INVOICE_STATUS_LABELS } from '../../invoices/types'
 import { fetchDashboard } from '../api'
+
+const ProjectValueChart = lazy(() => import('../../../shared/components/ProjectValueChart'))
+const ReceiptBreakdownChart = lazy(() => import('../../../shared/components/ReceiptBreakdownChart'))
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 const money = (amount: number, currency = 'USD') =>
@@ -44,16 +48,6 @@ type Dashboard = {
   }
 }
 
-function StatCard({ label, value, note, tone }: { label: string; value: string; note: string; tone?: 'negative' | 'warning' }) {
-  return (
-    <div className={`stat-card${tone === 'warning' ? ' stat-warning' : ''}`}>
-      <div className="stat-label">{label}</div>
-      <div className={`stat-value${tone === 'negative' ? ' negative' : ''}`}>{value}</div>
-      <div className="stat-note">{note}</div>
-    </div>
-  )
-}
-
 function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null)
   const [error, setError] = useState('')
@@ -88,48 +82,37 @@ function DashboardPage() {
 
   return (
     <>
-      <h1>Dashboard</h1>
+      <PageHeader title="Dashboard" description="A quick view of project value, payments, invoices, and today's team activity." />
       {error && <p className="error-message">{error}</p>}
 
-      <div className="stat-grid">
-        <StatCard label="Confirmed Project Value" value={money(cards.confirmed_value)} note="Value of approved (confirmed) work" />
-        <StatCard label="Employee Labor Cost" value={money(cards.labor_cost)} note="Cost of employee time on confirmed projects" />
-        <StatCard
-          label="Project Remaining"
-          value={money(cards.project_remaining)}
-          note="Confirmed value minus labor cost"
-          tone={cards.project_remaining < 0 ? 'negative' : undefined}
-        />
-        <StatCard label="Amount Invoiced" value={money(cards.invoiced)} note="Total value of all invoices" />
-        <StatCard label="Payments Received" value={money(cards.payments_received)} note="Cash actually collected (every recorded payment)" />
-        <StatCard label="Outstanding Invoices" value={money(cards.outstanding)} note="What invoices still have due after their payments" />
-      </div>
+      <dl className="dashboard-metrics">
+        <div><dt>Confirmed Project Value</dt><dd>{money(cards.confirmed_value)}<span>Fees agreed with clients</span></dd></div>
+        <div><dt>Payments Received</dt><dd>{money(cards.payments_received)}<span>Professional fee payments</span></dd></div>
+        <div><dt>Outstanding Invoices</dt><dd>{money(cards.outstanding)}<span>Professional fees still due</span></dd></div>
+        <div><dt>Project Remaining</dt><dd className={cards.project_remaining < 0 ? 'negative' : undefined}>{money(cards.project_remaining)}<span>Confirmed fees minus staff cost</span></dd></div>
+      </dl>
+      <dl className="dashboard-context">
+        <div><dt>Staff cost on confirmed work</dt><dd>{money(cards.labor_cost)}</dd></div>
+        <div><dt>Professional fees invoiced</dt><dd>{money(cards.invoiced)}</dd></div>
+        <div><dt>Staff cost before fee approval <span>({pendingCount} {pendingCount === 1 ? 'project' : 'projects'})</span></dt><dd>{money(cards.pending_exposure)}</dd></div>
+      </dl>
 
-      <StatCard
-        label="Pending Project Exposure"
-        value={money(cards.pending_exposure)}
-        note={`Labor already spent on ${pendingCount} Pending / Unconfirmed project${pendingCount === 1 ? '' : 's'} with no confirmed revenue yet`}
-        tone="warning"
-      />
+      <Suspense fallback={<PageLoader label="Loading charts..." />}>
+        <div className="dashboard-charts">
+          <ProjectValueChart projects={projects} />
+          <ReceiptBreakdownChart
+            professionalReceived={cards.payments_received}
+            clientFundsReceived={cards.client_funds_received}
+            totalReceived={cards.total_client_receipts}
+            clientFundsInvoiced={cards.client_funds_invoiced}
+            clientFundsOutstanding={cards.client_funds_outstanding}
+          />
+        </div>
+      </Suspense>
 
-      <h2 style={{ marginTop: '1.5rem' }}>Client Funds (Project Expenses)</h2>
-      <p className="empty-state" style={{ marginTop: 0 }}>
-        Money held on behalf of clients for construction workers, suppliers, materials and site expenses. Never part of Nextudio's
-        professional/design fee revenue above.
-      </p>
-      <div className="stat-grid">
-        <StatCard label="Client Funds Invoiced" value={money(cards.client_funds_invoiced)} note="Total value of all Client Funds invoices" />
-        <StatCard label="Client Funds Received" value={money(cards.client_funds_received)} note="Cash received for project expenses, not design fees" />
-        <StatCard label="Client Funds Outstanding" value={money(cards.client_funds_outstanding)} note="What Client Funds invoices still have due" />
-        <StatCard
-          label="Total Client Receipts"
-          value={money(cards.total_client_receipts)}
-          note="Professional payments + Client Funds received. A cash-in / turnover figure, not a revenue figure."
-        />
-      </div>
-
-      <div className="card" style={{ marginTop: '1.5rem' }}>
-        <h2>Projects Financial Overview</h2>
+      <details className="card dashboard-details">
+        <summary>Project figures <span>{projects.length} projects</span></summary>
+        <div className="dashboard-detail-content">
         {projects.length === 0 ? (
           <EmptyState message="No projects yet." />
         ) : (
@@ -138,25 +121,25 @@ function DashboardPage() {
               <tr>
                 <th>Project</th>
                 <th>Status</th>
-                <th>Amount</th>
-                <th>Labor Cost</th>
-                <th>Remaining</th>
+                <th className="num">Amount</th>
+                <th className="num">Labor Cost</th>
+                <th className="num">Remaining</th>
               </tr>
             </thead>
             <tbody>
               {projects.map((project) => (
                 <tr key={project.project_id}>
-                  <td>
+                  <td data-label="Project">
                     <Link to={`/projects/${project.project_id}`}>{project.name}</Link>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`status-badge status-${project.fee_status}`}>
                       {project.fee_status === 'confirmed' ? 'Confirmed' : 'Pending'}
                     </span>
                   </td>
-                  <td>{money(project.amount)}</td>
-                  <td>{money(project.deducted)}</td>
-                  <td className={project.remaining < 0 ? 'negative' : undefined} style={{ fontWeight: 600 }}>
+                  <td data-label="Amount" className="num">{money(project.amount)}</td>
+                  <td data-label="Labor Cost" className="num">{money(project.deducted)}</td>
+                  <td data-label="Remaining" className={'num' + (project.remaining < 0 ? ' negative' : '')} style={{ fontWeight: 600 }}>
                     {money(project.remaining)}
                   </td>
                 </tr>
@@ -164,10 +147,13 @@ function DashboardPage() {
             </tbody>
           </table>
         )}
-      </div>
+        <p className="dashboard-more"><Link to="/financial-summary">View Financial Summary →</Link></p>
+        </div>
+      </details>
 
-      <div className="card">
-        <h2>Invoices</h2>
+      <details className="card dashboard-details">
+        <summary>Invoices <span>Open and recent professional invoices</span></summary>
+        <div className="dashboard-detail-content">
         {invoices.length === 0 ? (
           <EmptyState message="No invoices yet." />
         ) : (
@@ -176,23 +162,23 @@ function DashboardPage() {
               <tr>
                 <th>Invoice</th>
                 <th>Client</th>
-                <th>Total</th>
-                <th>Paid</th>
-                <th>Due</th>
+                <th className="num">Total</th>
+                <th className="num">Paid</th>
+                <th className="num">Due</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {invoices.map((invoice) => (
                 <tr key={invoice.id}>
-                  <td>
+                  <td data-label="Invoice">
                     <Link to={`/invoices/${invoice.id}`}>{invoice.invoice_number}</Link>
                   </td>
-                  <td>{invoice.client_name}</td>
-                  <td>{money(invoice.total, invoice.currency)}</td>
-                  <td>{money(invoice.paid, invoice.currency)}</td>
-                  <td>{money(invoice.amount_due, invoice.currency)}</td>
-                  <td>
+                  <td data-label="Client">{invoice.client_name}</td>
+                  <td data-label="Total" className="num">{money(invoice.total, invoice.currency)}</td>
+                  <td data-label="Paid" className="num">{money(invoice.paid, invoice.currency)}</td>
+                  <td data-label="Due" className="num">{money(invoice.amount_due, invoice.currency)}</td>
+                  <td data-label="Status">
                     <span className={`status-badge status-${invoice.status}`}>{INVOICE_STATUS_LABELS[invoice.status] ?? invoice.status}</span>
                   </td>
                 </tr>
@@ -203,10 +189,12 @@ function DashboardPage() {
         <p style={{ marginBottom: 0 }}>
           <Link to="/invoices">View all invoices →</Link>
         </p>
-      </div>
+        </div>
+      </details>
 
-      <div className="card">
-        <h2>Recent Payments</h2>
+      <details className="card dashboard-details">
+        <summary>Recent payments <span>{recentPayments.length} latest payments</span></summary>
+        <div className="dashboard-detail-content">
         {recentPayments.length === 0 ? (
           <EmptyState message="No payments recorded yet." />
         ) : (
@@ -216,20 +204,20 @@ function DashboardPage() {
                 <th>Date</th>
                 <th>Project</th>
                 <th>Client</th>
-                <th>Amount</th>
+                <th className="num">Amount</th>
                 <th>Reason</th>
               </tr>
             </thead>
             <tbody>
               {recentPayments.map((payment) => (
                 <tr key={payment.id}>
-                  <td>{payment.payment_date}</td>
-                  <td>
+                  <td data-label="Date">{payment.payment_date}</td>
+                  <td data-label="Project">
                     <Link to={`/projects/${payment.project_id}`}>{payment.project_name}</Link>
                   </td>
-                  <td>{payment.client_name}</td>
-                  <td>{money(Number(payment.amount))}</td>
-                  <td>{payment.reason}</td>
+                  <td data-label="Client">{payment.client_name}</td>
+                  <td data-label="Amount" className="num">{money(Number(payment.amount))}</td>
+                  <td data-label="Reason">{payment.reason}</td>
                 </tr>
               ))}
             </tbody>
@@ -238,10 +226,12 @@ function DashboardPage() {
         <p style={{ marginBottom: 0 }}>
           <Link to="/payments">All payments →</Link>
         </p>
-      </div>
+        </div>
+      </details>
 
-      <div className="card">
-        <h2>Today</h2>
+      <details className="card dashboard-details">
+        <summary>Team today <span>{today.clocked_in.length} clocked in · {formatDuration(today.hours_recorded * 3600000)} recorded</span></summary>
+        <div className="dashboard-detail-content">
         <div className="today-grid">
           <div>
             <div className="stat-label">Employees clocked in</div>
@@ -275,7 +265,8 @@ function DashboardPage() {
             )}
           </div>
         </div>
-      </div>
+        </div>
+      </details>
     </>
   )
 }

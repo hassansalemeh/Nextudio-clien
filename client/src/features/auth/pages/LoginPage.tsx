@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../../app/auth'
 import Spinner from '../../../shared/components/Spinner'
+import PageHeader from '../../../shared/components/PageHeader'
 
 function LoginPage() {
   const { login } = useAuth()
@@ -23,7 +24,7 @@ function LoginPage() {
   return (
     <div className="card" style={{ maxWidth: '24rem', margin: '4rem auto' }}>
       <img className="login-logo" src="/nextudio-logo.webp" alt="Nextudio architects" />
-      <h1>Log in</h1>
+      <PageHeader title="Log in" description="Sign in to manage your clients, projects, and work." />
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <label className="form-field">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CheckIcon, CloseIcon, PencilIcon } from '../../../shared/components/icons'
+import PageHeader from '../../../shared/components/PageHeader'
+import { CheckIcon, CloseIcon, PencilIcon, PlusIcon } from '../../../shared/components/icons'
 import Spinner from '../../../shared/components/Spinner'
 import PageLoader from '../../../shared/components/PageLoader'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -23,6 +24,7 @@ function EmployeesPage() {
   const [fullName, setFullName] = useState('')
   const [position, setPosition] = useState('')
   const [monthlySalary, setMonthlySalary] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [edit, setEdit] = useState({ full_name: '', position: '', monthly_salary: '', is_active: true })
@@ -59,6 +61,7 @@ function EmployeesPage() {
       setFullName('')
       setPosition('')
       setMonthlySalary('')
+      setFormOpen(false)
       toast.success('Employee added.')
     } catch (err) {
       const message = getErrorMessage(err, 'Could not create employee.')
@@ -104,15 +107,21 @@ function EmployeesPage() {
 
   return (
     <>
-      <h1>Employees</h1>
+      <PageHeader
+        title="Employees"
+        description="Keep your team's names, roles, and pay details in one place. Select a person to update their details."
+        action={<button type="button" className="btn-primary header-action" aria-expanded={formOpen} aria-controls="employee-entry" onClick={() => setFormOpen((open) => !open)}>
+          {formOpen ? <CloseIcon /> : <PlusIcon />} {formOpen ? 'Close form' : 'Add Employee'}
+        </button>}
+      />
 
-      <div className="card">
+      {formOpen && <div className="card entry-panel" id="employee-entry">
         <h2>Add Employee</h2>
         <form onSubmit={handleEmployeeSubmit}>
           <div className="form-grid">
             <label className="form-field">
               Full Name
-              <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} required autoFocus />
             </label>
             <label className="form-field">
               Position
@@ -135,10 +144,11 @@ function EmployeesPage() {
           </button>
           {employeesError && <p className="error-message">{employeesError}</p>}
         </form>
-      </div>
+      </div>}
 
       <div className="card">
         <h2>Existing Employees</h2>
+        {employeesError && !formOpen && <p className="error-message">{employeesError}</p>}
         {employeesLoading ? (
           <PageLoader label="Loading employees..." />
         ) : employees.length === 0 ? (
@@ -149,24 +159,24 @@ function EmployeesPage() {
               <tr>
                 <th>Full Name</th>
                 <th>Position</th>
-                <th>Monthly Salary</th>
+                <th className="num">Monthly Salary</th>
                 <th>Status</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {employees.map((employee) => [
-                <tr key={employee.id}>
-                  <td>{employee.full_name}</td>
-                  <td>{employee.position}</td>
-                  <td>{currencyFormatter.format(Number(employee.monthly_salary))}</td>
-                  <td>
+                <tr key={employee.id} className="clickable-row" onClick={() => startEdit(employee)}>
+                  <td data-label="Full Name"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(employee) }}>{employee.full_name}</button></td>
+                  <td data-label="Position">{employee.position}</td>
+                  <td data-label="Monthly Salary" className="num">{currencyFormatter.format(Number(employee.monthly_salary))}</td>
+                  <td data-label="Status">
                     <span className={`status-badge ${employee.is_active ? 'status-active' : 'status-inactive'}`}>
                       {employee.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td>
-                    <button type="button" className="btn-sm btn-ghost" onClick={() => startEdit(employee)}>
+                  <td data-label="Actions">
+                    <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); startEdit(employee) }}>
 <PencilIcon /> Edit
 </button>
                   </td>

@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import PageHeader from '../../../shared/components/PageHeader'
 import PageLoader from '../../../shared/components/PageLoader'
 import Spinner from '../../../shared/components/Spinner'
 import { COMPANY } from '../../../shared/lib/companyProfile'
@@ -80,7 +81,14 @@ function ClientFundsInvoiceEditorPage() {
   return (
     <>
       <div className="doc-topbar">
-        <h1>{isNew ? 'New Client Funds Invoice' : locked ? 'Client Funds Invoice' : 'Edit Client Funds Invoice'}</h1>
+        <PageHeader
+          title={isNew ? 'New Client Funds Invoice' : locked ? 'Client Funds Invoice' : 'Edit Client Funds Invoice'}
+          description={isNew
+            ? 'Record client money set aside for project expenses.'
+            : locked
+              ? 'Review this client funds invoice and its saved details.'
+              : 'Update the client funds invoice before recording payments.'}
+        />
         {actions}
       </div>
       {error && <p className="error-message">{error}</p>}
