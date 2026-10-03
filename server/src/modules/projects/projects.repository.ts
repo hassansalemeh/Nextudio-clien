@@ -152,7 +152,16 @@ export async function deleteInvoiceById(client: PoolClient, invoiceId: string) {
 }
 
 // Every table that references projects (all foreign keys are RESTRICT, so children go first)
-const PROJECT_CHILD_TABLES = ['time_entries', 'work_assignments', 'project_assignments', 'work_entries', 'project_services', 'money_locations']
+const PROJECT_CHILD_TABLES = [
+  'time_entries',
+  'work_assignments',
+  'project_assignments',
+  'project_members',
+  'project_service_types',
+  'work_entries',
+  'project_services',
+  'money_locations',
+]
 
 export async function deleteProjectChildren(client: PoolClient, projectId: string) {
   for (const table of PROJECT_CHILD_TABLES) {
