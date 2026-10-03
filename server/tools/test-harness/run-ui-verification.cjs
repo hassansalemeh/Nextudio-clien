@@ -684,6 +684,7 @@ async function main() {
     const sidebarHiddenInitially = (await page.locator('#app-sidebar.sidebar-open').count()) === 0
     await page.getByRole('button', { name: 'Open menu' }).click()
     await page.waitForSelector('#app-sidebar.sidebar-open')
+    await page.waitForTimeout(300) // let the 160ms slide-in transition finish before screenshotting
     await screenshot(page, 'mobile-menu-open')
     await page.getByRole('link', { name: 'Clients', exact: true }).click()
     await page.waitForSelector('h1:has-text("Clients")')
