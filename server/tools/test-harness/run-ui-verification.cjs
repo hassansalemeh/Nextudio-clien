@@ -607,6 +607,91 @@ async function main() {
     await screenshot(page, 'time-tracking-review')
     record('time tracking review shows the employee\'s real sessions and entries', true)
 
+    // ======================================================================
+    // Extra: a very long project name (chart/table wrapping), dashboard with real data,
+    // horizontal-overflow checks, sidebar-stays-fixed-while-scrolling.
+    // ======================================================================
+    async function hasHorizontalOverflow(p) {
+      return p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
+    }
+
+    const LONG_PROJECT_NAME =
+      'A Very Long Project Name That Keeps Going To See If The Chart Axis And Table Column Truncate Or Wrap Instead Of Breaking The Page Layout'
+
+    await page.getByRole('link', { name: 'Projects', exact: true }).click()
+    await page.waitForSelector('h1:has-text("Projects")')
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('#project-entry')
+    const longNameCard = cardByHeading(page, 'Add Project')
+    await longNameCard.locator('select').first().selectOption({ label: 'UI Verify Client' })
+    await longNameCard.locator('input').nth(0).fill(LONG_PROJECT_NAME)
+    await longNameCard.getByLabel('Total Fee').fill('5000')
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('.toast-success')
+    await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
+    record('project with a very long name created', true)
+    await screenshot(page, 'projects-long-name-desktop')
+    record('projects page has no horizontal overflow (long name, desktop)', !(await hasHorizontalOverflow(page)))
+
+    await page.getByRole('link', { name: 'Dashboard', exact: true }).click()
+    await page.waitForSelector('text=Confirmed Project Value')
+    await page.waitForTimeout(500) // let the lazy-loaded chart chunks mount and recharts measure its container
+    await screenshot(page, 'dashboard-real-data')
+    const chartSvgCount = await page.locator('.dashboard-charts svg').count()
+    record('dashboard charts render with real data (svg present)', chartSvgCount > 0, `svg count=${chartSvgCount}`)
+    record('dashboard has no horizontal overflow (long project name, desktop)', !(await hasHorizontalOverflow(page)))
+
+    const sidebarBefore = await page.locator('.app-sidebar').boundingBox()
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    const sidebarAfter = await page.locator('.app-sidebar').boundingBox()
+    record(
+      'sidebar stays fixed in place while the page scrolls',
+      Boolean(sidebarBefore && sidebarAfter && sidebarBefore.y === sidebarAfter.y && sidebarBefore.x === sidebarAfter.x),
+      `before=${JSON.stringify(sidebarBefore)} after=${JSON.stringify(sidebarAfter)}`
+    )
+    await page.evaluate(() => window.scrollTo(0, 0))
+
+    // ======================================================================
+    // Phone-width pass: revisit every route at a phone viewport, screenshot each, and
+    // check for horizontal overflow at each one.
+    // ======================================================================
+    await page.setViewportSize({ width: 390, height: 844 })
+
+    const mobileRoutes = [
+      ['/dashboard', 'Confirmed Project Value'],
+      ['/clients', 'UI Verify Client'],
+      ['/projects', LONG_PROJECT_NAME],
+      ['/payments', 'UI Verify Project'],
+      ['/employees', 'UI Verify Employee'],
+      ['/assignments', 'Select Project'],
+      ['/estimates', 'UI Verify Client'],
+      ['/invoices', 'UI Verify Client'],
+      ['/financial-summary', 'All project figures'],
+      ['/time-tracking', 'Review when employees clocked in'],
+      ['/pending-work', 'Nothing waiting for review.'],
+    ]
+    for (const [route, waitText] of mobileRoutes) {
+      await page.goto(baseUrl + route)
+      await page.waitForSelector(`text=${waitText}`, { timeout: 10000 })
+      await page.waitForTimeout(300)
+      await screenshot(page, `mobile${route.replace(/\//g, '-')}`)
+      record(`mobile ${route} has no horizontal overflow`, !(await hasHorizontalOverflow(page)))
+    }
+
+    // ---- mobile menu: hidden by default, opens via hamburger, closes after following a link ----
+    await page.goto(baseUrl + '/dashboard')
+    await page.waitForSelector('text=Confirmed Project Value')
+    const sidebarHiddenInitially = (await page.locator('#app-sidebar.sidebar-open').count()) === 0
+    await page.getByRole('button', { name: 'Open menu' }).click()
+    await page.waitForSelector('#app-sidebar.sidebar-open')
+    await screenshot(page, 'mobile-menu-open')
+    await page.getByRole('link', { name: 'Clients', exact: true }).click()
+    await page.waitForSelector('h1:has-text("Clients")')
+    const sidebarClosedAfterNav = (await page.locator('#app-sidebar.sidebar-open').count()) === 0
+    record('mobile menu hidden by default, opens via hamburger, closes after following a link', sidebarHiddenInitially && sidebarClosedAfterNav)
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+
     await context.close()
   } catch (err) {
     record(`UNCAUGHT: ${err.message}`, false)
