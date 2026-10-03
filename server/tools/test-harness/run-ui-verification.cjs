@@ -543,16 +543,15 @@ async function main() {
     await page.getByPlaceholder('e.g. Advance for construction workers, Material purchases, Supplier payment...').fill('UI Verify Funds Item')
     await page.getByLabel('Unit price').fill('200')
 
-    // ---- Duration picker: new Client Funds invoice defaults "Payment due date" to 14 days ----
-    const invoiceDateValue = await page.locator('#cf-date').inputValue()
-    const expectedDue14 = addDaysLocal(invoiceDateValue, 14)
-    const dueFourteenPressed = await page.getByRole('button', { name: '14 days' }).getAttribute('aria-pressed')
-    const dueHint14 = await page.locator('.duration-picker .doc-hint').first().innerText()
+    // ---- Duration picker: new Client Funds invoice defaults "Payment due date" to No due date (as before) ----
+    const noDueDatePressed = await page.getByRole('button', { name: 'No due date' }).getAttribute('aria-pressed')
+    const dueHintCount = await page.locator('.duration-picker .doc-hint').count()
     record(
-      'new Client Funds invoice defaults "Payment due date" to 14 days',
-      dueFourteenPressed === 'true' && dueHint14.includes(formatLongDateLocal(expectedDue14)),
-      `hint="${dueHint14}"`
+      'new Client Funds invoice defaults "Payment due date" to No due date',
+      noDueDatePressed === 'true' && dueHintCount === 0
     )
+    await page.locator('.duration-picker').scrollIntoViewIfNeeded()
+    await screenshot(page, 'invoice-duration-picker')
 
     await page.getByRole('button', { name: 'Save and continue' }).first().click()
     await page.waitForSelector('.toast-success', { timeout: 10000 })
@@ -563,11 +562,11 @@ async function main() {
     const invoiceId = page.url().match(/\/invoices\/(\d+)\/edit$/)[1]
     recordRoute(`/invoices/${invoiceId}/edit`, 'admin', true, 'saved and loaded (new invoices land here)')
     await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
-    const savedDueDate = await db.query("select to_char(due_date, 'YYYY-MM-DD') as due_date from invoices where id = $1", [invoiceId])
+    const savedDueDate = await db.query('select due_date from invoices where id = $1', [invoiceId])
     record(
-      'new Client Funds invoice saves the correct default due date',
-      savedDueDate.rows[0].due_date === expectedDue14,
-      `saved=${savedDueDate.rows[0].due_date} expected=${expectedDue14}`
+      'new Client Funds invoice saves with no due date',
+      savedDueDate.rows[0].due_date === null,
+      `saved=${savedDueDate.rows[0].due_date}`
     )
 
     await page.getByRole('button', { name: 'View Invoice' }).first().click()
@@ -594,6 +593,43 @@ async function main() {
       consoleErrors.length === invoicePreviewErrorsBefore,
       consoleErrors.length === invoicePreviewErrorsBefore ? 'PDF rendered' : 'console error during PDF render'
     )
+
+    // ---- Duration picker: an existing invoice with no due date opens showing "No due date", and
+    // picking a preset on it saves the right date ----
+    await page.goto(`${baseUrl}/invoices/${invoiceId}/edit`)
+    await page.waitForSelector('text=Edit Client Funds Invoice')
+    const reopenedNoDuePressed = await page.getByRole('button', { name: 'No due date' }).getAttribute('aria-pressed')
+    record('an existing invoice with no due date opens showing "No due date"', reopenedNoDuePressed === 'true')
+
+    const reopenedInvoiceDate = await page.locator('#cf-date').inputValue()
+    const expectedInvoiceDue14 = addDaysLocal(reopenedInvoiceDate, 14)
+    await page.getByRole('button', { name: '14 days' }).click()
+    const invoiceDueHint = await page.locator('.duration-picker .doc-hint').first().innerText()
+    record(
+      'picking "14 days" on an invoice shows the correct resulting date',
+      invoiceDueHint.includes(formatLongDateLocal(expectedInvoiceDue14)),
+      `hint="${invoiceDueHint}"`
+    )
+    await page.getByRole('button', { name: 'Save and continue' }).first().click()
+    await page.waitForSelector('.toast-success', { timeout: 10000 })
+    await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
+    const invoiceDueAfterPreset = await db.query(
+      "select to_char(due_date, 'YYYY-MM-DD') as due_date from invoices where id = $1",
+      [invoiceId]
+    )
+    record(
+      'picking "14 days" on an invoice saves the correct date',
+      invoiceDueAfterPreset.rows[0].due_date === expectedInvoiceDue14,
+      `saved=${invoiceDueAfterPreset.rows[0].due_date} expected=${expectedInvoiceDue14}`
+    )
+
+    // ---- and setting it back to no due date saves it as blank again ----
+    await page.getByRole('button', { name: 'No due date' }).click()
+    await page.getByRole('button', { name: 'Save and continue' }).first().click()
+    await page.waitForSelector('.toast-success', { timeout: 10000 })
+    await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
+    const invoiceDueAfterClearing = await db.query('select due_date from invoices where id = $1', [invoiceId])
+    record('picking "No due date" on an invoice clears it back to blank', invoiceDueAfterClearing.rows[0].due_date === null)
 
     // ======================================================================
     // Financial Summary: render check

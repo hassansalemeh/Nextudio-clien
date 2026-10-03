@@ -114,7 +114,7 @@ function ClientFundsCustomerAndMeta({
         <input id="cf-date" type="date" value={invoiceDate} onChange={(e) => onInvoiceDateChange(e.target.value)} />
 
         <label>Payment due date</label>
-        <DurationPicker resultLabel="Payment due" baseDate={invoiceDate} value={dueDate} onChange={onDueDateChange} />
+        <DurationPicker resultLabel="Payment due" baseDate={invoiceDate} value={dueDate} onChange={onDueDateChange} noneLabel="No due date" />
 
         <label htmlFor="cf-project">Project</label>
         <div>

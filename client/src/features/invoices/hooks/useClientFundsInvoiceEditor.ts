@@ -8,9 +8,6 @@ import type { ClientFundsClient, ClientFundsItemForm, ClientFundsProject } from 
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-// New Client Funds invoices are due 14 days out by default, matching the estimate "Valid until" default
-const DEFAULT_DUE_DAYS = 14
-
 function emptyForm() {
   return {
     title: 'Client Funds / Project Expenses',
@@ -20,7 +17,7 @@ function emptyForm() {
     customer_ref: '',
     invoice_number: '',
     invoice_date: localDateString(),
-    due_date: addDays(localDateString(), DEFAULT_DUE_DAYS),
+    due_date: '',
     currency: 'USD',
     notes: '',
     payment_terms: '',
