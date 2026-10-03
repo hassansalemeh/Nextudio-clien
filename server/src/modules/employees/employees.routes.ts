@@ -1,11 +1,12 @@
 import type { Express } from 'express'
+import { organizationIdOf } from '../../middleware/auth'
 import { HttpError } from '../../shared'
 import { createEmployee, listEmployees, parseCreateEmployeeInput, parseUpdateEmployeeInput, updateEmployee } from './employees.service'
 
 export function registerEmployeeRoutes(app: Express) {
-  app.get('/api/employees', async (_req, res) => {
+  app.get('/api/employees', async (req, res) => {
     try {
-      res.json(await listEmployees())
+      res.json(await listEmployees(organizationIdOf(req)))
     } catch {
       res.status(500).json({ error: 'Failed to fetch employees' })
     }
@@ -21,7 +22,7 @@ export function registerEmployeeRoutes(app: Express) {
     }
 
     try {
-      res.status(201).json(await createEmployee(input))
+      res.status(201).json(await createEmployee(organizationIdOf(req), input))
     } catch {
       res.status(500).json({ error: 'Failed to create employee' })
     }
@@ -38,7 +39,7 @@ export function registerEmployeeRoutes(app: Express) {
     }
 
     try {
-      const employee = await updateEmployee(employeeId, input)
+      const employee = await updateEmployee(organizationIdOf(req), employeeId, input)
       if (!employee) {
         return res.status(404).json({ error: 'Employee not found' })
       }

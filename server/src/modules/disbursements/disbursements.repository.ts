@@ -10,8 +10,10 @@ export async function selectDisbursements(invoiceId: string) {
   return result.rows
 }
 
-export async function selectInvoiceTypeById(invoiceId: string) {
-  const result = await pool.query('SELECT invoice_type FROM invoices WHERE id = $1', [invoiceId])
+// invoice_disbursements has no organization_id of its own, so every caller reaches it through its
+// invoice, which does - this is the one place that check happens.
+export async function selectInvoiceTypeById(organizationId: string, invoiceId: string) {
+  const result = await pool.query('SELECT invoice_type FROM invoices WHERE id = $1 AND organization_id = $2', [invoiceId, organizationId])
   return result.rows[0] ?? null
 }
 

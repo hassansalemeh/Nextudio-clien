@@ -41,7 +41,7 @@ export async function updateClient(
 }
 
 // Used by estimates/invoices to freeze a snapshot of the client's current data onto a document
-export async function selectClientSnapshotSource(db: { query: PoolClient['query'] }, clientId: unknown) {
-  const result = await db.query('SELECT name, email, phone, address FROM clients WHERE id = $1', [clientId])
+export async function selectClientSnapshotSource(db: { query: PoolClient['query'] }, organizationId: string, clientId: unknown) {
+  const result = await db.query('SELECT name, email, phone, address FROM clients WHERE id = $1 AND organization_id = $2', [clientId, organizationId])
   return result.rows[0] ?? null
 }

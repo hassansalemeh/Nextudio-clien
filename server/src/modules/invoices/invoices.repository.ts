@@ -26,13 +26,15 @@ export const INVOICE_SELECT = `
   LEFT JOIN projects fwd_project ON fwd_project.id = invoices.project_id
   LEFT JOIN projects reverse_project ON reverse_project.source_invoice_id = invoices.id`
 
-export async function selectInvoices() {
-  const result = await pool.query(`${INVOICE_SELECT} ORDER BY invoices.invoice_date DESC, invoices.id DESC`)
+export async function selectInvoices(organizationId: string) {
+  const result = await pool.query(`${INVOICE_SELECT} WHERE invoices.organization_id = $1 ORDER BY invoices.invoice_date DESC, invoices.id DESC`, [
+    organizationId,
+  ])
   return result.rows
 }
 
-export async function selectInvoiceById(invoiceId: string | number) {
-  const result = await pool.query(`${INVOICE_SELECT} WHERE invoices.id = $1`, [invoiceId])
+export async function selectInvoiceById(organizationId: string, invoiceId: string | number) {
+  const result = await pool.query(`${INVOICE_SELECT} WHERE invoices.id = $1 AND invoices.organization_id = $2`, [invoiceId, organizationId])
   return result.rows[0] ?? null
 }
 
@@ -54,14 +56,25 @@ export async function selectInvoicePayments(invoiceId: string | number) {
   return result.rows
 }
 
-export async function selectProjectForClientFunds(db: Queryable, projectId: string) {
-  const result = await db.query('SELECT id, client_id, location FROM projects WHERE id = $1', [projectId])
+export async function selectProjectForClientFunds(db: Queryable, organizationId: string, projectId: string) {
+  const result = await db.query('SELECT id, client_id, location FROM projects WHERE id = $1 AND organization_id = $2', [projectId, organizationId])
   return result.rows[0] ?? null
 }
 
-export async function selectNextClientFundsSequence(db: Queryable = pool) {
-  const result = await db.query("SELECT nextval('client_funds_invoice_number_seq') AS n")
-  return result.rows[0].n
+// Per-company numbering: the highest trailing number already used by this company's Client Funds
+// invoices, plus one. Mirrors estimates.service's nextEstimateNumber() - no shared DB sequence, so two
+// companies' numbering never interferes with each other.
+export async function selectClientFundsInvoiceNumbers(organizationId: string, db: Queryable = pool) {
+  const result = await db.query(`SELECT invoice_number FROM invoices WHERE organization_id = $1 AND invoice_type = 'client_funds'`, [organizationId])
+  return result.rows as { invoice_number: string }[]
+}
+
+export async function selectClientFundsInvoiceNumberTaken(organizationId: string, number: string, db: Queryable = pool) {
+  const result = await db.query(
+    `SELECT 1 FROM invoices WHERE organization_id = $1 AND invoice_type = 'client_funds' AND invoice_number = $2`,
+    [organizationId, number]
+  )
+  return result.rows.length > 0
 }
 
 export async function deleteInvoiceItems(client: PoolClient, invoiceId: string | number) {
@@ -112,18 +125,24 @@ type ClientFundsHeader = {
   introduction: string | null
 }
 
-export async function insertClientFundsInvoice(client: PoolClient, header: ClientFundsHeader, projectLocation: string | null, snapshot: ClientSnapshot) {
+export async function insertClientFundsInvoice(
+  client: PoolClient,
+  organizationId: string,
+  header: ClientFundsHeader,
+  projectLocation: string | null,
+  snapshot: ClientSnapshot
+) {
   const inserted = await client.query(
-    `INSERT INTO invoices (invoice_type, invoice_number, client_id, project_id, contact_name, customer_ref,
+    `INSERT INTO invoices (organization_id, invoice_type, invoice_number, client_id, project_id, contact_name, customer_ref,
                            title, summary, invoice_date, due_date, currency, notes, discount_type,
                            discount_value, payment_terms, timeline, exclusions, project_location, introduction,
                            document_language, client_name, client_email, client_phone, client_address,
                            subtotal, discount, total)
-     VALUES ('client_funds', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-             $19, $20, $21, $22, $23, 0, 0, 0)
+     VALUES ($1, 'client_funds', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+             $19, $20, $21, $22, $23, $24, 0, 0, 0)
      RETURNING id`,
     [
-      header.invoice_number, header.client_id, header.project_id, header.contact_name, header.customer_ref,
+      organizationId, header.invoice_number, header.client_id, header.project_id, header.contact_name, header.customer_ref,
       header.title, header.summary, header.invoice_date, header.due_date, header.currency, header.notes,
       header.discount_type, header.discount_value, header.payment_terms, header.timeline, header.exclusions,
       projectLocation, header.introduction, header.document_language,
@@ -133,28 +152,35 @@ export async function insertClientFundsInvoice(client: PoolClient, header: Clien
   return inserted.rows[0].id
 }
 
-export async function selectInvoiceForUpdate(client: PoolClient, invoiceId: string) {
+export async function selectInvoiceForUpdate(client: PoolClient, organizationId: string, invoiceId: string) {
   const result = await client.query(
     `SELECT invoices.invoice_type, invoices.client_id, invoices.client_name, invoices.client_email,
             invoices.client_phone, invoices.client_address,
             coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id), 0) AS paid
-     FROM invoices WHERE invoices.id = $1 FOR UPDATE`,
-    [invoiceId]
+     FROM invoices WHERE invoices.id = $1 AND invoices.organization_id = $2 FOR UPDATE`,
+    [invoiceId, organizationId]
   )
   return result.rows[0] ?? null
 }
 
-export async function updateClientFundsInvoice(client: PoolClient, id: string, header: ClientFundsHeader, projectLocation: string | null, snapshot: ClientSnapshot) {
+export async function updateClientFundsInvoice(
+  client: PoolClient,
+  organizationId: string,
+  id: string,
+  header: ClientFundsHeader,
+  projectLocation: string | null,
+  snapshot: ClientSnapshot
+) {
   await client.query(
-    `UPDATE invoices SET invoice_number = $2, client_id = $3, project_id = $4, contact_name = $5,
-                         customer_ref = $6, title = $7, summary = $8, invoice_date = $9, due_date = $10,
-                         currency = $11, notes = $12, discount_type = $13, discount_value = $14,
-                         payment_terms = $15, timeline = $16, exclusions = $17, project_location = $18,
-                         introduction = $19, document_language = $20,
-                         client_name = $21, client_email = $22, client_phone = $23, client_address = $24
-     WHERE id = $1`,
+    `UPDATE invoices SET invoice_number = $3, client_id = $4, project_id = $5, contact_name = $6,
+                         customer_ref = $7, title = $8, summary = $9, invoice_date = $10, due_date = $11,
+                         currency = $12, notes = $13, discount_type = $14, discount_value = $15,
+                         payment_terms = $16, timeline = $17, exclusions = $18, project_location = $19,
+                         introduction = $20, document_language = $21,
+                         client_name = $22, client_email = $23, client_phone = $24, client_address = $25
+     WHERE id = $1 AND organization_id = $2`,
     [
-      id, header.invoice_number, header.client_id, header.project_id, header.contact_name, header.customer_ref,
+      id, organizationId, header.invoice_number, header.client_id, header.project_id, header.contact_name, header.customer_ref,
       header.title, header.summary, header.invoice_date, header.due_date, header.currency, header.notes,
       header.discount_type, header.discount_value, header.payment_terms, header.timeline, header.exclusions,
       projectLocation, header.introduction, header.document_language,
@@ -163,13 +189,14 @@ export async function updateClientFundsInvoice(client: PoolClient, id: string, h
   )
 }
 
-export async function selectInvoiceTypeForUpdate(client: PoolClient, id: string) {
-  const result = await client.query('SELECT invoice_type FROM invoices WHERE id = $1 FOR UPDATE', [id])
+export async function selectInvoiceTypeForUpdate(client: PoolClient, organizationId: string, id: string) {
+  const result = await client.query('SELECT invoice_type FROM invoices WHERE id = $1 AND organization_id = $2 FOR UPDATE', [id, organizationId])
   return result.rows[0] ?? null
 }
 
 export async function updateInvoiceContract(
   client: PoolClient,
+  organizationId: string,
   id: string,
   contract: {
     contract_terms: string | null
@@ -180,11 +207,12 @@ export async function updateInvoiceContract(
   }
 ) {
   await client.query(
-    `UPDATE invoices SET contract_terms = $2, client_representative_name = $3, client_representative_title = $4,
-                         nextudio_representative_name = $5, nextudio_representative_title = $6
-     WHERE id = $1`,
+    `UPDATE invoices SET contract_terms = $3, client_representative_name = $4, client_representative_title = $5,
+                         nextudio_representative_name = $6, nextudio_representative_title = $7
+     WHERE id = $1 AND organization_id = $2`,
     [
       id,
+      organizationId,
       contract.contract_terms,
       contract.client_representative_name,
       contract.client_representative_title,

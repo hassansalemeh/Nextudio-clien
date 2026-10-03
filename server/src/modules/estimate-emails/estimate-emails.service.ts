@@ -24,12 +24,17 @@ function parseAddresses(value: unknown, field: string, required: boolean): strin
   return addresses.join(', ')
 }
 
-export async function listEstimateEmailHistory(estimateId: string) {
+// estimate_emails has no organization_id of its own: the caller already proved estimateId belongs to
+// this company by loading the estimate first (see sendEstimateEmail), but this history list is reached
+// directly, so it is also given an organizationId check here for consistency with every other module.
+export async function listEstimateEmailHistory(organizationId: string, estimateId: string) {
+  const estimate = await loadEstimate(organizationId, estimateId)
+  if (!estimate) throw new HttpError(404, 'Estimate not found')
   return estimateEmailsRepository.selectEstimateEmailHistory(estimateId)
 }
 
-export async function sendEstimateEmail(id: string, body: Record<string, unknown>, sentByUserId: string, sentByEmail: string) {
-  const estimate = await loadEstimate(id)
+export async function sendEstimateEmail(organizationId: string, id: string, body: Record<string, unknown>, sentByUserId: string, sentByEmail: string) {
+  const estimate = await loadEstimate(organizationId, id)
   if (!estimate) throw new HttpError(404, 'Estimate not found')
 
   const to = parseAddresses(body.to, 'Recipient email', true) as string
@@ -41,7 +46,7 @@ export async function sendEstimateEmail(id: string, body: Record<string, unknown
 
   let attachments: { filename: string; content: Buffer; contentType?: string }[] = []
   if (attachPdf) {
-    const doc = await quotationDocument(id)
+    const doc = await quotationDocument(organizationId, id)
     const pdf = await renderPdf(doc)
     attachments = [{ filename: `Quotation_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf`, content: pdf, contentType: 'application/pdf' }]
   }
@@ -59,5 +64,5 @@ export async function sendEstimateEmail(id: string, body: Record<string, unknown
     estimateEmailsRepository.insertSentEstimateEmailAndAdvanceStatus(client, id, to, cc, subject, message, sentByUserId, sentByEmail)
   )
 
-  return { estimate: await loadEstimate(id), email: emailRow }
+  return { estimate: await loadEstimate(organizationId, id), email: emailRow }
 }

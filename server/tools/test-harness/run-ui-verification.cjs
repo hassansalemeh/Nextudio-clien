@@ -172,9 +172,20 @@ async function main() {
 
   // ---- seed exactly one admin login; everything else (clients, projects, the employee account) is created
   // through the real UI during the test, which is what's actually being verified ----
-  await db.query('insert into app_users (email, password_hash, role) values ($1, $2, $3)', [
+  // Every session now opens inside a specific company (see auth.service.ts / organizationIdOf), so a
+  // seeded login also needs an organization_members row - migration 20261025 already seeds the "Nextudio"
+  // organization itself, but it only back-fills organization_members for app_users that existed BEFORE that
+  // migration ran, which is nobody here (this harness seeds its users after all migrations are applied).
+  const adminUser = await db.query('insert into app_users (email, password_hash, role) values ($1, $2, $3) returning id', [
     ADMIN_EMAIL,
     hashPassword(ADMIN_PASSWORD),
+    'admin',
+  ])
+  const nextudioOrg = await db.query("select id from organizations where name = 'Nextudio'")
+  const nextudioOrgId = nextudioOrg.rows[0].id
+  await db.query('insert into organization_members (organization_id, user_id, role) values ($1, $2, $3)', [
+    nextudioOrgId,
+    adminUser.rows[0].id,
     'admin',
   ])
 
@@ -392,12 +403,22 @@ async function main() {
     const employeeRow = await db.query("select id from employees where full_name = 'UI Verify Employee'")
     record('employee created', employeeRow.rows.length === 1)
     const employeeId = employeeRow.rows[0].id
-    await db.query('insert into app_users (email, password_hash, role, employee_id) values ($1, $2, $3, $4)', [
+    const employeeUser = await db.query('insert into app_users (email, password_hash, role, employee_id) values ($1, $2, $3, $4) returning id', [
       EMPLOYEE_EMAIL,
       hashPassword(EMPLOYEE_PASSWORD),
       'employee',
       employeeId,
     ])
+    const employeeMember = await db.query('insert into organization_members (organization_id, user_id, role) values ($1, $2, $3) returning id', [
+      nextudioOrgId,
+      employeeUser.rows[0].id,
+      'employee',
+    ])
+    // Mirrors what migration 20261025 does for every pre-existing employee: link the staff record to its
+    // login's membership row, so the session query's LEFT JOIN employees (via organization_member_id) can
+    // find is_active - without it, loadUser() reads is_active as null, treats the account as inactive, and
+    // login is rejected with 401.
+    await db.query('update employees set organization_member_id = $1 where id = $2', [employeeMember.rows[0].id, employeeId])
 
     // ======================================================================
     // Assignments: team-assign the employee to "UI Verify Project", then give them a work assignment

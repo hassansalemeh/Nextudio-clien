@@ -1,31 +1,42 @@
 import type { PoolClient } from 'pg'
 import { pool } from '../../db'
 
-export async function selectPendingWorkEntries() {
+// time_entries has no organization_id of its own, so every query here reaches it through employees, which does.
+
+export async function selectPendingWorkEntries(organizationId: string) {
   const result = await pool.query(
     `SELECT time_entries.id, time_entries.employee_id, employees.full_name AS employee_name,
             time_entries.project_id, projects.name AS project_name,
             time_entries.started_at, time_entries.ended_at, time_entries.description, time_entries.status
      FROM time_entries
-     JOIN employees ON employees.id = time_entries.employee_id
+     JOIN employees ON employees.id = time_entries.employee_id AND employees.organization_id = $1
      JOIN projects ON projects.id = time_entries.project_id
      WHERE time_entries.status IN ('pending', 'rejected')
-     ORDER BY (time_entries.status = 'pending') DESC, time_entries.started_at DESC`
+     ORDER BY (time_entries.status = 'pending') DESC, time_entries.started_at DESC`,
+    [organizationId]
   )
   return result.rows
 }
 
 // kept in history as 'rejected', never deleted; only a still-pending request can be rejected
-export async function rejectPendingWorkEntry(id: string) {
-  const result = await pool.query(`UPDATE time_entries SET status = 'rejected' WHERE id = $1 AND status = 'pending' RETURNING id`, [id])
+export async function rejectPendingWorkEntry(organizationId: string, id: string) {
+  const result = await pool.query(
+    `UPDATE time_entries SET status = 'rejected'
+     WHERE id = $1 AND status = 'pending' AND employee_id IN (SELECT id FROM employees WHERE organization_id = $2)
+     RETURNING id`,
+    [id, organizationId]
+  )
   return result.rowCount ?? 0
 }
 
-export async function selectWorkEntryForApproval(client: PoolClient, id: string) {
+export async function selectWorkEntryForApproval(client: PoolClient, organizationId: string, id: string) {
   const result = await client.query(
-    `SELECT id, employee_id, project_id, started_at, to_char(started_at, 'YYYY-MM-DD') AS entry_date, status
-     FROM time_entries WHERE id = $1 FOR UPDATE`,
-    [id]
+    `SELECT time_entries.id, time_entries.employee_id, time_entries.project_id, time_entries.started_at,
+            to_char(time_entries.started_at, 'YYYY-MM-DD') AS entry_date, time_entries.status
+     FROM time_entries
+     JOIN employees ON employees.id = time_entries.employee_id AND employees.organization_id = $2
+     WHERE time_entries.id = $1 FOR UPDATE OF time_entries`,
+    [id, organizationId]
   )
   return result.rows[0] ?? null
 }

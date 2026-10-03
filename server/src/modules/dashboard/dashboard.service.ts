@@ -5,8 +5,8 @@ import * as dashboardRepository from './dashboard.repository'
 
 // Company overview for the admin Dashboard. Three different things are kept apart on purpose:
 //   value of approved work (confirmed fees), cash actually collected (payments), cost of employee time (labor).
-export async function getDashboard(dayFromParam: string | undefined, dayToParam: string | undefined) {
-  const projects = await projectFinancials()
+export async function getDashboard(organizationId: string, dayFromParam: string | undefined, dayToParam: string | undefined) {
+  const projects = await projectFinancials(organizationId)
   const sum = (values: number[]) => roundMoney(values.reduce((total, value) => total + value, 0))
 
   // Confirmed projects carry revenue; pending ones have $0 revenue, so their labor cost is money spent ahead of approval
@@ -18,16 +18,16 @@ export async function getDashboard(dayFromParam: string | undefined, dayToParam:
   // Invoices and cash come from the invoice records themselves (payments are summed there).
   // Client Funds invoices/payments (money held for project expenses, not Nextudio's design fee) are kept
   // out of every professional/design-fee figure below, and reported separately instead.
-  const invoices = await listInvoices()
+  const invoices = await listInvoices(organizationId)
   const professionalInvoices = invoices.filter((invoice) => invoice.invoice_type === 'professional_services')
   const clientFundsInvoices = invoices.filter((invoice) => invoice.invoice_type === 'client_funds')
   const invoiced = sum(professionalInvoices.map((invoice) => Number(invoice.total)))
   // cash actually collected: every payment record not applied to a Client Funds invoice
-  const paymentsReceived = roundMoney(await dashboardRepository.selectProfessionalPaymentsReceivedTotal())
-  const clientFundsReceived = roundMoney(await dashboardRepository.selectClientFundsPaymentsReceivedTotal())
+  const paymentsReceived = roundMoney(await dashboardRepository.selectProfessionalPaymentsReceivedTotal(organizationId))
+  const clientFundsReceived = roundMoney(await dashboardRepository.selectClientFundsPaymentsReceivedTotal(organizationId))
   const clientFundsInvoiced = sum(clientFundsInvoices.map((invoice) => Number(invoice.total)))
   const clientFundsOutstanding = sum(clientFundsInvoices.map((invoice) => invoice.amount_due))
-  const recentPayments = await dashboardRepository.selectRecentPayments()
+  const recentPayments = await dashboardRepository.selectRecentPayments(organizationId)
 
   // Open invoices first, plus the few most recent ones. Professional Services only - Client Funds invoices
   // are reported separately (see the client_funds cards below and the Invoices page).
@@ -48,9 +48,9 @@ export async function getDashboard(dayFromParam: string | undefined, dayToParam:
   // Today: the browser sends its local day boundaries
   const dayFrom = typeof dayFromParam === 'string' ? new Date(dayFromParam) : new Date(new Date().setUTCHours(0, 0, 0, 0))
   const dayTo = typeof dayToParam === 'string' ? new Date(dayToParam) : new Date(dayFrom.getTime() + 86400000)
-  const clockedIn = await dashboardRepository.selectClockedIn()
-  const workingNow = await dashboardRepository.selectWorkingNow()
-  const hoursToday = await dashboardRepository.selectHoursToday(dayFrom, dayTo)
+  const clockedIn = await dashboardRepository.selectClockedIn(organizationId)
+  const workingNow = await dashboardRepository.selectWorkingNow(organizationId)
+  const hoursToday = await dashboardRepository.selectHoursToday(organizationId, dayFrom, dayTo)
 
   return {
     cards: {

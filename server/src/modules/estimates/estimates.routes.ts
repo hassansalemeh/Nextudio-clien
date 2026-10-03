@@ -1,4 +1,5 @@
 import type { Express, Request } from 'express'
+import { organizationIdOf } from '../../middleware/auth'
 import { HttpError, sendError } from '../../shared'
 import * as estimatesService from './estimates.service'
 
@@ -9,19 +10,19 @@ function requireId(req: Request) {
 }
 
 export function registerEstimateRoutes(app: Express) {
-  app.get('/api/estimates', async (_req, res) => {
+  app.get('/api/estimates', async (req, res) => {
     try {
       // Approved estimates have become invoices, so they leave this list (they can still be opened by id)
-      res.json(await estimatesService.listOpenEstimates())
+      res.json(await estimatesService.listOpenEstimates(organizationIdOf(req)))
     } catch (err) {
       sendError(res, err, 'Failed to fetch estimates')
     }
   })
 
   // Must come before /api/estimates/:estimateId
-  app.get('/api/estimates/next-number', async (_req, res) => {
+  app.get('/api/estimates/next-number', async (req, res) => {
     try {
-      res.json({ estimate_number: await estimatesService.nextEstimateNumber() })
+      res.json({ estimate_number: await estimatesService.nextEstimateNumber(organizationIdOf(req)) })
     } catch (err) {
       sendError(res, err, 'Failed to generate an estimate number')
     }
@@ -33,7 +34,7 @@ export function registerEstimateRoutes(app: Express) {
     try {
       const field = typeof req.query.field === 'string' ? req.query.field : ''
       const search = typeof req.query.q === 'string' ? req.query.q.trim() : ''
-      res.json(await estimatesService.listReuseText(field, search))
+      res.json(await estimatesService.listReuseText(organizationIdOf(req), field, search))
     } catch (err) {
       sendError(res, err, 'Failed to load previous text')
     }
@@ -41,7 +42,7 @@ export function registerEstimateRoutes(app: Express) {
 
   app.get('/api/estimates/:estimateId', async (req, res) => {
     try {
-      const estimate = await estimatesService.loadEstimate(requireId(req))
+      const estimate = await estimatesService.loadEstimate(organizationIdOf(req), requireId(req))
       if (!estimate) throw new HttpError(404, 'Estimate not found')
       res.json(estimate)
     } catch (err) {
@@ -51,15 +52,20 @@ export function registerEstimateRoutes(app: Express) {
 
   app.post('/api/estimates', async (req, res) => {
     try {
+      const organizationId = organizationIdOf(req)
       const body = { ...req.body }
-      if (typeof body.estimate_number !== 'string' || !body.estimate_number.trim()) body.estimate_number = await estimatesService.nextEstimateNumber()
+      const autoNumber = typeof body.estimate_number !== 'string' || !body.estimate_number.trim()
+      // Only a placeholder for parseHeader's "estimate_number is required" check below - when autoNumber
+      // is true, createEstimate throws this away and computes the real number itself, under a lock, right
+      // before the insert (a number computed here, outside that lock, could be taken by the time we get there).
+      if (autoNumber) body.estimate_number = await estimatesService.nextEstimateNumber(organizationId)
       const header = estimatesService.parseHeader(body)
       const items = estimatesService.parseItems(req.body.items, header.pricing_method as string)
       if (header.status === 'approved') throw new HttpError(400, 'Use the approve action to approve an estimate')
       estimatesService.computeTotals(items, header.discount_type as string, header.discount_value as number, header.pricing_method as string, header.lump_sum_fee as number)
 
-      const id = await estimatesService.createEstimate(header, items)
-      res.status(201).json(await estimatesService.loadEstimate(id))
+      const id = await estimatesService.createEstimate(organizationId, header, items, autoNumber)
+      res.status(201).json(await estimatesService.loadEstimate(organizationId, id))
     } catch (err) {
       sendError(res, err, 'Failed to create estimate', 'That estimate number is already used')
     }
@@ -67,13 +73,14 @@ export function registerEstimateRoutes(app: Express) {
 
   app.put('/api/estimates/:estimateId', async (req, res) => {
     try {
+      const organizationId = organizationIdOf(req)
       const id = requireId(req)
       const header = estimatesService.parseHeader(req.body)
       const items = estimatesService.parseItems(req.body.items, header.pricing_method as string)
       estimatesService.computeTotals(items, header.discount_type as string, header.discount_value as number, header.pricing_method as string, header.lump_sum_fee as number)
 
-      await estimatesService.updateEstimateById(id, header, items)
-      res.json(await estimatesService.loadEstimate(id))
+      await estimatesService.updateEstimateById(organizationId, id, header, items)
+      res.json(await estimatesService.loadEstimate(organizationId, id))
     } catch (err) {
       sendError(res, err, 'Failed to update estimate', 'That estimate number is already used')
     }
@@ -81,9 +88,10 @@ export function registerEstimateRoutes(app: Express) {
 
   app.post('/api/estimates/:estimateId/approve', async (req, res) => {
     try {
+      const organizationId = organizationIdOf(req)
       const id = requireId(req)
-      const result = await estimatesService.approveEstimate(id)
-      res.status(result.created ? 201 : 200).json({ ...(await estimatesService.loadEstimate(id)), already_approved: !result.created })
+      const result = await estimatesService.approveEstimate(organizationId, id)
+      res.status(result.created ? 201 : 200).json({ ...(await estimatesService.loadEstimate(organizationId, id)), already_approved: !result.created })
     } catch (err) {
       sendError(res, err, 'Failed to approve estimate')
     }
@@ -91,9 +99,10 @@ export function registerEstimateRoutes(app: Express) {
 
   app.post('/api/estimates/:estimateId/duplicate', async (req, res) => {
     try {
+      const organizationId = organizationIdOf(req)
       const id = requireId(req)
-      const newId = await estimatesService.duplicateEstimate(id)
-      res.status(201).json(await estimatesService.loadEstimate(newId))
+      const newId = await estimatesService.duplicateEstimate(organizationId, id)
+      res.status(201).json(await estimatesService.loadEstimate(organizationId, newId))
     } catch (err) {
       sendError(res, err, 'Failed to duplicate estimate')
     }
@@ -101,8 +110,9 @@ export function registerEstimateRoutes(app: Express) {
 
   app.delete('/api/estimates/:estimateId', async (req, res) => {
     try {
+      const organizationId = organizationIdOf(req)
       const id = requireId(req)
-      await estimatesService.deleteEstimate(id)
+      await estimatesService.deleteEstimate(organizationId, id)
       res.json({ ok: true })
     } catch (err) {
       // Safety net: any other reference we didn't anticipate still blocks deletion instead of cascading
