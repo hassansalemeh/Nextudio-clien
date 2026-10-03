@@ -1,27 +1,30 @@
 import { pool } from '../../db'
 
 // ---- project_assignments: the roster of who is currently on a project ----
+// Neither project_assignments nor work_assignments carries its own organization_id, so every query here
+// reaches them through projects and/or employees, which do.
 
-export async function selectActiveProjectAssignments(projectId: string) {
+export async function selectActiveProjectAssignments(organizationId: string, projectId: string) {
   const result = await pool.query(
     `SELECT project_assignments.id, project_assignments.employee_id,
             employees.full_name AS employee_name, employees.position
      FROM project_assignments
+     JOIN projects ON projects.id = project_assignments.project_id AND projects.organization_id = $1
      JOIN employees ON employees.id = project_assignments.employee_id
-     WHERE project_assignments.project_id = $1 AND project_assignments.is_active = true
+     WHERE project_assignments.project_id = $2 AND project_assignments.is_active = true
      ORDER BY employees.full_name`,
-    [projectId]
+    [organizationId, projectId]
   )
   return result.rows
 }
 
-export async function selectProjectExists(projectId: string) {
-  const result = await pool.query('SELECT id FROM projects WHERE id = $1', [projectId])
+export async function selectProjectExists(organizationId: string, projectId: string) {
+  const result = await pool.query('SELECT id FROM projects WHERE id = $1 AND organization_id = $2', [projectId, organizationId])
   return result.rows.length > 0
 }
 
-export async function selectEmployeeExists(employeeId: unknown) {
-  const result = await pool.query('SELECT id FROM employees WHERE id = $1', [employeeId])
+export async function selectEmployeeExists(organizationId: string, employeeId: unknown) {
+  const result = await pool.query('SELECT id FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
   return result.rows.length > 0
 }
 
@@ -54,7 +57,7 @@ export async function selectProjectAssignmentById(assignmentId: string) {
 
 // ---- work_assignments: an admin-created task with a date range ----
 
-export async function selectWorkAssignments(conditions: string[], params: string[]) {
+export async function selectWorkAssignments(organizationId: string, conditions: string[], params: string[]) {
   const result = await pool.query(
     `SELECT work_assignments.id, work_assignments.project_id, projects.name AS project_name,
             work_assignments.employee_id, employees.full_name AS employee_name,
@@ -64,21 +67,22 @@ export async function selectWorkAssignments(conditions: string[], params: string
      FROM work_assignments
      JOIN employees ON employees.id = work_assignments.employee_id
      JOIN projects ON projects.id = work_assignments.project_id
-     WHERE ${conditions.join(' AND ')}
+     WHERE projects.organization_id = $1 ${conditions.length ? 'AND ' + conditions.join(' AND ') : ''}
      ORDER BY work_assignments.start_date DESC, work_assignments.created_at DESC`,
-    params
+    [organizationId, ...params]
   )
   return result.rows
 }
 
-export async function selectActiveAssignmentWithEmployeeName(projectId: unknown, employeeId: unknown) {
+export async function selectActiveAssignmentWithEmployeeName(organizationId: string, projectId: unknown, employeeId: unknown) {
   const result = await pool.query(
     `SELECT employees.full_name
      FROM project_assignments
-     JOIN employees ON employees.id = project_assignments.employee_id
-     WHERE project_assignments.project_id = $1 AND project_assignments.employee_id = $2
+     JOIN projects ON projects.id = project_assignments.project_id AND projects.organization_id = $1
+     JOIN employees ON employees.id = project_assignments.employee_id AND employees.organization_id = $1
+     WHERE project_assignments.project_id = $2 AND project_assignments.employee_id = $3
        AND project_assignments.is_active = true`,
-    [projectId, employeeId]
+    [organizationId, projectId, employeeId]
   )
   return result.rows[0] ?? null
 }
@@ -101,6 +105,7 @@ export async function insertWorkAssignment(
 }
 
 export async function updateWorkAssignment(
+  organizationId: string,
   assignmentId: string,
   projectId: unknown,
   employeeId: unknown,
@@ -110,14 +115,16 @@ export async function updateWorkAssignment(
 ) {
   const result = await pool.query(
     `UPDATE work_assignments
-     SET project_id = $2, employee_id = $3, start_date = $4, end_date = $5, description = $6
-     WHERE id = $1 RETURNING id`,
-    [assignmentId, projectId, employeeId, startDate, endDate, description]
+     SET project_id = $3, employee_id = $4, start_date = $5, end_date = $6, description = $7
+     WHERE id = $1
+       AND project_id IN (SELECT id FROM projects WHERE organization_id = $2)
+     RETURNING id`,
+    [assignmentId, organizationId, projectId, employeeId, startDate, endDate, description]
   )
   return result.rows[0] ?? null
 }
 
-export async function selectWorkAssignmentById(assignmentId: string) {
+export async function selectWorkAssignmentById(organizationId: string, assignmentId: string) {
   const result = await pool.query(
     `SELECT work_assignments.id, work_assignments.project_id, projects.name AS project_name,
             work_assignments.employee_id, employees.full_name AS employee_name,
@@ -126,9 +133,9 @@ export async function selectWorkAssignmentById(assignmentId: string) {
             work_assignments.description, work_assignments.created_at
      FROM work_assignments
      JOIN employees ON employees.id = work_assignments.employee_id
-     JOIN projects ON projects.id = work_assignments.project_id
+     JOIN projects ON projects.id = work_assignments.project_id AND projects.organization_id = $2
      WHERE work_assignments.id = $1`,
-    [assignmentId]
+    [assignmentId, organizationId]
   )
   return result.rows[0]
 }

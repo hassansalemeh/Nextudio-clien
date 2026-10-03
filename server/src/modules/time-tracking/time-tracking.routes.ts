@@ -1,5 +1,5 @@
 import type { Express } from 'express'
-import { resolveEmployeeId } from '../../middleware/auth'
+import { organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
 import * as timeTrackingService from './time-tracking.service'
 
 export function registerTimeTrackingRoutes(app: Express) {
@@ -11,9 +11,9 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      res.json(await timeTrackingService.listWorkEntries(projectId))
-    } catch {
-      res.status(500).json({ error: 'Failed to fetch work entries' })
+      res.json(await timeTrackingService.listWorkEntries(organizationIdOf(req), projectId))
+    } catch (err) {
+      timeTrackingService.sendTimeError(res, err, 'Failed to fetch work entries')
     }
   })
 
@@ -44,7 +44,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      const entry = await timeTrackingService.createWorkEntry(project_id, employee_id, work_date, start_time, end_time)
+      const entry = await timeTrackingService.createWorkEntry(organizationIdOf(req), project_id, employee_id, work_date, start_time, end_time)
       res.status(201).json(entry)
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to create work entry')
@@ -58,7 +58,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      res.json(await timeTrackingService.getTimeStatus(employee_id))
+      res.json(await timeTrackingService.getTimeStatus(organizationIdOf(req), employee_id))
     } catch {
       res.status(500).json({ error: 'Failed to fetch status' })
     }
@@ -73,7 +73,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      res.json(await timeTrackingService.getTimeDay(employee_id, from, to))
+      res.json(await timeTrackingService.getTimeDay(organizationIdOf(req), employee_id, from, to))
     } catch {
       res.status(500).json({ error: 'Failed to fetch time entries' })
     }
@@ -86,7 +86,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      await timeTrackingService.clockIn(employee_id)
+      await timeTrackingService.clockIn(organizationIdOf(req), employee_id)
       res.status(201).json({ ok: true })
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to clock in')
@@ -101,7 +101,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      await timeTrackingService.startWork(employee_id, project_id, date)
+      await timeTrackingService.startWork(organizationIdOf(req), employee_id, project_id, date)
       res.status(201).json({ ok: true })
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to start work')
@@ -115,7 +115,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
 
     try {
-      const entryStatus = await timeTrackingService.addManualWork(employee_id, project_id, date, start, end, day_start, day_end, description)
+      const entryStatus = await timeTrackingService.addManualWork(organizationIdOf(req), employee_id, project_id, date, start, end, day_start, day_end, description)
       res.status(201).json({ ok: true, status: entryStatus })
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to add the work entry')
@@ -129,7 +129,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      await timeTrackingService.stopWork(employee_id)
+      await timeTrackingService.stopWork(organizationIdOf(req), employee_id)
       res.json({ ok: true })
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to stop work')
@@ -143,7 +143,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
 
     try {
-      await timeTrackingService.clockOut(employee_id)
+      await timeTrackingService.clockOut(organizationIdOf(req), employee_id)
       res.json({ ok: true })
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to clock out')
@@ -152,7 +152,7 @@ export function registerTimeTrackingRoutes(app: Express) {
 
   app.patch('/api/time/entries/:id', async (req, res) => {
     try {
-      await timeTrackingService.correctTimeEntry(req.params.id, req.body)
+      await timeTrackingService.correctTimeEntry(organizationIdOf(req), req.params.id, req.body)
       res.json({ ok: true })
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to update time entry')
@@ -161,7 +161,7 @@ export function registerTimeTrackingRoutes(app: Express) {
 
   app.patch('/api/time/sessions/:id', async (req, res) => {
     try {
-      await timeTrackingService.correctAttendanceSession(req.params.id, req.body)
+      await timeTrackingService.correctAttendanceSession(organizationIdOf(req), req.params.id, req.body)
       res.json({ ok: true })
     } catch (err) {
       timeTrackingService.sendTimeError(res, err, 'Failed to update clock-in record')

@@ -21,8 +21,8 @@ function sectionsOf(source: { payment_terms: string | null; timeline: string | n
   ).filter((section): section is { key: typeof section.key; text: string } => !!section.text && section.text.trim() !== '')
 }
 
-export async function quotationDocument(estimateId: string): Promise<DocumentData> {
-  const estimate = await loadEstimate(estimateId)
+export async function quotationDocument(organizationId: string, estimateId: string): Promise<DocumentData> {
+  const estimate = await loadEstimate(organizationId, estimateId)
   if (!estimate) throw new HttpError(404, 'Estimate not found')
   const t = labelsFor(estimate.document_language)
   return {
@@ -62,8 +62,8 @@ export async function quotationDocument(estimateId: string): Promise<DocumentDat
   }
 }
 
-export async function invoiceDocument(invoiceId: string): Promise<DocumentData> {
-  const invoice = await loadInvoice(invoiceId)
+export async function invoiceDocument(organizationId: string, invoiceId: string): Promise<DocumentData> {
+  const invoice = await loadInvoice(organizationId, invoiceId)
   if (!invoice) throw new HttpError(404, 'Invoice not found')
   const isClientFunds = invoice.invoice_type === 'client_funds'
   const t = labelsFor(invoice.document_language)

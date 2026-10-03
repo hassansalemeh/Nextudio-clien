@@ -24,15 +24,15 @@ export function parseUpdateEmployeeInput(body: Record<string, unknown>): UpdateE
   return { ...base, is_active }
 }
 
-export async function listEmployees() {
-  return employeesRepository.selectEmployees()
+export async function listEmployees(organizationId: string) {
+  return employeesRepository.selectEmployees(organizationId)
 }
 
-export async function createEmployee(input: CreateEmployeeInput) {
-  return employeesRepository.insertEmployee(input)
+export async function createEmployee(organizationId: string, input: CreateEmployeeInput) {
+  return employeesRepository.insertEmployee(organizationId, input)
 }
 
 // Only the employees row changes: recorded time entries keep the hourly rate they were saved with
-export async function updateEmployee(employeeId: string, input: UpdateEmployeeInput) {
-  return employeesRepository.updateEmployee(employeeId, input)
+export async function updateEmployee(organizationId: string, employeeId: string, input: UpdateEmployeeInput) {
+  return employeesRepository.updateEmployee(organizationId, employeeId, input)
 }

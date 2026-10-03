@@ -1,11 +1,12 @@
 import type { Express } from 'express'
+import { organizationIdOf } from '../../middleware/auth'
 import { sendTimeError } from '../time-tracking/time-tracking.service'
 import { approvePendingWorkEntry, listPendingWorkEntries, rejectPendingWorkEntry } from './pending-work.service'
 
 export function registerPendingWorkRoutes(app: Express) {
-  app.get('/api/pending-work-entries', async (_req, res) => {
+  app.get('/api/pending-work-entries', async (req, res) => {
     try {
-      res.json(await listPendingWorkEntries())
+      res.json(await listPendingWorkEntries(organizationIdOf(req)))
     } catch {
       res.status(500).json({ error: 'Failed to fetch pending work entries' })
     }
@@ -13,7 +14,7 @@ export function registerPendingWorkRoutes(app: Express) {
 
   app.post('/api/pending-work-entries/:id/reject', async (req, res) => {
     try {
-      await rejectPendingWorkEntry(req.params.id)
+      await rejectPendingWorkEntry(organizationIdOf(req), req.params.id)
       res.json({ ok: true })
     } catch (err) {
       sendTimeError(res, err, 'Failed to reject the work entry')
@@ -26,7 +27,7 @@ export function registerPendingWorkRoutes(app: Express) {
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
 
     try {
-      await approvePendingWorkEntry(req.params.id, start_date, end_date, description)
+      await approvePendingWorkEntry(organizationIdOf(req), req.params.id, start_date, end_date, description)
       res.json({ ok: true })
     } catch (err) {
       sendTimeError(res, err, 'Failed to approve the work entry')

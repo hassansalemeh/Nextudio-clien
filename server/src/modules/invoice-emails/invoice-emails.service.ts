@@ -24,12 +24,17 @@ function parseAddresses(value: unknown, field: string, required: boolean): strin
   return addresses.join(', ')
 }
 
-export async function listInvoiceEmailHistory(invoiceId: string) {
+// invoice_emails has no organization_id of its own: the caller already proved invoiceId belongs to this
+// company by loading the invoice first (see sendInvoiceEmail), but this history list is reached directly,
+// so it is also given an organizationId check here for consistency with every other module.
+export async function listInvoiceEmailHistory(organizationId: string, invoiceId: string) {
+  const invoice = await loadInvoice(organizationId, invoiceId)
+  if (!invoice) throw new HttpError(404, 'Invoice not found')
   return invoiceEmailsRepository.selectInvoiceEmailHistory(invoiceId)
 }
 
-export async function sendInvoiceEmail(id: string, body: Record<string, unknown>, sentByUserId: string, sentByEmail: string) {
-  const invoice = await loadInvoice(id)
+export async function sendInvoiceEmail(organizationId: string, id: string, body: Record<string, unknown>, sentByUserId: string, sentByEmail: string) {
+  const invoice = await loadInvoice(organizationId, id)
   if (!invoice) throw new HttpError(404, 'Invoice not found')
 
   const to = parseAddresses(body.to, 'Recipient email', true) as string
@@ -41,7 +46,7 @@ export async function sendInvoiceEmail(id: string, body: Record<string, unknown>
 
   let attachments: { filename: string; content: Buffer; contentType?: string }[] = []
   if (attachPdf) {
-    const doc = await invoiceDocument(id)
+    const doc = await invoiceDocument(organizationId, id)
     const pdf = await renderPdf(doc)
     const filePrefix = doc.heading === 'INVOICE' ? 'Invoice' : 'ClientFunds'
     attachments = [{ filename: `${filePrefix}_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf`, content: pdf, contentType: 'application/pdf' }]
@@ -58,5 +63,5 @@ export async function sendInvoiceEmail(id: string, body: Record<string, unknown>
 
   const emailRow = await withTransaction((client) => invoiceEmailsRepository.insertSentInvoiceEmail(client, id, to, cc, subject, message, sentByUserId, sentByEmail))
 
-  return { invoice: await loadInvoice(id), email: emailRow }
+  return { invoice: await loadInvoice(organizationId, id), email: emailRow }
 }

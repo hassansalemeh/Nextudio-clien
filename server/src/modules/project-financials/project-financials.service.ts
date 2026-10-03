@@ -1,8 +1,8 @@
 import { roundMoney } from '../../shared'
 import * as projectFinancialsRepository from './project-financials.repository'
 
-export async function recordedTimeByProjectEmployee(projectId?: string) {
-  return projectFinancialsRepository.selectRecordedTimeByProjectEmployee(projectId)
+export async function recordedTimeByProjectEmployee(organizationId: string, projectId?: string) {
+  return projectFinancialsRepository.selectRecordedTimeByProjectEmployee(organizationId, projectId)
 }
 
 // Each employee's cost is rounded to cents, then summed, so the totals always add up to the rows shown
@@ -16,9 +16,9 @@ export function confirmedRevenue(project: { fee_status: string; total_fee: strin
 }
 
 // Amount (confirmed revenue), labor cost deducted and remaining for every project. The single place these are combined.
-export async function projectFinancials() {
-  const projects = await projectFinancialsRepository.selectProjectsForFinancials()
-  const time = await recordedTimeByProjectEmployee()
+export async function projectFinancials(organizationId: string) {
+  const projects = await projectFinancialsRepository.selectProjectsForFinancials(organizationId)
+  const time = await recordedTimeByProjectEmployee(organizationId)
 
   return projects.map((project) => {
     const amount = confirmedRevenue(project)

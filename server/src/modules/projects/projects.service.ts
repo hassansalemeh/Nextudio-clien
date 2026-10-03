@@ -25,15 +25,15 @@ export function parseFee(body: { fee_status?: unknown; total_fee?: unknown }): {
   return { fee_status, total_fee: hasFee ? (raw as number) : null }
 }
 
-export async function listProjects() {
-  return projectsRepository.selectProjects()
+export async function listProjects(organizationId: string) {
+  return projectsRepository.selectProjects(organizationId)
 }
 
-export async function listActiveProjectNames() {
-  return projectsRepository.selectActiveProjectNames()
+export async function listActiveProjectNames(organizationId: string) {
+  return projectsRepository.selectActiveProjectNames(organizationId)
 }
 
-export async function createProject(body: Record<string, unknown>) {
+export async function createProject(organizationId: string, body: Record<string, unknown>) {
   const client_id = body.client_id
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const description = typeof body.description === 'string' ? body.description.trim() : null
@@ -47,21 +47,23 @@ export async function createProject(body: Record<string, unknown>) {
     throw new HttpError(400, 'status must be one of: ' + PROJECT_STATUSES.join(', '))
   }
 
-  const project = await projectsRepository.insertProject({
+  const client_name = await projectsRepository.selectClientName(organizationId, client_id)
+  if (client_name === null) throw new HttpError(400, 'Client does not exist')
+
+  const project = await projectsRepository.insertProject(organizationId, {
     client_id, name, description, total_fee: fee.total_fee, fee_status: fee.fee_status, start_date, status: status as string,
   })
-  const client_name = await projectsRepository.selectClientName(client_id)
   return { ...project, client_name }
 }
 
-export async function getProjectDetail(projectId: string) {
-  const project = await projectsRepository.selectProjectDetail(projectId)
+export async function getProjectDetail(organizationId: string, projectId: string) {
+  const project = await projectsRepository.selectProjectDetail(organizationId, projectId)
   if (!project) return null
 
   const employeeRows = await projectsRepository.selectProjectEmployees(projectId)
   const taskRows = await projectsRepository.selectProjectTasks(projectId)
 
-  const timeRows = await recordedTimeByProjectEmployee(projectId)
+  const timeRows = await recordedTimeByProjectEmployee(organizationId, projectId)
   const timeByEmployee = new Map(timeRows.map((row) => [String(row.employee_id), row]))
 
   const employees = employeeRows.map((employee) => {
@@ -85,12 +87,12 @@ export async function getProjectDetail(projectId: string) {
 
   // Client Funds payments (money held for this project's expenses, not Nextudio's design fee) are kept out
   // of this project's client-side figures below, and reported separately in the client_funds block instead.
-  const paymentRows = await projectsRepository.selectProjectPayments(projectId)
+  const paymentRows = await projectsRepository.selectProjectPayments(organizationId, projectId)
   const professionalPaymentRows = paymentRows.filter((row) => row.invoice_type !== 'client_funds')
   const clientFundsPaymentRows = paymentRows.filter((row) => row.invoice_type === 'client_funds')
   const paymentsReceived = roundMoney(professionalPaymentRows.reduce((total, row) => total + Number(row.amount), 0))
 
-  const clientFundsInvoices = (await listInvoices()).filter(
+  const clientFundsInvoices = (await listInvoices(organizationId)).filter(
     (invoice) => invoice.invoice_type === 'client_funds' && String(invoice.project_id) === String(projectId)
   )
   const clientFundsReceived = roundMoney(clientFundsPaymentRows.reduce((total, row) => total + Number(row.amount), 0))
@@ -128,7 +130,7 @@ export async function getProjectDetail(projectId: string) {
   }
 }
 
-export async function updateProjectById(projectId: string, body: Record<string, unknown>) {
+export async function updateProjectById(organizationId: string, projectId: string, body: Record<string, unknown>) {
   const client_id = body.client_id
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const description = typeof body.description === 'string' ? body.description.trim() : null
@@ -143,10 +145,10 @@ export async function updateProjectById(projectId: string, body: Record<string, 
     throw new HttpError(400, 'status must be one of: ' + PROJECT_STATUSES.join(', '))
   }
 
-  const clientName = await projectsRepository.selectClientName(client_id)
+  const clientName = await projectsRepository.selectClientName(organizationId, client_id)
   if (clientName === null) throw new HttpError(400, 'Client does not exist')
 
-  const project = await projectsRepository.updateProject(projectId, {
+  const project = await projectsRepository.updateProject(organizationId, projectId, {
     client_id, name, description, total_fee: fee.total_fee, fee_status: fee.fee_status, start_date: start_date as string | null, status: status as string,
   })
   if (!project) throw new HttpError(404, 'Project not found')
@@ -155,9 +157,9 @@ export async function updateProjectById(projectId: string, body: Record<string, 
 }
 
 // Permanently removes a project and everything that belongs to it. The client and employees are kept.
-export async function deleteProjectById(projectId: string) {
+export async function deleteProjectById(organizationId: string, projectId: string) {
   await withTransaction(async (client) => {
-    const project = await projectsRepository.lockProjectForDelete(client, projectId)
+    const project = await projectsRepository.lockProjectForDelete(client, organizationId, projectId)
     if (!project) {
       throw new HttpError(404, 'Project not found')
     }

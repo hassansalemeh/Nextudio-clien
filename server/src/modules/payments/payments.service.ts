@@ -49,8 +49,8 @@ function parsePayment(body: Record<string, unknown>): PaymentInput {
 
 // Validates a payment against the project and (if applied to one) its invoice. `paymentId` excludes a payment from
 // its own invoice total when it is being corrected.
-async function checkPayment(client: PoolClient, input: PaymentInput, paymentId: string | null) {
-  const projectExists = await paymentsRepository.selectProjectExists(client, input.project_id)
+async function checkPayment(client: PoolClient, organizationId: string, input: PaymentInput, paymentId: string | null) {
+  const projectExists = await paymentsRepository.selectProjectExists(client, organizationId, input.project_id)
   if (!projectExists) throw new HttpError(400, 'Project does not exist')
 
   // a payment date can't be in the future (a day of tolerance for time zones)
@@ -59,7 +59,7 @@ async function checkPayment(client: PoolClient, input: PaymentInput, paymentId: 
 
   if (input.invoice_id !== null) {
     // the invoice must be this project's own invoice; lock it so simultaneous payments can't both pass
-    const invoice = await paymentsRepository.selectInvoiceForPaymentCheck(client, input.invoice_id, input.project_id)
+    const invoice = await paymentsRepository.selectInvoiceForPaymentCheck(client, organizationId, input.invoice_id, input.project_id)
     if (!invoice) throw new HttpError(400, 'That invoice does not belong to this project')
 
     const othersPaid = await paymentsRepository.selectOtherPaymentsTotalForInvoice(client, input.invoice_id, paymentId)
@@ -70,30 +70,30 @@ async function checkPayment(client: PoolClient, input: PaymentInput, paymentId: 
   }
 }
 
-export async function loadPayment(id: string | number) {
-  return paymentsRepository.selectPaymentById(id)
+export async function loadPayment(organizationId: string, id: string | number) {
+  return paymentsRepository.selectPaymentById(organizationId, id)
 }
 
-export async function listPayments(projectId: string | null) {
-  return paymentsRepository.selectPayments(projectId)
+export async function listPayments(organizationId: string, projectId: string | null) {
+  return paymentsRepository.selectPayments(organizationId, projectId)
 }
 
-export async function createPayment(body: Record<string, unknown>) {
+export async function createPayment(organizationId: string, body: Record<string, unknown>) {
   const input = parsePayment(body)
   return withTransaction(async (client) => {
-    await checkPayment(client, input, null)
-    return paymentsRepository.insertPayment(client, input)
+    await checkPayment(client, organizationId, input, null)
+    return paymentsRepository.insertPayment(client, organizationId, input)
   })
 }
 
 // A correction: what the payment looked like before is kept in payment_revisions. Payments are never deleted.
-export async function correctPayment(id: string, body: Record<string, unknown>) {
+export async function correctPayment(organizationId: string, id: string, body: Record<string, unknown>) {
   const input = parsePayment(body)
   await withTransaction(async (client) => {
-    const current = await paymentsRepository.selectPaymentRowForUpdate(client, id)
+    const current = await paymentsRepository.selectPaymentRowForUpdate(client, organizationId, id)
     if (!current) throw new HttpError(404, 'Payment not found')
-    await checkPayment(client, input, id)
+    await checkPayment(client, organizationId, input, id)
     await paymentsRepository.insertPaymentRevision(client, id, current.row)
-    await paymentsRepository.updatePayment(client, id, input)
+    await paymentsRepository.updatePayment(client, organizationId, id, input)
   })
 }

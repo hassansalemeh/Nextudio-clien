@@ -1,5 +1,5 @@
 import type { Express } from 'express'
-import { resolveEmployeeId } from '../../middleware/auth'
+import { organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
 import { HttpError } from '../../shared'
 import * as assignmentsService from './assignments.service'
 
@@ -7,7 +7,7 @@ export function registerAssignmentRoutes(app: Express) {
   app.get('/api/projects/:projectId/assignments', async (req, res) => {
     const { projectId } = req.params
     try {
-      res.json(await assignmentsService.listProjectAssignments(projectId))
+      res.json(await assignmentsService.listProjectAssignments(organizationIdOf(req), projectId))
     } catch {
       res.status(500).json({ error: 'Failed to fetch assignments' })
     }
@@ -16,7 +16,7 @@ export function registerAssignmentRoutes(app: Express) {
   app.post('/api/projects/:projectId/assignments', async (req, res) => {
     const { projectId } = req.params
     try {
-      const assignment = await assignmentsService.addProjectAssignment(projectId, req.body.employee_id)
+      const assignment = await assignmentsService.addProjectAssignment(organizationIdOf(req), projectId, req.body.employee_id)
       res.status(201).json(assignment)
     } catch (err) {
       if (err instanceof HttpError) return res.status(err.status).json({ error: err.message })
@@ -28,7 +28,7 @@ export function registerAssignmentRoutes(app: Express) {
     const { project_id, date } = req.query
     const employee_id = resolveEmployeeId(req, req.query.employee_id)
     try {
-      res.json(await assignmentsService.listWorkAssignments(project_id, employee_id, date))
+      res.json(await assignmentsService.listWorkAssignments(organizationIdOf(req), project_id, employee_id, date))
     } catch (err) {
       if (err instanceof HttpError) return res.status(err.status).json({ error: err.message })
       res.status(500).json({ error: 'Failed to fetch work assignments' })
@@ -43,7 +43,7 @@ export function registerAssignmentRoutes(app: Express) {
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
 
     try {
-      const assignment = await assignmentsService.createWorkAssignment(project_id, employee_id, start_date, end_date, description)
+      const assignment = await assignmentsService.createWorkAssignment(organizationIdOf(req), project_id, employee_id, start_date, end_date, description)
       res.status(201).json(assignment)
     } catch (err) {
       if (err instanceof HttpError) return res.status(err.status).json({ error: err.message })
@@ -59,7 +59,7 @@ export function registerAssignmentRoutes(app: Express) {
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
 
     try {
-      const assignment = await assignmentsService.updateWorkAssignment(assignmentId, project_id, employee_id, start_date, end_date, description)
+      const assignment = await assignmentsService.updateWorkAssignment(organizationIdOf(req), assignmentId, project_id, employee_id, start_date, end_date, description)
       res.json(assignment)
     } catch (err) {
       if (err instanceof HttpError) return res.status(err.status).json({ error: err.message })

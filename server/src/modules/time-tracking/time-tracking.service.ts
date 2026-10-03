@@ -31,8 +31,8 @@ export function sendTimeError(res: express.Response, err: unknown, fallback: str
 }
 
 // Locks the employee's open clock-in row (serialises double clicks) and returns it plus one consistent "now"
-async function lockOpenSession(client: PoolClient, employeeId: unknown) {
-  const session = await timeTrackingRepository.lockOpenAttendanceSession(client, employeeId)
+async function lockOpenSession(client: PoolClient, organizationId: string, employeeId: unknown) {
+  const session = await timeTrackingRepository.lockOpenAttendanceSession(client, organizationId, employeeId)
   if (!session) {
     throw new HttpError(400, 'Clock in first')
   }
@@ -40,27 +40,27 @@ async function lockOpenSession(client: PoolClient, employeeId: unknown) {
   return { sessionId: session.id as string, now }
 }
 
-export async function getTimeStatus(employeeId: string) {
-  const session = await timeTrackingRepository.selectOpenAttendanceSession(employeeId)
-  const active = await timeTrackingRepository.selectActiveTimeEntry(employeeId)
+export async function getTimeStatus(organizationId: string, employeeId: string) {
+  const session = await timeTrackingRepository.selectOpenAttendanceSession(organizationId, employeeId)
+  const active = await timeTrackingRepository.selectActiveTimeEntry(organizationId, employeeId)
   return { session: session ?? null, active_entry: active ?? null }
 }
 
-export async function getTimeDay(employeeId: string, from: string, to: string) {
-  const sessions = await timeTrackingRepository.selectAttendanceSessionsInRange(employeeId, from, to)
-  const entries = await timeTrackingRepository.selectTimeEntriesInRange(employeeId, from, to)
+export async function getTimeDay(organizationId: string, employeeId: string, from: string, to: string) {
+  const sessions = await timeTrackingRepository.selectAttendanceSessionsInRange(organizationId, employeeId, from, to)
+  const entries = await timeTrackingRepository.selectTimeEntriesInRange(organizationId, employeeId, from, to)
   return { sessions, entries }
 }
 
-export async function clockIn(employeeId: unknown) {
-  const employee = await timeTrackingRepository.selectActiveEmployee(employeeId as string)
+export async function clockIn(organizationId: string, employeeId: unknown) {
+  const employee = await timeTrackingRepository.selectActiveEmployee(organizationId, employeeId as string)
   if (!employee) throw new HttpError(400, 'Employee does not exist or is inactive')
   await timeTrackingRepository.insertAttendanceClockIn(employeeId as string)
 }
 
-export async function startWork(employeeId: unknown, projectId: unknown, date: string) {
+export async function startWork(organizationId: string, employeeId: unknown, projectId: unknown, date: string) {
   await withTransaction(async (client) => {
-    const { now } = await lockOpenSession(client, employeeId)
+    const { now } = await lockOpenSession(client, organizationId, employeeId)
 
     // The client sends its local date; it may only differ from the server date by timezone (at most a day)
     const dateOk = await timeTrackingRepository.selectDateWithinOneDayOfToday(client, date)
@@ -73,7 +73,7 @@ export async function startWork(employeeId: unknown, projectId: unknown, date: s
       throw new HttpError(400, 'This project is not assigned to you today')
     }
 
-    const active = await timeTrackingRepository.selectActiveTimeEntryForUpdate(client, employeeId)
+    const active = await timeTrackingRepository.selectActiveTimeEntryForUpdate(client, organizationId, employeeId)
     if (active) {
       if (String(active.project_id) === String(projectId)) {
         throw new HttpError(400, 'You are already working on this project')
@@ -83,7 +83,8 @@ export async function startWork(employeeId: unknown, projectId: unknown, date: s
     }
 
     // Freeze the hourly labor rate on the entry so later salary edits don't change past costs
-    const salary = await timeTrackingRepository.selectEmployeeSalary(client, employeeId)
+    const salary = await timeTrackingRepository.selectEmployeeSalary(client, organizationId, employeeId)
+    if (!salary) throw new HttpError(400, 'Employee does not exist')
     const rate = hourlyRateFromSalary(Number(salary.monthly_salary))
 
     await timeTrackingRepository.insertTimeEntryStart(client, employeeId, projectId, now, rate)
@@ -96,6 +97,7 @@ export async function startWork(employeeId: unknown, projectId: unknown, date: s
 // An entry on a project the employee isn't assigned to is saved as 'pending' instead: it is held for admin
 // review and excluded from every hours/cost total until approved (see recordedTimeByProjectEmployee).
 export async function addManualWork(
+  organizationId: string,
   employeeId: unknown,
   projectId: unknown,
   date: unknown,
@@ -134,7 +136,7 @@ export async function addManualWork(
     const assigned = await timeTrackingRepository.selectWorkAssignmentCoversDate(client, employeeId, projectId, date as string)
     let status: 'approved' | 'pending' = 'approved'
     if (!assigned) {
-      const project = await timeTrackingRepository.selectProjectStatus(client, projectId)
+      const project = await timeTrackingRepository.selectProjectStatus(client, organizationId, projectId)
       if (!project) throw new HttpError(400, 'Project does not exist')
       if (!['planning', 'in_progress'].includes(project.status)) {
         throw new HttpError(400, 'Choose an active project')
@@ -144,7 +146,7 @@ export async function addManualWork(
 
     // never overlap another entry, including a project timer that is running right now
     // (a rejected entry never really happened, so it doesn't block a new submission)
-    const overlap = await timeTrackingRepository.selectOverlappingTimeEntry(client, employeeId, startAt, endAt)
+    const overlap = await timeTrackingRepository.selectOverlappingTimeEntry(client, organizationId, employeeId, startAt, endAt)
     if (overlap) {
       throw new HttpError(
         400,
@@ -159,7 +161,7 @@ export async function addManualWork(
     // inside - or even have - a Clock In/Out session in this app.
 
     // same frozen hourly rate as a timer entry
-    const salary = await timeTrackingRepository.selectEmployeeSalary(client, employeeId)
+    const salary = await timeTrackingRepository.selectEmployeeSalary(client, organizationId, employeeId)
     if (!salary) throw new HttpError(400, 'Employee does not exist')
     const rate = hourlyRateFromSalary(Number(salary.monthly_salary))
 
@@ -168,20 +170,20 @@ export async function addManualWork(
   })
 }
 
-export async function stopWork(employeeId: unknown) {
+export async function stopWork(organizationId: string, employeeId: unknown) {
   await withTransaction(async (client) => {
-    const { now } = await lockOpenSession(client, employeeId)
-    const stoppedCount = await timeTrackingRepository.stopActiveTimeEntry(client, employeeId, now)
+    const { now } = await lockOpenSession(client, organizationId, employeeId)
+    const stoppedCount = await timeTrackingRepository.stopActiveTimeEntry(client, organizationId, employeeId, now)
     if (stoppedCount === 0) {
       throw new HttpError(400, 'No project is running')
     }
   })
 }
 
-export async function clockOut(employeeId: unknown) {
+export async function clockOut(organizationId: string, employeeId: unknown) {
   await withTransaction(async (client) => {
-    const { sessionId, now } = await lockOpenSession(client, employeeId)
-    await timeTrackingRepository.updateActiveTimeEntryEndedAtTx(client, employeeId, now)
+    const { sessionId, now } = await lockOpenSession(client, organizationId, employeeId)
+    await timeTrackingRepository.updateActiveTimeEntryEndedAtTx(client, organizationId, employeeId, now)
     await timeTrackingRepository.updateAttendanceClockOut(client, sessionId, now)
   })
 }
@@ -202,17 +204,17 @@ function parseCorrection(body: { start?: unknown; end?: unknown }) {
   return { start, end }
 }
 
-export async function correctTimeEntry(id: string, body: { start?: unknown; end?: unknown }) {
+export async function correctTimeEntry(organizationId: string, id: string, body: { start?: unknown; end?: unknown }) {
   const { start, end } = parseCorrection(body)
-  const rowCount = await timeTrackingRepository.updateTimeEntryTimes(id, start, end)
+  const rowCount = await timeTrackingRepository.updateTimeEntryTimes(organizationId, id, start, end)
   if (rowCount === 0) {
     throw new HttpError(404, 'Time entry not found')
   }
 }
 
-export async function correctAttendanceSession(id: string, body: { start?: unknown; end?: unknown }) {
+export async function correctAttendanceSession(organizationId: string, id: string, body: { start?: unknown; end?: unknown }) {
   const { start, end } = parseCorrection(body)
-  const rowCount = await timeTrackingRepository.updateAttendanceTimes(id, start, end)
+  const rowCount = await timeTrackingRepository.updateAttendanceTimes(organizationId, id, start, end)
   if (rowCount === 0) {
     throw new HttpError(404, 'Clock-in record not found')
   }
@@ -220,7 +222,9 @@ export async function correctAttendanceSession(id: string, body: { start?: unkno
 
 // ---- legacy work_entries (v1 time tracking, left in place but unreachable from the UI) ----
 
-export async function listWorkEntries(projectId: unknown) {
+export async function listWorkEntries(organizationId: string, projectId: unknown) {
+  const projectExists = await timeTrackingRepository.selectProjectExistsForWorkEntry(organizationId, projectId)
+  if (!projectExists) throw new HttpError(400, 'Project does not exist')
   const rows = await timeTrackingRepository.selectWorkEntries(projectId)
   return rows.map((row) => {
     const hours = computeHours(row.start_time, row.end_time)
@@ -234,16 +238,17 @@ export async function listWorkEntries(projectId: unknown) {
 }
 
 export async function createWorkEntry(
+  organizationId: string,
   projectId: unknown,
   employeeId: unknown,
   workDate: string,
   startTime: string,
   endTime: string
 ) {
-  const projectExists = await timeTrackingRepository.selectProjectExistsForWorkEntry(projectId)
+  const projectExists = await timeTrackingRepository.selectProjectExistsForWorkEntry(organizationId, projectId)
   if (!projectExists) throw new HttpError(400, 'Project does not exist')
 
-  const employee = await timeTrackingRepository.selectEmployeeForWorkEntry(employeeId)
+  const employee = await timeTrackingRepository.selectEmployeeForWorkEntry(organizationId, employeeId)
   if (!employee) throw new HttpError(400, 'Employee does not exist')
 
   const assignment = await timeTrackingRepository.selectActiveAssignmentForWorkEntry(projectId, employeeId)

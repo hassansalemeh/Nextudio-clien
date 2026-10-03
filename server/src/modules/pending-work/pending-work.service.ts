@@ -2,12 +2,12 @@ import { withTransaction } from '../../db'
 import { HttpError, isIsoDate } from '../../shared'
 import * as pendingWorkRepository from './pending-work.repository'
 
-export async function listPendingWorkEntries() {
-  return pendingWorkRepository.selectPendingWorkEntries()
+export async function listPendingWorkEntries(organizationId: string) {
+  return pendingWorkRepository.selectPendingWorkEntries(organizationId)
 }
 
-export async function rejectPendingWorkEntry(id: string) {
-  const rowCount = await pendingWorkRepository.rejectPendingWorkEntry(id)
+export async function rejectPendingWorkEntry(organizationId: string, id: string) {
+  const rowCount = await pendingWorkRepository.rejectPendingWorkEntry(organizationId, id)
   if (rowCount === 0) {
     throw new HttpError(400, 'This request was already reviewed')
   }
@@ -15,9 +15,9 @@ export async function rejectPendingWorkEntry(id: string) {
 
 // Approves a pending entry and, unless the employee is already assigned to the project on that date,
 // creates the matching work assignment in the same transaction - never an approved entry with no assignment.
-export async function approvePendingWorkEntry(id: string, start_date: string, end_date: string, description: string) {
+export async function approvePendingWorkEntry(organizationId: string, id: string, start_date: string, end_date: string, description: string) {
   await withTransaction(async (client) => {
-    const entry = await pendingWorkRepository.selectWorkEntryForApproval(client, id)
+    const entry = await pendingWorkRepository.selectWorkEntryForApproval(client, organizationId, id)
     if (!entry) throw new HttpError(404, 'Work entry not found')
     if (entry.status !== 'pending') throw new HttpError(400, 'This request was already reviewed')
 

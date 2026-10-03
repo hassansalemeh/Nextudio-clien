@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg'
 import { clientFundsInvoiceNumber } from '../../config'
-import { pool, withTransaction } from '../../db'
+import { lockForNumbering, pool, retryOnUniqueViolation, withTransaction } from '../../db'
 import { HttpError, isIsoDate, roundMoney } from '../../shared'
 import { DOCUMENT_LANGUAGES, isDocumentLanguage } from '../../shared/i18n/documentLabels'
 import { loadClientSnapshot } from '../clients/clients.service'
@@ -21,13 +21,13 @@ function withBalance<T extends { total: string; paid: string }>(row: T) {
   return { ...row, paid, amount_due: roundMoney(total - paid), status: invoiceStatus(total, paid) }
 }
 
-export async function listInvoices() {
-  const rows = await invoicesRepository.selectInvoices()
+export async function listInvoices(organizationId: string) {
+  const rows = await invoicesRepository.selectInvoices(organizationId)
   return rows.map(withBalance)
 }
 
-export async function loadInvoice(invoiceId: string | number) {
-  const header = await invoicesRepository.selectInvoiceById(invoiceId)
+export async function loadInvoice(organizationId: string, invoiceId: string | number) {
+  const header = await invoicesRepository.selectInvoiceById(organizationId, invoiceId)
   if (!header) return null
   const items = await invoicesRepository.selectInvoiceItems(invoiceId)
   const payments = await invoicesRepository.selectInvoicePayments(invoiceId)
@@ -116,9 +116,9 @@ export function parseClientFundsHeader(body: Record<string, unknown>) {
   }
 }
 
-// The project must exist and belong to the chosen client; its own location is used when none was typed in
-async function loadClientFundsProject(db: { query: PoolClient['query'] }, clientId: string, projectId: string) {
-  const row = await invoicesRepository.selectProjectForClientFunds(db, projectId)
+// The project must exist and belong to the chosen client (and to this company); its own location is used when none was typed in
+async function loadClientFundsProject(db: { query: PoolClient['query'] }, organizationId: string, clientId: string, projectId: string) {
+  const row = await invoicesRepository.selectProjectForClientFunds(db, organizationId, projectId)
   if (!row) throw new HttpError(400, 'Project does not exist')
   if (String(row.client_id) !== String(clientId)) {
     throw new HttpError(400, "That project does not belong to the selected client")
@@ -126,9 +126,22 @@ async function loadClientFundsProject(db: { query: PoolClient['query'] }, client
   return row as { id: string; client_id: string; location: string | null }
 }
 
-export async function nextClientFundsInvoiceNumber(db: { query: PoolClient['query'] } = pool): Promise<string> {
-  const seq = await invoicesRepository.selectNextClientFundsSequence(db)
-  return clientFundsInvoiceNumber(Number(seq))
+// Per-company numbering: the highest trailing number already used by this company, plus one. Mirrors
+// estimates.service's nextEstimateNumber() - there is no shared, cross-company DB sequence to race on.
+export async function nextClientFundsInvoiceNumber(organizationId: string, db: { query: PoolClient['query'] } = pool): Promise<string> {
+  const rows = await invoicesRepository.selectClientFundsInvoiceNumbers(organizationId, db)
+  let highest = 0
+  for (const row of rows) {
+    const match = /(\d+)\s*$/.exec(row.invoice_number)
+    if (match) highest = Math.max(highest, Number(match[1]))
+  }
+  let candidate = highest + 1
+  for (;;) {
+    const number = clientFundsInvoiceNumber(candidate)
+    const taken = await invoicesRepository.selectClientFundsInvoiceNumberTaken(organizationId, number, db)
+    if (!taken) return number
+    candidate++
+  }
 }
 
 async function saveClientFundsItemsAndTotals(client: PoolClient, invoiceId: string | number, items: ItemInput[], discountType: string, discountValue: number) {
@@ -140,8 +153,8 @@ async function saveClientFundsItemsAndTotals(client: PoolClient, invoiceId: stri
   await invoicesRepository.updateInvoiceTotals(client, invoiceId, totals)
 }
 
-async function requireClientFundsInvoice(client: PoolClient, invoiceId: string) {
-  const current = await invoicesRepository.selectInvoiceForUpdate(client, invoiceId)
+async function requireClientFundsInvoice(client: PoolClient, organizationId: string, invoiceId: string) {
+  const current = await invoicesRepository.selectInvoiceForUpdate(client, organizationId, invoiceId)
   if (!current) throw new HttpError(404, 'Invoice not found')
   if (current.invoice_type !== 'client_funds') {
     throw new HttpError(400, 'Only a Client Funds invoice can be edited directly')
@@ -154,50 +167,65 @@ async function requireClientFundsInvoice(client: PoolClient, invoiceId: string) 
 
 // Creates a Client Funds invoice directly. Professional invoices are only ever created by approving an
 // estimate (see the estimates module) - this refuses that type on purpose.
-export async function createClientFundsInvoice(body: Record<string, unknown>) {
+export async function createClientFundsInvoice(organizationId: string, body: Record<string, unknown>) {
   if (body.invoice_type !== 'client_funds') {
     throw new HttpError(400, 'Only a Client Funds invoice can be created directly; approve an estimate for a Professional Services invoice')
   }
+  // true when the caller didn't type their own invoice_number (the create form pre-fills a suggestion
+  // from nextClientFundsInvoiceNumber() and the admin usually just accepts it).
+  const autoNumber = !body.invoice_number || typeof body.invoice_number !== 'string' || !body.invoice_number.trim()
   const bodyWithNumber = { ...body }
-  if (!bodyWithNumber.invoice_number || typeof bodyWithNumber.invoice_number !== 'string' || !bodyWithNumber.invoice_number.trim()) {
-    bodyWithNumber.invoice_number = await nextClientFundsInvoiceNumber()
+  if (autoNumber) {
+    // Only a placeholder for parseClientFundsHeader's validation below - the real number is computed
+    // again under a lock, right before the insert (see below): a number computed here, before the
+    // transaction even starts, could be taken by a concurrent create before we get there.
+    bodyWithNumber.invoice_number = await nextClientFundsInvoiceNumber(organizationId)
   }
   const header = parseClientFundsHeader(bodyWithNumber)
   const items = parseItems(body.items)
   computeTotals(items, header.discount_type as string, header.discount_value as number)
 
-  return withTransaction(async (client) => {
-    const project = await loadClientFundsProject(client, header.client_id, header.project_id)
-    const projectLocation = header.project_location ?? project.location
-    // Created directly (not from an estimate), so it takes a fresh snapshot of the client right now
-    const snapshot = await loadClientSnapshot(client, header.client_id)
-    const id = await invoicesRepository.insertClientFundsInvoice(client, header, projectLocation, snapshot)
-    await saveClientFundsItemsAndTotals(client, id, items, header.discount_type as string, header.discount_value as number)
-    return id
-  })
+  return retryOnUniqueViolation(
+    () =>
+      withTransaction(async (client) => {
+        const project = await loadClientFundsProject(client, organizationId, header.client_id, header.project_id)
+        const projectLocation = header.project_location ?? project.location
+        // Created directly (not from an estimate), so it takes a fresh snapshot of the client right now
+        const snapshot = await loadClientSnapshot(client, organizationId, header.client_id)
+        let finalHeader = header
+        if (autoNumber) {
+          await lockForNumbering(client, organizationId, 'client_funds_invoice_number')
+          finalHeader = { ...header, invoice_number: await nextClientFundsInvoiceNumber(organizationId, client) }
+        }
+        const id = await invoicesRepository.insertClientFundsInvoice(client, organizationId, finalHeader, projectLocation, snapshot)
+        await saveClientFundsItemsAndTotals(client, id, items, finalHeader.discount_type as string, finalHeader.discount_value as number)
+        return id
+      }),
+    autoNumber ? 5 : 1
+  )
 }
 
-export async function updateClientFundsInvoiceById(id: string, body: Record<string, unknown>) {
+export async function updateClientFundsInvoiceById(organizationId: string, id: string, body: Record<string, unknown>) {
   const header = parseClientFundsHeader(body)
   const items = parseItems(body.items)
   computeTotals(items, header.discount_type as string, header.discount_value as number)
 
   await withTransaction(async (client) => {
-    const current = await requireClientFundsInvoice(client, id)
-    const project = await loadClientFundsProject(client, header.client_id, header.project_id)
+    const current = await requireClientFundsInvoice(client, organizationId, id)
+    const project = await loadClientFundsProject(client, organizationId, header.client_id, header.project_id)
     const projectLocation = header.project_location ?? project.location
     // Only a genuine change of client refreshes the snapshot; re-saving the same client keeps it frozen
     const clientChanged = String(current.client_id ?? '') !== String(header.client_id ?? '')
-    const snapshot: ClientSnapshot = clientChanged ? await loadClientSnapshot(client, header.client_id) : current
+    const snapshot: ClientSnapshot = clientChanged ? await loadClientSnapshot(client, organizationId, header.client_id) : current
 
-    await invoicesRepository.updateClientFundsInvoice(client, id, header, projectLocation, snapshot)
+    await invoicesRepository.updateClientFundsInvoice(client, organizationId, id, header, projectLocation, snapshot)
     await saveClientFundsItemsAndTotals(client, id, items, header.discount_type as string, header.discount_value as number)
   })
 }
 
 // Narrow, Professional-Services-only operation: only the contract/signatures fields can change here.
 // Every financial field, the items, and the dates stay exactly as they were frozen at approval.
-export async function updateInvoiceContractById(id: string, body: Record<string, unknown>) {
+export async function updateInvoiceContractById(organizationId: string, id: string, body: Record<string, unknown>) {
   const contract_terms = longText(body.contract_terms)
   const client_representative_name = optionalText(body.client_representative_name)
   const client_representative_title = optionalText(body.client_representative_title)
@@ -205,12 +233,12 @@ export async function updateInvoiceContractById(id: string, body: Record<string,
   const nextudio_representative_title = optionalText(body.nextudio_representative_title)
 
   await withTransaction(async (client) => {
-    const current = await invoicesRepository.selectInvoiceTypeForUpdate(client, id)
+    const current = await invoicesRepository.selectInvoiceTypeForUpdate(client, organizationId, id)
     if (!current) throw new HttpError(404, 'Invoice not found')
     if (current.invoice_type !== 'professional_services') {
       throw new HttpError(400, 'The Acceptance & Signatures contract only applies to a Professional Services invoice')
     }
-    await invoicesRepository.updateInvoiceContract(client, id, {
+    await invoicesRepository.updateInvoiceContract(client, organizationId, id, {
       contract_terms,
       client_representative_name,
       client_representative_title,

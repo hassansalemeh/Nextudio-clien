@@ -1,4 +1,5 @@
 import type { Express } from 'express'
+import { organizationIdOf } from '../../middleware/auth'
 import { HttpError, sendError } from '../../shared'
 import { listInvoiceEmailHistory, sendInvoiceEmail } from './invoice-emails.service'
 
@@ -11,7 +12,7 @@ export function registerInvoiceEmailRoutes(app: Express) {
   app.get('/api/invoices/:invoiceId/emails', async (req, res) => {
     try {
       const id = requireInvoiceId(req.params.invoiceId)
-      res.json(await listInvoiceEmailHistory(id))
+      res.json(await listInvoiceEmailHistory(organizationIdOf(req), id))
     } catch (err) {
       sendError(res, err, 'Failed to fetch email history')
     }
@@ -20,7 +21,7 @@ export function registerInvoiceEmailRoutes(app: Express) {
   app.post('/api/invoices/:invoiceId/send-email', async (req, res) => {
     try {
       const id = requireInvoiceId(req.params.invoiceId)
-      const result = await sendInvoiceEmail(id, req.body, req.user!.id, req.user!.email)
+      const result = await sendInvoiceEmail(organizationIdOf(req), id, req.body, req.user!.id, req.user!.email)
       res.status(201).json(result)
     } catch (err) {
       sendError(res, err, 'Failed to send the email')
