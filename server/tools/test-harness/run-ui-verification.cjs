@@ -44,6 +44,18 @@ function localDateString(date = new Date()) {
 }
 const today = localDateString()
 
+// Matching client/src/shared/lib/timeUtils.ts's addDays()/formatLongDate() exactly, for the duration-picker checks.
+function addDaysLocal(dateString, days) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+  return localDateString(date)
+}
+function formatLongDateLocal(dateString) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 // ---- same scrypt scheme as server/src/modules/auth/auth.service.ts (kept in sync manually) ----
 function hashPassword(password) {
   const salt = crypto.randomBytes(16)
@@ -443,6 +455,39 @@ async function main() {
     recordRoute(`/estimates/${estimateId}`, 'admin', true, 'saved and loaded')
     await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
 
+    // ---- Duration picker: new estimate defaults to 14 days, switching presets updates the shown date ----
+    const estimateDateValue = await page.locator('#est-date').inputValue()
+    const expected14 = addDaysLocal(estimateDateValue, 14)
+    const fourteenPressed = await page.getByRole('button', { name: '14 days' }).getAttribute('aria-pressed')
+    const hint14 = await page.locator('.duration-picker .doc-hint').first().innerText()
+    record(
+      'new estimate defaults "Valid until" to 14 days',
+      fourteenPressed === 'true' && hint14.includes(formatLongDateLocal(expected14)),
+      `hint="${hint14}"`
+    )
+    await page.locator('.duration-picker').scrollIntoViewIfNeeded()
+    await screenshot(page, 'estimate-duration-picker')
+
+    await page.getByRole('button', { name: '7 days' }).click()
+    const expected7 = addDaysLocal(estimateDateValue, 7)
+    const hint7 = await page.locator('.duration-picker .doc-hint').first().innerText()
+    record('picking "7 days" shows the correct resulting date', hint7.includes(formatLongDateLocal(expected7)), `hint="${hint7}"`)
+
+    await page.getByRole('button', { name: '30 days' }).click()
+    const expected30 = addDaysLocal(estimateDateValue, 30)
+    const hint30 = await page.locator('.duration-picker .doc-hint').first().innerText()
+    record('picking "30 days" shows the correct resulting date', hint30.includes(formatLongDateLocal(expected30)), `hint="${hint30}"`)
+
+    await page.getByRole('button', { name: 'Save and continue' }).first().click()
+    await page.waitForSelector('.toast-success', { timeout: 10000 })
+    await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
+    const savedAfter30 = await db.query("select to_char(valid_until, 'YYYY-MM-DD') as valid_until from estimates where id = $1", [estimateId])
+    record(
+      'new estimate with "30 days" picked saves the correct date',
+      savedAfter30.rows[0].valid_until === expected30,
+      `saved=${savedAfter30.rows[0].valid_until} expected=${expected30}`
+    )
+
     await page.getByRole('button', { name: 'Preview', exact: true }).first().click()
     const previewErrorsBefore = consoleErrors.length
     await page.waitForSelector('iframe.doc-preview-frame', { timeout: 20000 })
@@ -457,6 +502,29 @@ async function main() {
     // The preview page's own "Back" button returns to the editor (to keep editing), not to the list.
     await page.getByRole('button', { name: 'Back' }).click()
     await page.waitForSelector('h1:has-text("Edit estimate")')
+
+    // ---- Duration picker: a saved date that isn't 7/14/30 days out shows as "Custom" and survives a save untouched ----
+    const customValidUntil = addDaysLocal(estimateDateValue, 45)
+    await db.query('update estimates set valid_until = $1 where id = $2', [customValidUntil, estimateId])
+    await page.reload()
+    await page.waitForSelector('h1:has-text("Edit estimate")')
+    const customPillCount = await page.locator('.duration-option-custom').count()
+    const presetActiveCount = await page.locator('.duration-option.active').count()
+    record(
+      'an estimate with a non-preset saved date shows "Custom" and no preset selected',
+      customPillCount === 1 && presetActiveCount === 0
+    )
+
+    await page.getByRole('button', { name: 'Save and continue' }).first().click()
+    await page.waitForSelector('.toast-success', { timeout: 10000 })
+    await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
+    const afterCustomSave = await db.query("select to_char(valid_until, 'YYYY-MM-DD') as valid_until from estimates where id = $1", [estimateId])
+    record(
+      'opening and saving a "Custom" estimate does not change its date',
+      afterCustomSave.rows[0].valid_until === customValidUntil,
+      `before=${customValidUntil} after=${afterCustomSave.rows[0].valid_until}`
+    )
+
     await page.getByRole('link', { name: 'Estimates', exact: true }).click()
     await page.waitForSelector('h1:has-text("Estimates")')
 
@@ -474,6 +542,18 @@ async function main() {
     await page.locator('#cf-project').selectOption({ label: 'UI Verify Project' })
     await page.getByPlaceholder('e.g. Advance for construction workers, Material purchases, Supplier payment...').fill('UI Verify Funds Item')
     await page.getByLabel('Unit price').fill('200')
+
+    // ---- Duration picker: new Client Funds invoice defaults "Payment due date" to 14 days ----
+    const invoiceDateValue = await page.locator('#cf-date').inputValue()
+    const expectedDue14 = addDaysLocal(invoiceDateValue, 14)
+    const dueFourteenPressed = await page.getByRole('button', { name: '14 days' }).getAttribute('aria-pressed')
+    const dueHint14 = await page.locator('.duration-picker .doc-hint').first().innerText()
+    record(
+      'new Client Funds invoice defaults "Payment due date" to 14 days',
+      dueFourteenPressed === 'true' && dueHint14.includes(formatLongDateLocal(expectedDue14)),
+      `hint="${dueHint14}"`
+    )
+
     await page.getByRole('button', { name: 'Save and continue' }).first().click()
     await page.waitForSelector('.toast-success', { timeout: 10000 })
     const invoiceToast = await page.locator('.toast-success').first().innerText()
@@ -483,6 +563,12 @@ async function main() {
     const invoiceId = page.url().match(/\/invoices\/(\d+)\/edit$/)[1]
     recordRoute(`/invoices/${invoiceId}/edit`, 'admin', true, 'saved and loaded (new invoices land here)')
     await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
+    const savedDueDate = await db.query("select to_char(due_date, 'YYYY-MM-DD') as due_date from invoices where id = $1", [invoiceId])
+    record(
+      'new Client Funds invoice saves the correct default due date',
+      savedDueDate.rows[0].due_date === expectedDue14,
+      `saved=${savedDueDate.rows[0].due_date} expected=${expectedDue14}`
+    )
 
     await page.getByRole('button', { name: 'View Invoice' }).first().click()
     await goToRoute(page, `/invoices/${invoiceId}`, 'admin', 'Disbursements')
