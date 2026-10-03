@@ -250,6 +250,11 @@ async function main() {
     await screenshot(page, 'clients-empty-state')
     record('clients empty state renders', true, `page-loader seen: ${clientsLoader > 0}`)
 
+    const clientFormHiddenByDefault = (await page.locator('#client-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Client' }).click()
+    await page.waitForSelector('#client-entry')
+    record('add-client form hidden by default and opens on click', clientFormHiddenByDefault)
+
     await page.getByLabel('Client Name').fill('UI Verify Client')
     // Two raw DOM clicks dispatched in the same tick - a true double-click, faster than React can
     // re-render the `disabled` attribute. Proves the handler-level guard (useAsyncAction), not just the
@@ -277,6 +282,11 @@ async function main() {
     await screenshot(page, 'projects-empty-state')
     record('projects empty state renders', true)
 
+    const projectFormHiddenByDefault = (await page.locator('#project-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('#project-entry')
+    record('add-project form hidden by default and opens on click', projectFormHiddenByDefault)
+
     const addProjectCard = cardByHeading(page, 'Add Project')
     await addProjectCard.locator('select').first().selectOption({ label: 'UI Verify Client' })
     await addProjectCard.locator('input').first().fill('UI Verify Project')
@@ -287,6 +297,9 @@ async function main() {
     record('project create success toast', projectToastText.includes('Project added'), projectToastText)
     await page.waitForSelector('.toast', { state: 'detached', timeout: 7000 }).catch(() => undefined)
 
+    // The form closes itself on successful submit, so it has to be reopened for the second project.
+    await page.getByRole('button', { name: 'Add Project' }).click()
+    await page.waitForSelector('#project-entry')
     await addProjectCard.locator('select').first().selectOption({ label: 'UI Verify Client' })
     await addProjectCard.locator('input').first().fill('UI Verify Unassigned Project')
     await page.getByRole('button', { name: 'Add Project' }).click()
@@ -311,6 +324,11 @@ async function main() {
     await screenshot(page, 'payments-empty-state')
     record('payments empty state renders', true)
 
+    const paymentFormHiddenByDefault = (await page.locator('#payment-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Payment' }).click()
+    await page.waitForSelector('#payment-entry')
+    record('add-payment form hidden by default and opens on click', paymentFormHiddenByDefault)
+
     await page.locator('form').locator('select').first().selectOption({ label: 'UI Verify Project' })
     await page.getByLabel('Amount Received').fill('500')
     await page.getByLabel('Reason / Description').fill('UI verify payment')
@@ -328,6 +346,11 @@ async function main() {
     await goToRoute(page, '/employees', 'admin', 'No employees yet.')
     await screenshot(page, 'employees-empty-state')
     record('employees empty state renders', true)
+
+    const employeeFormHiddenByDefault = (await page.locator('#employee-entry').count()) === 0
+    await page.getByRole('button', { name: 'Add Employee' }).click()
+    await page.waitForSelector('#employee-entry')
+    record('add-employee form hidden by default and opens on click', employeeFormHiddenByDefault)
 
     // ---- error toast: abort the next create-employee request to simulate "server unreachable" ----
     await context.route('**/api/employees', (route) => route.abort('failed'), { times: 1 })
@@ -442,7 +465,7 @@ async function main() {
     // ======================================================================
     await page.getByRole('link', { name: 'Invoices', exact: true }).click()
     await goToRoute(page, '/invoices', 'admin', 'No invoices yet')
-    await page.getByRole('link', { name: '+ New Client Funds Invoice' }).click()
+    await page.getByRole('link', { name: 'New Client Funds Invoice' }).click()
     await page.waitForSelector('text=New Client Funds Invoice')
     recordRoute('/invoices/new', 'admin', true, 'renders')
 
@@ -490,7 +513,7 @@ async function main() {
     // Financial Summary: render check
     // ======================================================================
     await page.getByRole('link', { name: 'Financial Summary', exact: true }).click()
-    await goToRoute(page, '/financial-summary', 'admin', 'Project Financial Summary')
+    await goToRoute(page, '/financial-summary', 'admin', 'All project figures')
     await screenshot(page, 'financial-summary')
 
     // ======================================================================
@@ -553,7 +576,7 @@ async function main() {
     await page.click('button[type="submit"]')
     await page.waitForSelector('text=Dashboard')
 
-    await page.getByRole('link', { name: 'Pending Work', exact: true }).click()
+    await page.getByRole('link', { name: 'Approvals', exact: true }).click()
     await goToRoute(page, '/pending-work', 'admin', 'UI Verify Employee')
     await screenshot(page, 'pending-work-entry')
     await page.getByRole('button', { name: 'Approve & Assign' }).click()
