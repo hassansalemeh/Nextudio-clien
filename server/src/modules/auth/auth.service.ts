@@ -6,7 +6,12 @@ import * as authRepository from './auth.repository'
 export type AuthUser = {
   id: string
   email: string
+  // What the current frontend understands: owners count as admins for now
   role: 'admin' | 'employee'
+  // The real role in the company this session opened
+  organizationRole: 'owner' | 'admin' | 'employee'
+  organizationId: string
+  organizationName: string
   employeeId: string | null
   employeeName: string | null
 }
@@ -81,7 +86,10 @@ export async function loadUser(token: string): Promise<AuthUser | null> {
   return {
     id: row.id,
     email: row.email,
-    role: row.role,
+    role: row.role === 'employee' ? 'employee' : 'admin',
+    organizationRole: row.role,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
     employeeId: row.employee_id,
     employeeName: row.employee_name,
   }

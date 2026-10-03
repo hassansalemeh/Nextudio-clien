@@ -10,11 +10,17 @@ export async function insertSession(tokenHash: string, userId: string, organizat
 
 export async function selectUserBySession(tokenHash: string) {
   const result = await pool.query(
-    `SELECT app_users.id, app_users.email, app_users.role, app_users.employee_id,
-            employees.full_name AS employee_name, employees.is_active
+    `SELECT app_users.id, app_users.email,
+            auth_sessions.organization_id, organizations.name AS organization_name,
+            organization_members.role,
+            employees.id AS employee_id, employees.full_name AS employee_name, employees.is_active
      FROM auth_sessions
-     JOIN app_users ON app_users.id = auth_sessions.user_id
-     LEFT JOIN employees ON employees.id = app_users.employee_id
+     JOIN app_users     ON app_users.id = auth_sessions.user_id
+     JOIN organizations ON organizations.id = auth_sessions.organization_id
+     JOIN organization_members
+       ON organization_members.user_id = app_users.id
+      AND organization_members.organization_id = auth_sessions.organization_id
+     LEFT JOIN employees ON employees.organization_member_id = organization_members.id
      WHERE auth_sessions.token_hash = $1 AND auth_sessions.expires_at > now()`,
     [tokenHash]
   )
