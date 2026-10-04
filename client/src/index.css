@@ -1808,6 +1808,18 @@ input[type='number'] {
   line-height: 1.4;
 }
 
+/* Charts are focusable for keyboard users: no outline on tap/click,
+   the app's usual focus ring for the keyboard */
+.chart-panel :focus:not(:focus-visible) {
+  outline: none;
+}
+
+.chart-panel :focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .chart-note {
   margin: 0 0 0.8rem;
   color: var(--color-text-muted);
