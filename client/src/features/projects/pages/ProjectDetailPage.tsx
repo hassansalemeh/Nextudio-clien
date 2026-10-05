@@ -7,6 +7,7 @@ import { getErrorMessage } from '../../../shared/lib/apiError'
 import { formatDuration } from '../../../shared/lib/timeUtils'
 import { fetchProjectDetails } from '../api'
 import type { ProjectDetails } from '../types'
+import EmployeeWorkRow from '../components/EmployeeWorkRow'
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -207,12 +208,12 @@ function ProjectDetailPage() {
         {employees.length === 0 ? (
           <EmptyState message="No employees have been assigned to this project yet." />
         ) : (
-          <table className="data-table">
+          <table className="data-table project-work-table">
             <thead>
               <tr>
                 <th>Employee</th>
                 <th>Position</th>
-                <th>Assignment</th>
+                <th>Tasks</th>
                 <th className="num">Hours Worked</th>
                 <th className="num">Hourly Cost</th>
                 <th className="num">Labor Cost</th>
@@ -220,22 +221,12 @@ function ProjectDetailPage() {
             </thead>
             <tbody>
               {employees.map((employee) => (
-                <tr key={employee.employee_id}>
-                  <td data-label="Employee">{employee.full_name}</td>
-                  <td data-label="Position">{employee.position}</td>
-                  <td data-label="Assignment" className="col-wrap">
-                    {employee.assignments.length === 0
-                      ? '—'
-                      : employee.assignments.map((assignment, index) => (
-                          <div key={index} style={{ whiteSpace: 'pre-wrap' }}>
-                            {assignment.start_date} → {assignment.end_date}: {assignment.description}
-                          </div>
-                        ))}
-                  </td>
-                  <td data-label="Hours Worked" className="num">{formatHours(employee.hours_worked)}</td>
-                  <td data-label="Hourly Cost" className="num">{currencyFormatter.format(employee.hourly_cost)}</td>
-                  <td data-label="Labor Cost" className="num">{currencyFormatter.format(employee.labor_cost)}</td>
-                </tr>
+                <EmployeeWorkRow
+                  key={employee.employee_id}
+                  employee={employee}
+                  formatHours={formatHours}
+                  formatCurrency={(amount) => currencyFormatter.format(amount)}
+                />
               ))}
             </tbody>
           </table>

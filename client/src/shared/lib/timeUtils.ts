@@ -53,6 +53,20 @@ export function formatLongDate(dateString: string) {
   return parseDateString(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
+// "Sep 24", or "Dec 12, 2025" when the year isn't the current one, for a YYYY-MM-DD date, in local time
+export function formatShortDate(dateString: string) {
+  const date = parseDateString(dateString)
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+  if (date.getFullYear() !== new Date().getFullYear()) options.year = 'numeric'
+  return date.toLocaleDateString('en-US', options)
+}
+
+// "Sep 24" for a single-day span, or "Aug 28 → Sep 21" for a range, for YYYY-MM-DD dates, in local time
+export function formatDateRange(startDate: string, endDate: string) {
+  if (startDate === endDate) return formatShortDate(startDate)
+  return `${formatShortDate(startDate)} → ${formatShortDate(endDate)}`
+}
+
 // ISO instants for the start of the given local day and the start of the next one
 export function dayRange(dateString: string) {
   const [year, month, day] = dateString.split('-').map(Number)

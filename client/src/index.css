@@ -561,6 +561,15 @@ input[type='number'] {
 .clients-table th:nth-child(5) { width: 18%; }
 .clients-table th:last-child { width: 9%; }
 
+/* The Tasks column needs the most room: it carries the per-employee summary and, when expanded, the
+   full task list - the other columns are short, fixed-format numbers. */
+.project-work-table th:nth-child(1) { width: 15%; }
+.project-work-table th:nth-child(2) { width: 12%; }
+.project-work-table th:nth-child(3) { width: 38%; }
+.project-work-table th:nth-child(4) { width: 12%; }
+.project-work-table th:nth-child(5) { width: 11%; }
+.project-work-table th:nth-child(6) { width: 12%; }
+
 .data-table tbody tr:hover {
   background: var(--color-bg);
 }
@@ -2146,6 +2155,53 @@ main {
   min-width: 0;
 }
 
+/* Project detail "Tasks" column: the compact per-row summary, and the full task list opened below it. */
+.tasks-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tasks-summary .btn-sm {
+  align-self: flex-start;
+  margin-top: 0.2rem;
+}
+
+.task-detail-cell {
+  background: var(--color-surface-subtle);
+  border-left: 3px solid var(--color-accent);
+}
+
+.task-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-detail-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.task-detail-date {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.task-detail-desc {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 /* The "edit this row" form (Work Assignments, Review Hours) renders as its own block below the table,
    not inside a table row — a whole form never belongs inside a horizontally-scrolling table cell, since it
    would force every column wider to match it and could scroll off screen. */
@@ -2631,5 +2687,25 @@ main {
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
+  }
+
+  /* The opened task list sits right under the employee's own card, not as a separate floating card. */
+  .data-table:not(.pending-table) tbody tr.task-detail-row {
+    margin-top: -0.75rem;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  /* Overrides the card view's "first cell is bold" rule above - this cell just happens to be its
+     row's only cell (colSpan), not a row title. */
+  .data-table:not(.pending-table) tbody td.task-detail-cell {
+    padding: 1rem;
+    font-weight: 400;
+  }
+
+  .task-detail-item {
+    flex-direction: column;
+    gap: 0.15rem;
   }
 }

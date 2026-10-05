@@ -16,6 +16,8 @@ export type Client = {
   name: string
 }
 
+export type Assignment = { start_date: string; end_date: string; description: string }
+
 export type ProjectDetails = {
   project: {
     id: string
@@ -32,7 +34,7 @@ export type ProjectDetails = {
     employee_id: string
     full_name: string
     position: string
-    assignments: { start_date: string; end_date: string; description: string }[]
+    assignments: Assignment[]
     hours_worked: number
     hourly_cost: number
     labor_cost: number
