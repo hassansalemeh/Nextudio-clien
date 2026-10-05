@@ -14,6 +14,7 @@
     "restore": "node dist/scripts/restore.js",
     "check": "node dist/scripts/check.js",
     "create-user": "node dist/scripts/create-user.js",
+    "reset-password": "node dist/scripts/reset-password.js",
     "lint": "eslint ."
   },
   "dependencies": {
