@@ -247,15 +247,100 @@ async function main() {
       p.on('pageerror', (err) => noteConsoleError(p.url(), err.message))
     }
 
-    // ---- log in as admin ----
+    // ======================================================================
+    // Login page: password show/hide toggle - hidden by default, mouse + keyboard toggle preserve
+    // the typed value, aria-pressed/aria-label update, phone-width layout is clean, login works with
+    // the field both shown and hidden, and Enter still submits (the toggle never intercepts the form).
+    // ======================================================================
+    async function hasHorizontalOverflow(p) {
+      return p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
+    }
+
+    await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(baseUrl)
     await page.waitForSelector('text=Log in')
+    await screenshot(page, 'login-password-hidden-mobile')
+
+    const mobilePasswordField = page.getByRole('textbox', { name: 'Password', exact: true })
+    const mobileToggle = page.getByRole('button', { name: /show password|hide password/i })
+    await mobilePasswordField.fill(ADMIN_PASSWORD)
+    await mobileToggle.click()
+    await screenshot(page, 'login-password-shown-mobile')
+    record('login page phone-width layout has no horizontal overflow', !(await hasHorizontalOverflow(page)))
+    await mobileToggle.click() // back to hidden, for the desktop pass below
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(baseUrl)
+    await page.waitForSelector('text=Log in')
+
+    const passwordField = page.getByRole('textbox', { name: 'Password', exact: true })
+    const toggleButton = page.getByRole('button', { name: /show password|hide password/i })
+
+    const hiddenType = await passwordField.getAttribute('type')
+    const hiddenPressed = await toggleButton.getAttribute('aria-pressed')
+    const hiddenLabel = await toggleButton.getAttribute('aria-label')
+    record(
+      'password field starts hidden with the correct toggle aria state',
+      hiddenType === 'password' && hiddenPressed === 'false' && hiddenLabel === 'Show password',
+      `type=${hiddenType} aria-pressed=${hiddenPressed} aria-label=${hiddenLabel}`
+    )
+    await screenshot(page, 'login-password-hidden')
+
     await page.fill('input[type="email"]', ADMIN_EMAIL)
-    await page.fill('input[type="password"]', ADMIN_PASSWORD)
+    await passwordField.fill(ADMIN_PASSWORD)
+
+    // ---- mouse toggle: reveals the password, flips aria state, keeps the typed value ----
+    await toggleButton.click()
+    const shownType = await passwordField.getAttribute('type')
+    const shownValue = await passwordField.inputValue()
+    const shownPressed = await toggleButton.getAttribute('aria-pressed')
+    const shownLabel = await toggleButton.getAttribute('aria-label')
+    record(
+      'mouse click reveals the password, updates aria state, and keeps the typed value',
+      shownType === 'text' && shownValue === ADMIN_PASSWORD && shownPressed === 'true' && shownLabel === 'Hide password',
+      `type=${shownType} pressed=${shownPressed} label=${shownLabel}`
+    )
+    await screenshot(page, 'login-password-shown')
+
+    await toggleButton.click() // mouse toggle back to hidden
+    const rehiddenType = await passwordField.getAttribute('type')
+    record('mouse click hides the password again', rehiddenType === 'password', `type=${rehiddenType}`)
+
+    // ---- keyboard toggle: Tab from the password field onto the button, activate with Enter and Space ----
+    await passwordField.focus()
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Enter')
+    const keyboardShownType = await passwordField.getAttribute('type')
+    const keyboardShownValue = await passwordField.inputValue()
+    record(
+      'keyboard Enter on the toggle reveals the password and keeps the value',
+      keyboardShownType === 'text' && keyboardShownValue === ADMIN_PASSWORD,
+      `type=${keyboardShownType}`
+    )
+    await page.keyboard.press('Space')
+    const keyboardHiddenType = await passwordField.getAttribute('type')
+    record('keyboard Space on the toggle hides the password again', keyboardHiddenType === 'password', `type=${keyboardHiddenType}`)
+
+    // ---- login with the field left SHOWN ----
+    await toggleButton.click()
     await page.click('button[type="submit"]')
     await goToRoute(page, '/dashboard', 'admin', 'Confirmed Project Value')
     await screenshot(page, 'dashboard-after-login')
-    record('admin login', true)
+    record('login works with the password field shown', true)
+
+    // ---- log out, log back in with the field left HIDDEN (default), submitting with Enter ----
+    await page.click('button:has-text("Log out")')
+    await page.waitForSelector('text=Log in')
+    await page.fill('input[type="email"]', ADMIN_EMAIL)
+    const relogPasswordField = page.getByRole('textbox', { name: 'Password', exact: true })
+    await relogPasswordField.fill(ADMIN_PASSWORD)
+    record(
+      'password field is hidden by default on a fresh login page',
+      (await relogPasswordField.getAttribute('type')) === 'password'
+    )
+    await relogPasswordField.press('Enter')
+    await goToRoute(page, '/dashboard', 'admin', 'Confirmed Project Value')
+    record('pressing Enter in the password field still submits the form', true)
 
     // ---- slow every /api/ response so loading spinners are actually observable, like a throttled network ----
     await context.route('**/api/**', async (route) => {
@@ -754,9 +839,6 @@ async function main() {
     // Extra: a very long project name (chart/table wrapping), dashboard with real data,
     // horizontal-overflow checks, sidebar-stays-fixed-while-scrolling.
     // ======================================================================
-    async function hasHorizontalOverflow(p) {
-      return p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
-    }
 
     const LONG_PROJECT_NAME =
       'A Very Long Project Name That Keeps Going To See If The Chart Axis And Table Column Truncate Or Wrap Instead Of Breaking The Page Layout'
