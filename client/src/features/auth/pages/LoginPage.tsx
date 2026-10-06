@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../../app/auth'
 import Spinner from '../../../shared/components/Spinner'
 import PageHeader from '../../../shared/components/PageHeader'
+import PasswordField from '../../../shared/components/PasswordField'
 
 function LoginPage() {
   const { login } = useAuth()
@@ -31,10 +32,13 @@ function LoginPage() {
             Email
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
           </label>
-          <label className="form-field">
-            Password
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </label>
+          <PasswordField
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            required
+          />
         </div>
         <button type="submit" className="btn-primary" disabled={submitting}>
           {submitting && <Spinner />} Log in
