@@ -16,7 +16,10 @@ const STATE_LABELS: Record<CalendarDay['state'], string> = {
   'today-pending': 'Today',
   submitted: 'Done',
   missed: 'Missed',
+  'day-off': 'Day off',
 }
+
+const DAY_OFF_BADGE_LABELS = { pending: 'Day off requested', rejected: 'Day off declined' } as const
 
 function dayHours(day: CalendarDay) {
   const ms = day.entries.filter((entry) => entry.status !== 'rejected').reduce((sum, entry) => sum + durationMs(entry.started_at, entry.ended_at), 0)
@@ -78,6 +81,11 @@ function MonthCalendar({ year, month, weeks, selectedDate, onSelectDate, onNavig
             )}
             {day.inMonth && day.state === 'submitted' && (
               <span className={styles.dayHint}>{dayHours(day)} · {dayProjectHint(day)}</span>
+            )}
+            {day.inMonth && day.dayOff && day.dayOff.status !== 'approved' && (
+              <span className={`${styles.dayOffBadge} ${styles[`dayOffBadge-${day.dayOff.status}`]}`}>
+                {DAY_OFF_BADGE_LABELS[day.dayOff.status as 'pending' | 'rejected']}
+              </span>
             )}
           </button>
         ))}

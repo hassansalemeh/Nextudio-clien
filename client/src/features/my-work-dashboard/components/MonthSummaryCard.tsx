@@ -28,6 +28,10 @@ function MonthSummaryCard({ summary }: Props) {
           <div className="stat-label">Days missed</div>
           <div className="stat-value small">{summary.daysMissed}</div>
         </div>
+        <div>
+          <div className="stat-label">Days off</div>
+          <div className="stat-value small">{summary.daysOff}</div>
+        </div>
       </div>
 
       {projectRows.length > 0 && (

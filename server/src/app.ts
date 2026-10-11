@@ -27,6 +27,7 @@ import { registerProjectRoutes } from './modules/projects/projects.routes'
 import { registerAssignmentRoutes } from './modules/assignments/assignments.routes'
 import { registerTimeTrackingRoutes } from './modules/time-tracking/time-tracking.routes'
 import { registerPendingWorkRoutes } from './modules/pending-work/pending-work.routes'
+import { registerDayOffRoutes } from './modules/day-off-requests/day-off-requests.routes'
 import { registerProjectFinancialsRoutes } from './modules/project-financials/project-financials.routes'
 import { registerDashboardRoutes } from './modules/dashboard/dashboard.routes'
 
@@ -78,6 +79,7 @@ registerProjectRoutes(app)
 registerAssignmentRoutes(app)
 registerTimeTrackingRoutes(app)
 registerPendingWorkRoutes(app)
+registerDayOffRoutes(app)
 registerProjectFinancialsRoutes(app)
 registerDashboardRoutes(app)
 

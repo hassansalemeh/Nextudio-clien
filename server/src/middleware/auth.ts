@@ -40,6 +40,9 @@ const EMPLOYEE_ROUTES = new Set([
   'POST /time/stop',
   'POST /time/manual',
   'POST /time/clock-out',
+  'GET /day-off-requests',
+  'POST /day-off-requests',
+  'POST /day-off-requests/cancel',
 ])
 
 export function enforceRole(req: Request, res: Response, next: NextFunction) {

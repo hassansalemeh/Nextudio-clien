@@ -120,6 +120,37 @@
   color: var(--color-text-muted);
 }
 
+.day-day-off {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.day-day-off .dayStateLabel {
+  color: var(--color-accent);
+}
+
+/* A pending/rejected day-off request shown "on top of" the day's normal submitted/missed state */
+.dayOffBadge {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.dayOffBadge-pending {
+  background: #fdf1e4;
+  color: #a87a3a;
+}
+
+.dayOffBadge-rejected {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));

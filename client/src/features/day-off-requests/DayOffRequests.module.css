@@ -1,0 +1,7 @@
+/* Day-off requests' own styles - the table, badges, buttons and modal all reuse the global design
+   system; only the "jumped-to from a WhatsApp link" row highlight is unique here. */
+
+.highlighted {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}

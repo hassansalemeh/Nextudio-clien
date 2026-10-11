@@ -5,6 +5,7 @@ import { LogoutIcon, MenuIcon, CloseIcon } from '../shared/components/icons'
 import ClientFundsInvoiceEditorPage from '../features/invoices/pages/ClientFundsInvoiceEditorPage'
 import ClientsPage from '../features/clients/pages/ClientsPage'
 import DashboardPage from '../features/dashboard/pages/DashboardPage'
+import DayOffRequestsPage from '../features/day-off-requests/pages/DayOffRequestsPage'
 import DocumentPreviewPage from '../features/documents/pages/DocumentPreviewPage'
 import EmployeesPage from '../features/employees/pages/EmployeesPage'
 import EstimateEditorPage from '../features/estimates/pages/EstimateEditorPage'
@@ -45,6 +46,7 @@ const NAV_SECTIONS = [
     { to: '/assignments', label: 'Assignments' },
     { to: '/time-tracking', label: 'Time Tracking' },
     { to: '/pending-work', label: 'Approvals' },
+    { to: '/day-off-requests', label: 'Day-off requests' },
   ] },
 ]
 
@@ -53,6 +55,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<string[]>([])
   const [pendingCount, setPendingCount] = useState<number | null>(null)
+  const [dayOffPendingCount, setDayOffPendingCount] = useState<number | null>(null)
   const location = useLocation()
 
   // Close the mobile menu whenever the route changes (a link was followed, or the browser back/forward was used)
@@ -73,6 +76,7 @@ function App() {
   }
 
   const isEmployee = user.role === 'employee'
+  const navCounts: Record<string, number | null> = { '/pending-work': pendingCount, '/day-off-requests': dayOffPendingCount }
   const sections = isEmployee
     ? [{ title: 'My work', links: [
         { to: '/', label: 'My Work' },
@@ -131,8 +135,8 @@ function App() {
                       className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
                     >
                       <span>{link.label}</span>
-                      {link.to === '/pending-work' && pendingCount !== null && pendingCount > 0 &&
-                        <span className="nav-count" aria-label={`${pendingCount} pending`}>{pendingCount}</span>}
+                      {!!navCounts[link.to] &&
+                        <span className="nav-count" aria-label={`${navCounts[link.to]} pending`}>{navCounts[link.to]}</span>}
                     </NavLink>
                   ))}
                 </div>}
@@ -161,6 +165,8 @@ function App() {
           <Route path="/assignments" element={<AssignWorkPage />} />
           <Route path="/time-tracking" element={<TimeTrackingPage />} />
           <Route path="/pending-work" element={<PendingWorkEntriesPage onPendingCountChange={setPendingCount} />} />
+          <Route path="/day-off-requests" element={<DayOffRequestsPage onPendingCountChange={setDayOffPendingCount} />} />
+          <Route path="/day-off-requests/:id" element={<DayOffRequestsPage onPendingCountChange={setDayOffPendingCount} />} />
           <Route path="/estimates" element={<EstimatesPage />} />
           <Route path="/estimates/:id" element={<EstimateEditorPage />} />
           <Route path="/estimates/:id/preview" element={<DocumentPreviewPage kind="estimate" />} />

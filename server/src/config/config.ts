@@ -38,3 +38,12 @@ export const LETTER_PREFIX = 'NEX-LTR-'
 // The only two people allowed to sign a receipt or a letter as the issuing admin. A fixed list (not a
 // DB check constraint) so adding a third name later is a one-line change here, not a migration.
 export const ADMIN_SIGNERS = ['Mohamad Omar', 'Mohamad Ramadan']
+
+// WhatsApp numbers for the same two admins, used to build a wa.me link when an employee requests a day
+// off. International format, digits only (no "+", spaces or dashes). Optional - an admin with no number
+// configured is simply left out of the links offered to the employee. Set via ADMIN_WHATSAPP_OMAR /
+// ADMIN_WHATSAPP_RAMADAN (server/.env) rather than hard-coding a phone number here.
+export const ADMIN_WHATSAPP_NUMBERS: Record<string, string | undefined> = {
+  'Mohamad Omar': process.env.ADMIN_WHATSAPP_OMAR,
+  'Mohamad Ramadan': process.env.ADMIN_WHATSAPP_RAMADAN,
+}
