@@ -41,6 +41,20 @@ export function estimateEmailDefaults(language: DocumentLanguage, contactName: s
   return { subject: subject[language], message: `${GREETING[language](contactName)}\n\n${body[language]}\n\n${CLOSING[language]}` }
 }
 
+export function receiptEmailDefaults(language: DocumentLanguage, receiverName: string) {
+  const subject: Record<DocumentLanguage, string> = {
+    en: `Receipt - Nextudio`,
+    fr: `Reçu - Nextudio`,
+    ar: `إيصال - Nextudio`,
+  }
+  const body: Record<DocumentLanguage, string> = {
+    en: `Please find attached your receipt.`,
+    fr: `Veuillez trouver ci-joint votre reçu.`,
+    ar: `تجدون طيه إيصالكم.`,
+  }
+  return { subject: subject[language], message: `${GREETING[language](receiverName)}\n\n${body[language]}\n\n${CLOSING[language]}` }
+}
+
 export function invoiceEmailDefaults(language: DocumentLanguage, invoiceType: string, contactName: string, title: string) {
   const isClientFunds = invoiceType === 'client_funds'
   const project = title || FALLBACK_PROJECT[language]

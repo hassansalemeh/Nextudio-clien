@@ -5,15 +5,17 @@ import PageLoader from '../../../shared/components/PageLoader'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { fetchDocumentPdf } from '../api'
 
-// Shows the real generated PDF (the same file the admin downloads) for a quotation or an invoice
-function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' }) {
+const COLLECTIONS = { estimate: 'estimates', invoice: 'invoices', receipt: 'receipts' } as const
+
+// Shows the real generated PDF (the same file the admin downloads) for a quotation, invoice, or receipt
+function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' | 'receipt' }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [url, setUrl] = useState('')
   const [filename, setFilename] = useState(`${kind}-${id}.pdf`)
   const [error, setError] = useState('')
 
-  const collection = kind === 'estimate' ? 'estimates' : 'invoices'
+  const collection = COLLECTIONS[kind]
 
   useEffect(() => {
     let objectUrl = ''
@@ -44,10 +46,12 @@ function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' }) {
     <>
       <div className="doc-topbar">
         <PageHeader
-          title={kind === 'estimate' ? 'Quotation preview' : 'Invoice preview'}
+          title={kind === 'estimate' ? 'Quotation preview' : kind === 'invoice' ? 'Invoice preview' : 'Receipt preview'}
           description={kind === 'estimate'
             ? 'Check how this estimate will look when shared or downloaded.'
-            : 'Check how this invoice will look when shared or downloaded.'}
+            : kind === 'invoice'
+              ? 'Check how this invoice will look when shared or downloaded.'
+              : 'Check how this receipt will look when shared or downloaded.'}
         />
         <div className="doc-actions">
           <button type="button" className="btn-outline" onClick={() => navigate(`/${collection}/${id}`)}>

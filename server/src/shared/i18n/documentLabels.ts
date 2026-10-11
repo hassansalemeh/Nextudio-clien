@@ -9,13 +9,22 @@ export const DIRECTION: Record<DocumentLanguage, 'ltr' | 'rtl'> = { en: 'ltr', f
 export type DocumentLabels = {
   quotation: string
   invoice: string
+  receipt: string
+  receiptSubtitle: string
   clientFunds: string
   clientFundsSubtitle: string
   billTo: string
+  receivedFrom: string
   estimateNumber: string
   invoiceNumber: string
+  receiptNumber: string
   estimateDate: string
   invoiceDate: string
+  receiptDate: string
+  reasonForPayment: string
+  amountReceived: string
+  issuedBy: string
+  receivedBy: string
   validUntil: string
   paymentDue: string
   projectLocation: string
@@ -62,13 +71,22 @@ export type DocumentLabels = {
 const en: DocumentLabels = {
   quotation: 'Quotation',
   invoice: 'Invoice',
+  receipt: 'Receipt',
+  receiptSubtitle: 'Proof of payment received',
   clientFunds: 'Client Funds / Project Expenses',
   clientFundsSubtitle: 'Funds held for project expenses — not a professional/design fee invoice',
   billTo: 'Bill To',
+  receivedFrom: 'Received From',
   estimateNumber: 'Estimate Number',
   invoiceNumber: 'Invoice Number',
+  receiptNumber: 'Receipt Number',
   estimateDate: 'Estimate Date',
   invoiceDate: 'Invoice Date',
+  receiptDate: 'Receipt Date',
+  reasonForPayment: 'Reason for Payment',
+  amountReceived: 'Amount Received',
+  issuedBy: 'Issued By',
+  receivedBy: 'Received By',
   validUntil: 'Valid Until',
   paymentDue: 'Payment Due',
   projectLocation: 'Project Location',
@@ -116,13 +134,22 @@ const en: DocumentLabels = {
 const fr: DocumentLabels = {
   quotation: 'Devis',
   invoice: 'Facture',
+  receipt: 'Reçu',
+  receiptSubtitle: 'Preuve de paiement reçu',
   clientFunds: 'Fonds Client / Dépenses de Projet',
   clientFundsSubtitle: "Fonds détenus pour les dépenses du projet — pas une facture d'honoraires professionnels",
   billTo: 'Facturé à',
+  receivedFrom: 'Reçu de',
   estimateNumber: 'Numéro de devis',
   invoiceNumber: 'Numéro de facture',
+  receiptNumber: 'Numéro de reçu',
   estimateDate: 'Date du devis',
   invoiceDate: 'Date de facture',
+  receiptDate: 'Date du reçu',
+  reasonForPayment: 'Motif du paiement',
+  amountReceived: 'Montant reçu',
+  issuedBy: 'Émis par',
+  receivedBy: 'Reçu par',
   validUntil: "Valable jusqu'au",
   paymentDue: 'Échéance de paiement',
   projectLocation: 'Emplacement du projet',
@@ -170,13 +197,22 @@ const fr: DocumentLabels = {
 const ar: DocumentLabels = {
   quotation: 'عرض سعر',
   invoice: 'فاتورة',
+  receipt: 'إيصال',
+  receiptSubtitle: 'إثبات استلام الدفعة',
   clientFunds: 'أموال العميل / مصاريف المشروع',
   clientFundsSubtitle: 'أموال محتفظ بها لمصاريف المشروع — وليست فاتورة أتعاب مهنية',
   billTo: 'إلى',
+  receivedFrom: 'استلم من',
   estimateNumber: 'رقم عرض السعر',
   invoiceNumber: 'رقم الفاتورة',
+  receiptNumber: 'رقم الإيصال',
   estimateDate: 'تاريخ عرض السعر',
   invoiceDate: 'تاريخ الفاتورة',
+  receiptDate: 'تاريخ الإيصال',
+  reasonForPayment: 'سبب الدفعة',
+  amountReceived: 'المبلغ المستلم',
+  issuedBy: 'صادر عن',
+  receivedBy: 'استلمها',
   validUntil: 'صالح حتى',
   paymentDue: 'تاريخ استحقاق الدفع',
   projectLocation: 'موقع المشروع',

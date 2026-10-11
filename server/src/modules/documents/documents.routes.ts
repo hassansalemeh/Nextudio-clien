@@ -1,7 +1,7 @@
 import type { Express } from 'express'
 import { organizationIdOf } from '../../middleware/auth'
 import { HttpError, sendError } from '../../shared'
-import { invoiceDocument, quotationDocument, renderPdf } from './documents.service'
+import { invoiceDocument, quotationDocument, receiptDocument, renderPdf } from './documents.service'
 
 export function registerDocumentRoutes(app: Express) {
   app.get('/api/estimates/:estimateId/pdf', async (req, res) => {
@@ -28,6 +28,19 @@ export function registerDocumentRoutes(app: Express) {
       res.send(pdf)
     } catch (err) {
       sendError(res, err, 'Failed to generate the invoice PDF')
+    }
+  })
+
+  app.get('/api/receipts/:receiptId/pdf', async (req, res) => {
+    try {
+      if (!/^\d+$/.test(req.params.receiptId)) throw new HttpError(404, 'Receipt not found')
+      const doc = await receiptDocument(organizationIdOf(req), req.params.receiptId)
+      const pdf = await renderPdf(doc)
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', `inline; filename="Receipt_${doc.number.replace(/[^\w.-]+/g, '_')}.pdf"`)
+      res.send(pdf)
+    } catch (err) {
+      sendError(res, err, 'Failed to generate the receipt PDF')
     }
   })
 }

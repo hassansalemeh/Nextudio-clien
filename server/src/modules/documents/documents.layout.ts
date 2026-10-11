@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { DIRECTION, DocumentLanguage, labelsFor } from '../../shared/i18n/documentLabels'
+import { DIRECTION, DocumentLabels, DocumentLanguage, labelsFor } from '../../shared/i18n/documentLabels'
 
 // The Nextudio logo, embedded so it prints on every page of the PDF
 const LOGO_DATA_URI = `data:image/webp;base64,${fs.readFileSync(path.resolve(__dirname, '../../../assets/nextudio-logo.webp')).toString('base64')}`
@@ -68,8 +68,14 @@ export type ContractData = {
   nextudioRepTitle: string | null
 }
 
+// A receipt's two hand-signature blocks: the admin who issued it, and the person who received the money.
+// No stored signature image yet - just the printed name and a blank line - but kept as its own small
+// type (rather than reusing ContractData) so a later `adminSignatureUrl`/`receiverSignatureUrl` can be
+// added here without touching the quotation/invoice contract shape at all.
+export type ReceiptSignOff = { adminName: string; receiverName: string }
+
 export type DocumentData = {
-  kind: 'quotation' | 'invoice'
+  kind: 'quotation' | 'invoice' | 'receipt'
   // Only set for `kind: 'invoice'`; distinguishes a Professional Services invoice from a Client Funds one
   // (filenames, and which invoices ever carry a contract) without inferring it from translated text.
   invoiceType?: 'professional_services' | 'client_funds'
@@ -99,6 +105,9 @@ export type DocumentData = {
   payments: { payment_date: string; amount: string; method: string | null }[]
   amountDue: number | null
   contract: ContractData | null
+  // Only set for `kind: 'receipt'`
+  reason?: string
+  signOff?: ReceiptSignOff | null
 }
 
 // ---- Layout: modelled on Nextudio's real quotation / invoice PDFs ----
@@ -131,17 +140,100 @@ export const headerHtml = (doc: DocumentData) => {
 
 export const footerHtml = (doc: DocumentData) => {
   const t = labelsFor(doc.language)
-  const word = doc.kind === 'quotation' ? t.quotation : t.invoice
+  const word = doc.kind === 'quotation' ? t.quotation : doc.kind === 'receipt' ? t.receipt : t.invoice
   return `
 <div dir="${DIRECTION[doc.language]}" style="width:100%;text-align:center;font-family:${fontStack(doc.language)};font-size:8.5px;color:#888;">
   ${escapeHtml(t.footerPage)} <span class="pageNumber"></span> ${escapeHtml(t.footerOf)} <span class="totalPages"></span> ${escapeHtml(t.footerFor)} ${escapeHtml(word)} #${escapeHtml(doc.number)}
 </div>`
 }
 
+// The shared <style> rules for every document kind (quotation/invoice/receipt) - kept in one place so a
+// receipt, which reuses the .meta/.bill-to/.notes/.signatures classes rather than inventing new ones,
+// never drifts out of sync with the quotation/invoice look.
+const styleBlock = (language: DocumentLanguage) => `
+    @page { size: A4; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ${fontStack(language)}; font-size: 10px; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .meta { display: flex; justify-content: space-between; margin: 2px 0 14px; }
+    .bill-to .label { color: #999; font-size: 10px; margin-bottom: 3px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .bill-to .name { font-weight: 700; font-size: 11px; }
+    .bill-to div { line-height: 1.5; }
+    .meta-table { border-collapse: collapse; }
+    .meta-table td { padding: 2px 0 2px 10px; vertical-align: top; }
+    .m-label { text-align: right; font-weight: 700; white-space: nowrap; }
+    .m-value { min-width: 120px; max-width: 200px; overflow-wrap: anywhere; }
+    .band td { background: #f1f2f3; font-weight: 700; padding: 4px 8px; }
+    .band .m-label { padding-right: 8px; }
+    table.items { width: 100%; border-collapse: collapse; }
+    table.items thead { display: table-header-group; }
+    table.items thead th { background: #000; color: #fff; padding: 8px 8px; font-size: 10px; text-align: right; }
+    table.items thead th:first-child { text-align: left; }
+    table.items thead th.c { text-align: center; }
+    table.items td { padding: 8px 8px; vertical-align: top; }
+    table.items tr { page-break-inside: auto; }
+    .svc { width: 46%; }
+    .svc-name { font-weight: 700; }
+    .svc-desc { white-space: pre-wrap; margin-top: 1px; line-height: 1.4; overflow-wrap: anywhere; }
+    .scopes { margin: 4px 0; }
+    .scope-item { padding: 10px 2px; border-bottom: 1px solid #e5e6e8; page-break-inside: avoid; }
+    .scope-item:last-child { border-bottom: none; }
+    .scope-name { font-weight: 700; font-size: 10.5px; }
+    .scope-desc { white-space: pre-wrap; margin-top: 3px; line-height: 1.5; color: #333; overflow-wrap: anywhere; }
+    .num-center { text-align: center; white-space: nowrap; }
+    .num-right { text-align: right; white-space: nowrap; }
+    .totals { margin-top: 14px; border-top: 2px solid #e5e6e8; padding-top: 8px; display: flex; justify-content: flex-end; page-break-inside: avoid; }
+    .totals table { border-collapse: collapse; }
+    .totals td { padding: 3px 0 3px 30px; }
+    .t-label { text-align: right; }
+    .t-value { text-align: right; min-width: 90px; }
+    .t-grand td { padding-top: 7px; padding-bottom: 7px; border-top: 2px solid #e5e6e8; font-size: 11px; }
+    .intro { margin: 4px 0 18px; font-size: 10.5px; line-height: 1.6; color: #222; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .notes { margin-top: 20px; color: #555; font-size: 10px; line-height: 1.55; }
+    .notes h4 { margin: 0 0 6px; font-size: 10.5px; color: #444; break-after: avoid; page-break-after: avoid; }
+    .notes .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .thanks { margin-top: 34px; text-align: center; color: #888; font-size: 10px; }
+    .signatures { margin-top: 30px; padding-top: 14px; border-top: 2px solid #e5e6e8; page-break-inside: avoid; }
+    .signatures h4 { margin: 0 0 8px; font-size: 11.5px; color: #111; break-after: avoid; page-break-after: avoid; }
+    .acceptance-text { font-size: 9.5px; line-height: 1.6; color: #333; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 20px; }
+    .sig-grid { display: flex; gap: 26px; }
+    .sig-block { flex: 1; min-width: 0; }
+    .sig-party { font-weight: 700; font-size: 10.5px; padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid #ccc; }
+    .sig-row { display: flex; align-items: flex-end; gap: 6px; margin-top: 15px; padding-bottom: 4px; border-bottom: 1px solid #999; font-size: 9.5px; min-height: 12px; }
+    .sig-row-label { white-space: nowrap; color: #555; }
+    .sig-row-value { flex: 1; overflow-wrap: anywhere; }
+    .sig-row-blank { margin-top: 24px; padding-bottom: 26px; }
+    .sig-slot { min-height: 40px; }
+`
+
+// A receipt's body: no items/totals table (a receipt records one amount, not a priced scope of work) -
+// just who paid, how much, why, and the two signature blocks. Reuses the same .meta/.bill-to/.notes/
+// .signatures classes as quotation/invoice so it looks like part of the same document family.
+function receiptBodyHtml(doc: DocumentData, t: DocumentLabels, dir: 'ltr' | 'rtl') {
+  const { currency, language } = doc
+  return `<!doctype html><html dir="${dir}" lang="${language}"><head><meta charset="utf-8"><style>${styleBlock(language)}</style></head><body>
+    <div class="meta">
+      <div class="bill-to">
+        <div class="label">${escapeHtml(t.receivedFrom)}</div>
+        <div class="name">${escapeHtml(doc.billTo.name)}</div>
+        ${doc.billTo.email ? `<div>${escapeHtml(doc.billTo.email)}</div>` : ''}
+      </div>
+      <table class="meta-table">
+        <tr><td class="m-label">${escapeHtml(doc.numberLabel)}:</td><td class="m-value">${escapeHtml(doc.number)}</td></tr>
+        <tr><td class="m-label">${escapeHtml(doc.dateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.date, language))}</td></tr>
+        <tr class="band"><td class="m-label">${escapeHtml(t.amountReceived)} (${escapeHtml(currency)}):</td><td class="m-value">${money(doc.total, currency)}</td></tr>
+      </table>
+    </div>
+    <div class="notes"><h4>${escapeHtml(t.reasonForPayment)}</h4><div class="text">${formatText(doc.reason ?? '')}</div></div>
+    <div class="thanks">${escapeHtml(t.thankYou)}</div>
+    ${receiptSignatureSectionHtml(doc)}
+  </body></html>`
+}
+
 export function bodyHtml(doc: DocumentData) {
   const { currency, language } = doc
   const t = labelsFor(language)
   const dir = DIRECTION[language]
+  if (doc.kind === 'receipt') return receiptBodyHtml(doc, t, dir)
   const isLumpSum = doc.pricingMethod === 'lump_sum'
   const subtotalLabel = isLumpSum ? t.lumpSumFee : t.subtotal
 
@@ -206,59 +298,7 @@ export function bodyHtml(doc: DocumentData) {
 
   const signatures = signatureSectionHtml(doc)
 
-  return `<!doctype html><html dir="${dir}" lang="${language}"><head><meta charset="utf-8"><style>
-    @page { size: A4; }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: ${fontStack(language)}; font-size: 10px; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .meta { display: flex; justify-content: space-between; margin: 2px 0 14px; }
-    .bill-to .label { color: #999; font-size: 10px; margin-bottom: 3px; letter-spacing: 0.5px; text-transform: uppercase; }
-    .bill-to .name { font-weight: 700; font-size: 11px; }
-    .bill-to div { line-height: 1.5; }
-    .meta-table { border-collapse: collapse; }
-    .meta-table td { padding: 2px 0 2px 10px; vertical-align: top; }
-    .m-label { text-align: right; font-weight: 700; white-space: nowrap; }
-    .m-value { min-width: 120px; max-width: 200px; overflow-wrap: anywhere; }
-    .band td { background: #f1f2f3; font-weight: 700; padding: 4px 8px; }
-    .band .m-label { padding-right: 8px; }
-    table.items { width: 100%; border-collapse: collapse; }
-    table.items thead { display: table-header-group; }
-    table.items thead th { background: #000; color: #fff; padding: 8px 8px; font-size: 10px; text-align: right; }
-    table.items thead th:first-child { text-align: left; }
-    table.items thead th.c { text-align: center; }
-    table.items td { padding: 8px 8px; vertical-align: top; }
-    table.items tr { page-break-inside: auto; }
-    .svc { width: 46%; }
-    .svc-name { font-weight: 700; }
-    .svc-desc { white-space: pre-wrap; margin-top: 1px; line-height: 1.4; overflow-wrap: anywhere; }
-    .scopes { margin: 4px 0; }
-    .scope-item { padding: 10px 2px; border-bottom: 1px solid #e5e6e8; page-break-inside: avoid; }
-    .scope-item:last-child { border-bottom: none; }
-    .scope-name { font-weight: 700; font-size: 10.5px; }
-    .scope-desc { white-space: pre-wrap; margin-top: 3px; line-height: 1.5; color: #333; overflow-wrap: anywhere; }
-    .num-center { text-align: center; white-space: nowrap; }
-    .num-right { text-align: right; white-space: nowrap; }
-    .totals { margin-top: 14px; border-top: 2px solid #e5e6e8; padding-top: 8px; display: flex; justify-content: flex-end; page-break-inside: avoid; }
-    .totals table { border-collapse: collapse; }
-    .totals td { padding: 3px 0 3px 30px; }
-    .t-label { text-align: right; }
-    .t-value { text-align: right; min-width: 90px; }
-    .t-grand td { padding-top: 7px; padding-bottom: 7px; border-top: 2px solid #e5e6e8; font-size: 11px; }
-    .intro { margin: 4px 0 18px; font-size: 10.5px; line-height: 1.6; color: #222; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .notes { margin-top: 20px; color: #555; font-size: 10px; line-height: 1.55; }
-    .notes h4 { margin: 0 0 6px; font-size: 10.5px; color: #444; break-after: avoid; page-break-after: avoid; }
-    .notes .text { white-space: pre-wrap; overflow-wrap: anywhere; }
-    .thanks { margin-top: 34px; text-align: center; color: #888; font-size: 10px; }
-    .signatures { margin-top: 30px; padding-top: 14px; border-top: 2px solid #e5e6e8; page-break-inside: avoid; }
-    .signatures h4 { margin: 0 0 8px; font-size: 11.5px; color: #111; break-after: avoid; page-break-after: avoid; }
-    .acceptance-text { font-size: 9.5px; line-height: 1.6; color: #333; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 20px; }
-    .sig-grid { display: flex; gap: 26px; }
-    .sig-block { flex: 1; min-width: 0; }
-    .sig-party { font-weight: 700; font-size: 10.5px; padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid #ccc; }
-    .sig-row { display: flex; align-items: flex-end; gap: 6px; margin-top: 15px; padding-bottom: 4px; border-bottom: 1px solid #999; font-size: 9.5px; min-height: 12px; }
-    .sig-row-label { white-space: nowrap; color: #555; }
-    .sig-row-value { flex: 1; overflow-wrap: anywhere; }
-    .sig-row-blank { margin-top: 24px; padding-bottom: 26px; }
-  </style></head><body>
+  return `<!doctype html><html dir="${dir}" lang="${language}"><head><meta charset="utf-8"><style>${styleBlock(language)}</style></head><body>
     <div class="meta">
       <div class="bill-to">
         <div class="label">${escapeHtml(t.billTo)}</div>
@@ -311,6 +351,33 @@ function signatureSectionHtml(doc: DocumentData) {
       <div class="sig-grid">
         ${block(t.client, doc.billTo.name, c.clientRepName, c.clientRepTitle)}
         ${block(t.nextudioParty, 'Nextudio Architects', c.nextudioRepName, c.nextudioRepTitle)}
+      </div>
+    </div>`
+}
+
+// The Receipt's own two-party sign-off: the admin who issued it, and the person who received the money.
+// No acceptance paragraph (a receipt isn't a contract) - just each name, a blank line for a handwritten
+// signature, and a date line. The empty .sig-slot above each blank line is reserved for a stored
+// signature image later: today it renders empty, so adding one is filling this slot in, not a rework.
+function receiptSignatureSectionHtml(doc: DocumentData) {
+  if (!doc.signOff) return ''
+  const t = labelsFor(doc.language)
+  const s = doc.signOff
+
+  const block = (party: string, name: string) => `
+      <div class="sig-block">
+        <div class="sig-party">${escapeHtml(party)}</div>
+        <div class="sig-row"><span class="sig-row-value">${escapeHtml(name)}</span></div>
+        <div class="sig-slot"></div>
+        <div class="sig-row sig-row-blank"><span class="sig-row-label">${escapeHtml(t.signature)}:</span><span class="sig-row-value"></span></div>
+        <div class="sig-row"><span class="sig-row-label">${escapeHtml(t.signatureDate)}:</span><span class="sig-row-value"></span></div>
+      </div>`
+
+  return `
+    <div class="signatures">
+      <div class="sig-grid">
+        ${block(t.issuedBy, s.adminName)}
+        ${block(t.receivedBy, s.receiverName)}
       </div>
     </div>`
 }

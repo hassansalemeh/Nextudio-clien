@@ -1,0 +1,194 @@
+import { useEffect, useState } from 'react'
+import { CloseIcon } from '../../../shared/components/icons'
+import MultiEmailField from '../../../shared/components/MultiEmailField'
+import Spinner from '../../../shared/components/Spinner'
+import { useToast } from '../../../shared/components/Toast'
+import { getErrorMessage } from '../../../shared/lib/apiError'
+import { receiptEmailDefaults, type DocumentLanguage } from '../../../shared/lib/emailDefaults'
+import { fetchReceiptEmails, sendReceiptEmail } from '../api'
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+type EmailHistoryItem = {
+  id: string
+  recipient: string
+  cc: string | null
+  subject: string
+  message: string | null
+  status: 'sent' | 'failed'
+  error: string | null
+  sent_by_email: string
+  sent_at: string
+}
+
+type Props = {
+  receiptId: string
+  receiverEmail: string | null
+  receiverName: string
+  documentLanguage: string
+  onClose: () => void
+  onSent: (receipt: any) => void
+}
+
+function formatSentAt(iso: string) {
+  const date = new Date(iso)
+  const d = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const t = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return `${d} at ${t}`
+}
+
+function SendReceiptEmailDialog({ receiptId, receiverEmail, receiverName, documentLanguage, onClose, onSent }: Props) {
+  const toast = useToast()
+  const [history, setHistory] = useState<EmailHistoryItem[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+
+  const defaults = receiptEmailDefaults((documentLanguage as DocumentLanguage) || 'en', receiverName)
+  const [to, setTo] = useState(receiverEmail ?? '')
+  const [ccList, setCcList] = useState<string[]>([''])
+  const [subject, setSubject] = useState(defaults.subject)
+  const [message, setMessage] = useState(defaults.message)
+  const [attachPdf, setAttachPdf] = useState(true)
+
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [justSent, setJustSent] = useState('')
+
+  useEffect(() => {
+    fetchReceiptEmails(receiptId)
+      .then((data: EmailHistoryItem[]) => {
+        setHistory(data)
+        const last = data.find((item) => item.status === 'sent') ?? data[0]
+        if (last) {
+          setTo(last.recipient)
+          setCcList(last.cc ? last.cc.split(',').map((address) => address.trim()) : [''])
+          setSubject(last.subject)
+          if (last.message) setMessage(last.message)
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setHistoryLoaded(true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receiptId])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  async function send(event: React.FormEvent) {
+    event.preventDefault()
+    setError('')
+    setJustSent('')
+
+    const ccEmails = ccList.map((address) => address.trim()).filter(Boolean)
+    if (!to.trim()) return setError('Enter a recipient email address.')
+    if (!EMAIL_RE.test(to.trim())) return setError('Enter a valid recipient email address.')
+    if (ccEmails.some((address) => !EMAIL_RE.test(address))) {
+      return setError('Enter valid CC email address(es).')
+    }
+    if (!subject.trim()) return setError('Enter a subject.')
+
+    setBusy(true)
+    try {
+      const body = await sendReceiptEmail(receiptId, {
+        to: to.trim(),
+        cc: ccEmails.length ? ccEmails.join(', ') : null,
+        subject: subject.trim(),
+        message,
+        attach_pdf: attachPdf,
+      })
+      setJustSent(`Sent to ${to.trim()}.`)
+      toast.success('Receipt sent.')
+      setHistory((previous) => [body.email, ...previous])
+      onSent(body.receipt)
+    } catch (err) {
+      const message = getErrorMessage(err, 'Could not send the email.')
+      setError(message)
+      toast.error(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const lastSent = history.find((item) => item.status === 'sent')
+
+  return (
+    <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="send-receipt-email-title">
+        <div className="modal-header">
+          <h2 id="send-receipt-email-title">Send Receipt by Email</h2>
+          <button type="button" className="doc-icon" aria-label="Close" onClick={onClose}>
+            <CloseIcon />
+          </button>
+        </div>
+
+        {historyLoaded && lastSent && (
+          <p className="doc-hint" style={{ marginBottom: '1rem' }}>
+            Last sent: {formatSentAt(lastSent.sent_at)} to {lastSent.recipient} (by {lastSent.sent_by_email})
+          </p>
+        )}
+
+        <form onSubmit={send} noValidate>
+          <div className="form-grid">
+            <label className="form-field">
+              To
+              <input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="receiver@example.com" />
+            </label>
+            <MultiEmailField label="CC (optional)" emails={ccList} onChange={setCcList} placeholder="e.g. someone@nextudio.co" />
+          </div>
+          <div className="form-grid">
+            <label className="form-field">
+              Subject
+              <input value={subject} onChange={(e) => setSubject(e.target.value)} />
+            </label>
+          </div>
+          <div className="form-grid">
+            <label className="form-field">
+              Message
+              <textarea className="email-message" value={message} onChange={(e) => setMessage(e.target.value)} />
+            </label>
+          </div>
+          <label className="email-attach-check">
+            <input type="checkbox" checked={attachPdf} onChange={(e) => setAttachPdf(e.target.checked)} />
+            Attach Receipt PDF
+          </label>
+
+          {error && <p className="error-message">{error}</p>}
+          {justSent && <p className="doc-saved">{justSent}</p>}
+
+          <div className="modal-actions" style={{ marginTop: '1rem' }}>
+            <button type="button" className="btn-sm btn-ghost" onClick={onClose}>
+              Close
+            </button>
+            <button type="submit" className="btn-sm btn-solid" disabled={busy}>
+              {busy && <Spinner />} Send Email
+            </button>
+          </div>
+        </form>
+
+        {history.length > 0 && (
+          <div className="email-history">
+            <h3>History</h3>
+            <ul>
+              {history.map((item) => (
+                <li key={item.id}>
+                  <span className={`status-badge status-${item.status === 'sent' ? 'approved' : 'rejected'}`}>
+                    {item.status === 'sent' ? 'Sent' : 'Failed'}
+                  </span>{' '}
+                  {formatSentAt(item.sent_at)} to <strong>{item.recipient}</strong>
+                  {item.cc ? ` (cc: ${item.cc})` : ''} — by {item.sent_by_email}
+                  {item.status === 'failed' && item.error && <div className="email-history-error">{item.error}</div>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default SendReceiptEmailDialog

@@ -18,6 +18,8 @@ import MyWorkPage from '../features/time-tracking/pages/MyWorkPage'
 import ProjectDetailPage from '../features/projects/pages/ProjectDetailPage'
 import ProjectFinancialSummaryPage from '../features/projects/pages/ProjectFinancialSummaryPage'
 import ProjectsPage from '../features/projects/pages/ProjectsPage'
+import ReceiptEditorPage from '../features/receipts/pages/ReceiptEditorPage'
+import ReceiptsPage from '../features/receipts/pages/ReceiptsPage'
 import AssignWorkPage from '../features/work-assignments/pages/AssignWorkPage'
 import TimeTrackingPage from '../features/time-tracking/pages/TimeTrackingPage'
 
@@ -31,6 +33,7 @@ const NAV_SECTIONS = [
   ] },
   { title: 'Money', links: [
     { to: '/payments', label: 'Payments' },
+    { to: '/receipts', label: 'Receipts' },
     { to: '/financial-summary', label: 'Financial Summary' },
   ] },
   { title: 'Team', links: [
@@ -156,6 +159,9 @@ function App() {
           <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
           <Route path="/invoices/:id/edit" element={<ClientFundsInvoiceEditorPage />} />
           <Route path="/invoices/:id/preview" element={<DocumentPreviewPage kind="invoice" />} />
+          <Route path="/receipts" element={<ReceiptsPage />} />
+          <Route path="/receipts/:id" element={<ReceiptEditorPage />} />
+          <Route path="/receipts/:id/preview" element={<DocumentPreviewPage kind="receipt" />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/financial-summary" element={<ProjectFinancialSummaryPage />} />
         </Routes>}

@@ -2,6 +2,7 @@ import { HttpError } from '../../shared'
 import { labelsFor } from '../../shared/i18n/documentLabels'
 import { loadEstimate } from '../estimates/estimates.service'
 import { loadInvoice } from '../invoices/invoices.service'
+import { loadReceipt } from '../receipts/receipts.service'
 import { DocumentData } from './documents.layout'
 
 export { renderPdf, checkPdfEngine } from './documents.pdf'
@@ -102,5 +103,40 @@ export async function invoiceDocument(organizationId: string, invoiceId: string)
           nextudioRepName: invoice.nextudio_representative_name,
           nextudioRepTitle: invoice.nextudio_representative_title,
         },
+  }
+}
+
+export async function receiptDocument(organizationId: string, receiptId: string): Promise<DocumentData> {
+  const receipt = await loadReceipt(organizationId, receiptId)
+  if (!receipt) throw new HttpError(404, 'Receipt not found')
+  const t = labelsFor(receipt.document_language)
+  return {
+    kind: 'receipt',
+    language: receipt.document_language,
+    heading: t.receipt,
+    subtitle: t.receiptSubtitle,
+    number: receipt.receipt_number,
+    numberLabel: t.receiptNumber,
+    dateLabel: t.receiptDate,
+    date: receipt.receipt_date,
+    secondDateLabel: '',
+    secondDate: null,
+    currency: receipt.currency,
+    billTo: { name: receipt.receiver_name, contact: null, phone: null, email: receipt.receiver_email, address: null },
+    projectLocation: null,
+    introduction: null,
+    items: [],
+    pricingMethod: 'itemized',
+    subtotal: receipt.amount,
+    discount: '0',
+    discountType: 'fixed',
+    discountValue: '0',
+    total: receipt.amount,
+    sections: [],
+    payments: [],
+    amountDue: null,
+    contract: null,
+    reason: receipt.reason,
+    signOff: { adminName: receipt.issued_by_admin, receiverName: receipt.receiver_name },
   }
 }

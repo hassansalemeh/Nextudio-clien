@@ -1,0 +1,51 @@
+/* Receipts' own styles - everything generic (cards, tables, modals, form fields, the doc-* document-editor
+   classes shared with Estimates/Invoices) stays in the global design system; only what's unique to the
+   receipt's signature-section preview lives here. */
+
+.amountRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.amountRow input {
+  flex: 1;
+}
+
+.amountRow select {
+  width: auto;
+}
+
+.signaturePreview {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.signatureBlock {
+  flex: 1;
+  min-width: 0;
+}
+
+.signatureParty {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 0.5rem;
+}
+
+.signatureName {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 1.75rem;
+}
+
+.signatureLine {
+  border-top: 1px dashed var(--color-border-strong);
+  padding-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
