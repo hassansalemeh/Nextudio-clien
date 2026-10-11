@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CloseIcon } from '../../../shared/components/icons'
+import MultiEmailField from '../../../shared/components/MultiEmailField'
 import Spinner from '../../../shared/components/Spinner'
 import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
@@ -45,7 +46,7 @@ function SendEstimateEmailDialog({ estimateId, clientEmail, contactName, project
 
   const defaults = estimateEmailDefaults((documentLanguage as DocumentLanguage) || 'en', contactName, projectTitle)
   const [to, setTo] = useState(clientEmail ?? '')
-  const [cc, setCc] = useState('')
+  const [ccList, setCcList] = useState<string[]>([''])
   const [subject, setSubject] = useState(defaults.subject)
   const [message, setMessage] = useState(defaults.message)
   const [attachPdf, setAttachPdf] = useState(true)
@@ -62,7 +63,7 @@ function SendEstimateEmailDialog({ estimateId, clientEmail, contactName, project
         const last = data.find((item) => item.status === 'sent') ?? data[0]
         if (last) {
           setTo(last.recipient)
-          setCc(last.cc ?? '')
+          setCcList(last.cc ? last.cc.split(',').map((address) => address.trim()) : [''])
           setSubject(last.subject)
           if (last.message) setMessage(last.message)
         }
@@ -86,16 +87,23 @@ function SendEstimateEmailDialog({ estimateId, clientEmail, contactName, project
     setError('')
     setJustSent('')
 
+    const ccEmails = ccList.map((address) => address.trim()).filter(Boolean)
     if (!to.trim()) return setError('Enter a recipient email address.')
     if (!EMAIL_RE.test(to.trim())) return setError('Enter a valid recipient email address.')
-    if (cc.trim() && cc.split(',').some((address) => !EMAIL_RE.test(address.trim()))) {
-      return setError('Enter valid CC email address(es), separated by commas.')
+    if (ccEmails.some((address) => !EMAIL_RE.test(address))) {
+      return setError('Enter valid CC email address(es).')
     }
     if (!subject.trim()) return setError('Enter a subject.')
 
     setBusy(true)
     try {
-      const body = await sendEstimateEmail(estimateId, { to: to.trim(), cc: cc.trim() || null, subject: subject.trim(), message, attach_pdf: attachPdf })
+      const body = await sendEstimateEmail(estimateId, {
+        to: to.trim(),
+        cc: ccEmails.length ? ccEmails.join(', ') : null,
+        subject: subject.trim(),
+        message,
+        attach_pdf: attachPdf,
+      })
       setJustSent(`Sent to ${to.trim()}.`)
       toast.success('Estimate sent.')
       setHistory((previous) => [body.email, ...previous])
@@ -133,10 +141,7 @@ function SendEstimateEmailDialog({ estimateId, clientEmail, contactName, project
               To
               <input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="client@example.com" />
             </label>
-            <label className="form-field">
-              CC (optional)
-              <input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="e.g. someone@nextudio.co" />
-            </label>
+            <MultiEmailField label="CC (optional)" emails={ccList} onChange={setCcList} placeholder="e.g. someone@nextudio.co" />
           </div>
           <div className="form-grid">
             <label className="form-field">

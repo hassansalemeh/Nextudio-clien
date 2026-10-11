@@ -17,7 +17,8 @@ Do **not** set `PORT`: Railway provides it and the app listens on `process.env.P
 `NODE_ENV`, `PDF_BROWSER_PATH` and `PDF_NO_SANDBOX` are already set inside the image.
 
 To enable "Send by Email" on quotations, set `RESEND_API_KEY` (from the [Resend](https://resend.com) dashboard)
-and optionally `MAIL_FROM_EMAIL` (default `info@nextudio.co`) and `MAIL_FROM_NAME` (default `Nextudio Architects`).
+and optionally `MAIL_FROM_EMAIL` (default `info@nextudio.co`), `MAIL_FROM_NAME` (default `Nextudio Architects`),
+and `MAIL_BCC_EMAIL` to keep a copy of every sent email in Gmail "Sent" (see `docs/EMAIL-RESEND.md`).
 Email is sent over HTTPS via the Resend API, not SMTP — **Railway blocks outbound SMTP on our plan**, which is
 why this doesn't use `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS` at all. Without `RESEND_API_KEY`, sending
 fails with a clear error; nothing else is affected. See `docs/EMAIL-RESEND.md` for full setup, including the

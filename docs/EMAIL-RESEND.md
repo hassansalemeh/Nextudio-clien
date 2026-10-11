@@ -15,6 +15,7 @@ Send by Email dialog, same PDF attachment, same email history, same Draft → Pe
 | `RESEND_API_KEY` | the API key from step 1 (secret) |
 | `MAIL_FROM_EMAIL` | `info@nextudio.co` (default if unset) |
 | `MAIL_FROM_NAME` | `Nextudio Architects` (default if unset) |
+| `MAIL_BCC_EMAIL` | optional — BCC'd on every outgoing email so a copy lands in Gmail "Sent" (comma-separate for more than one address) |
 
 Remove `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` if they're set — they're no longer used for anything.
 
