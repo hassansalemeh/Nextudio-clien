@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg'
-import { RECEIPT_ADMIN_SIGNERS, RECEIPT_PREFIX } from '../../config'
+import { ADMIN_SIGNERS, RECEIPT_PREFIX } from '../../config'
 import { lockForNumbering, pool, retryOnUniqueViolation, withTransaction } from '../../db'
 import { HttpError, isIsoDate, roundMoney } from '../../shared'
 import { DOCUMENT_LANGUAGES, isDocumentLanguage } from '../../shared/i18n/documentLabels'
@@ -25,8 +25,8 @@ export function parseHeader(body: Record<string, unknown>) {
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) throw new HttpError(400, 'Amount must be greater than 0')
   if (!/^[A-Z]{3}$/.test(currency)) throw new HttpError(400, 'Currency must be a 3-letter code such as USD')
   if (!reason) throw new HttpError(400, 'Reason for the payment is required')
-  if (!RECEIPT_ADMIN_SIGNERS.includes(issued_by_admin)) {
-    throw new HttpError(400, 'Issuing admin must be one of: ' + RECEIPT_ADMIN_SIGNERS.join(', '))
+  if (!ADMIN_SIGNERS.includes(issued_by_admin)) {
+    throw new HttpError(400, 'Issuing admin must be one of: ' + ADMIN_SIGNERS.join(', '))
   }
   if (!isDocumentLanguage(document_language)) {
     throw new HttpError(400, 'Document language must be one of: ' + DOCUMENT_LANGUAGES.join(', '))

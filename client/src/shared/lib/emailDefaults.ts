@@ -55,6 +55,22 @@ export function receiptEmailDefaults(language: DocumentLanguage, receiverName: s
   return { subject: subject[language], message: `${GREETING[language](receiverName)}\n\n${body[language]}\n\n${CLOSING[language]}` }
 }
 
+export function letterEmailDefaults(language: DocumentLanguage, recipientName: string, subject: string) {
+  const subjectLine: Record<DocumentLanguage, string> = {
+    en: subject || 'Letter - Nextudio',
+    fr: subject || 'Lettre - Nextudio',
+    ar: subject || 'خطاب - Nextudio',
+  }
+  const body: Record<DocumentLanguage, string> = {
+    en: `Please find attached our letter.`,
+    fr: `Veuillez trouver ci-joint notre lettre.`,
+    ar: `تجدون طيه خطابنا.`,
+  }
+  // "To Whom It May Concern" already reads as its own greeting - "Dear To Whom It May Concern," would be redundant
+  const greeting = /^to whom it may concern$/i.test(recipientName.trim()) ? `${recipientName},` : GREETING[language](recipientName)
+  return { subject: subjectLine[language], message: `${greeting}\n\n${body[language]}\n\n${CLOSING[language]}` }
+}
+
 export function invoiceEmailDefaults(language: DocumentLanguage, invoiceType: string, contactName: string, title: string) {
   const isClientFunds = invoiceType === 'client_funds'
   const project = title || FALLBACK_PROJECT[language]

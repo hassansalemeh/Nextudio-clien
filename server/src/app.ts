@@ -18,6 +18,8 @@ import { registerInvoiceRoutes } from './modules/invoices/invoices.routes'
 import { registerInvoiceEmailRoutes } from './modules/invoice-emails/invoice-emails.routes'
 import { registerReceiptRoutes } from './modules/receipts/receipts.routes'
 import { registerReceiptEmailRoutes } from './modules/receipt-emails/receipt-emails.routes'
+import { registerLetterRoutes } from './modules/letters/letters.routes'
+import { registerLetterEmailRoutes } from './modules/letter-emails/letter-emails.routes'
 import { registerDisbursementRoutes } from './modules/disbursements/disbursements.routes'
 import { registerPaymentRoutes } from './modules/payments/payments.routes'
 import { registerDocumentRoutes } from './modules/documents/documents.routes'
@@ -65,6 +67,8 @@ registerInvoiceRoutes(app)
 registerInvoiceEmailRoutes(app)
 registerReceiptRoutes(app)
 registerReceiptEmailRoutes(app)
+registerLetterRoutes(app)
+registerLetterEmailRoutes(app)
 registerDisbursementRoutes(app)
 registerPaymentRoutes(app)
 registerDocumentRoutes(app)

@@ -3,6 +3,7 @@ import { labelsFor } from '../../shared/i18n/documentLabels'
 import { loadEstimate } from '../estimates/estimates.service'
 import { loadInvoice } from '../invoices/invoices.service'
 import { loadReceipt } from '../receipts/receipts.service'
+import { loadLetter } from '../letters/letters.service'
 import { DocumentData } from './documents.layout'
 
 export { renderPdf, checkPdfEngine } from './documents.pdf'
@@ -138,5 +139,41 @@ export async function receiptDocument(organizationId: string, receiptId: string)
     contract: null,
     reason: receipt.reason,
     signOff: { adminName: receipt.issued_by_admin, receiverName: receipt.receiver_name },
+  }
+}
+
+export async function letterDocument(organizationId: string, letterId: string): Promise<DocumentData> {
+  const letter = await loadLetter(organizationId, letterId)
+  if (!letter) throw new HttpError(404, 'Letter not found')
+  const t = labelsFor(letter.document_language)
+  return {
+    kind: 'letter',
+    language: letter.document_language,
+    heading: t.letter,
+    // The admin's own subject line, shown where a quotation shows its summary/title - not a fixed label.
+    subtitle: letter.subject,
+    number: letter.letter_number,
+    numberLabel: t.letterNumber,
+    dateLabel: t.letterDate,
+    date: letter.letter_date,
+    secondDateLabel: '',
+    secondDate: null,
+    currency: 'USD',
+    billTo: { name: letter.recipient_name, contact: null, phone: null, email: null, address: null },
+    projectLocation: null,
+    introduction: null,
+    items: [],
+    pricingMethod: 'itemized',
+    subtotal: '0',
+    discount: '0',
+    discountType: 'fixed',
+    discountValue: '0',
+    total: '0',
+    sections: [],
+    payments: [],
+    amountDue: null,
+    contract: null,
+    body: letter.body,
+    adminSignOff: letter.issued_by_admin,
   }
 }

@@ -41,6 +41,27 @@ export const formatText = (value: unknown) =>
     })
     .join('')
 
+// A letter's body: blank-line-separated blocks become paragraphs; a block where every line starts with
+// "- " or "* " becomes a bullet list instead; a single newline within a paragraph becomes a <br> (so a
+// deliberate short line break still shows, without turning it into a separate paragraph). Every line still
+// runs through formatText(), so **bold** spans work inside both paragraphs and bullets.
+const formatBody = (value: unknown) =>
+  String(value ?? '')
+    .split(/\n\s*\n/)
+    .filter((block) => block.trim() !== '')
+    .map((block) => {
+      const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
+      const isList = lines.length > 0 && lines.every((line) => /^[-*]\s+/.test(line))
+      if (isList) {
+        return `<ul>${lines.map((line) => `<li>${formatText(line.replace(/^[-*]\s+/, ''))}</li>`).join('')}</ul>`
+      }
+      return `<p>${block
+        .split('\n')
+        .map((line) => formatText(line))
+        .join('<br>')}</p>`
+    })
+    .join('')
+
 const money = (amount: number | string, currency: string) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount))
 
@@ -75,7 +96,7 @@ export type ContractData = {
 export type ReceiptSignOff = { adminName: string; receiverName: string }
 
 export type DocumentData = {
-  kind: 'quotation' | 'invoice' | 'receipt'
+  kind: 'quotation' | 'invoice' | 'receipt' | 'letter'
   // Only set for `kind: 'invoice'`; distinguishes a Professional Services invoice from a Client Funds one
   // (filenames, and which invoices ever carry a contract) without inferring it from translated text.
   invoiceType?: 'professional_services' | 'client_funds'
@@ -108,6 +129,11 @@ export type DocumentData = {
   // Only set for `kind: 'receipt'`
   reason?: string
   signOff?: ReceiptSignOff | null
+  // Only set for `kind: 'letter'`. Unlike a receipt, a letter has only the issuing admin's signature -
+  // there's no second party to sign (the recipient may not even be a real, known person: it can be
+  // "To Whom It May Concern").
+  body?: string
+  adminSignOff?: string | null
 }
 
 // ---- Layout: modelled on Nextudio's real quotation / invoice PDFs ----
@@ -140,7 +166,7 @@ export const headerHtml = (doc: DocumentData) => {
 
 export const footerHtml = (doc: DocumentData) => {
   const t = labelsFor(doc.language)
-  const word = doc.kind === 'quotation' ? t.quotation : doc.kind === 'receipt' ? t.receipt : t.invoice
+  const word = doc.kind === 'quotation' ? t.quotation : doc.kind === 'receipt' ? t.receipt : doc.kind === 'letter' ? t.letter : t.invoice
   return `
 <div dir="${DIRECTION[doc.language]}" style="width:100%;text-align:center;font-family:${fontStack(doc.language)};font-size:8.5px;color:#888;">
   ${escapeHtml(t.footerPage)} <span class="pageNumber"></span> ${escapeHtml(t.footerOf)} <span class="totalPages"></span> ${escapeHtml(t.footerFor)} ${escapeHtml(word)} #${escapeHtml(doc.number)}
@@ -203,6 +229,12 @@ const styleBlock = (language: DocumentLanguage) => `
     .sig-row-value { flex: 1; overflow-wrap: anywhere; }
     .sig-row-blank { margin-top: 24px; padding-bottom: 26px; }
     .sig-slot { min-height: 40px; }
+    .sig-grid.single { max-width: 45%; }
+    .letter-to { margin: 4px 0 18px; font-size: 10.5px; }
+    .letter-body { font-size: 10.5px; line-height: 1.6; color: #222; }
+    .letter-body p { margin: 0 0 12px; overflow-wrap: anywhere; }
+    .letter-body ul { margin: 0 0 12px 20px; padding: 0; }
+    .letter-body li { margin-bottom: 4px; overflow-wrap: anywhere; }
 `
 
 // A receipt's body: no items/totals table (a receipt records one amount, not a priced scope of work) -
@@ -229,11 +261,28 @@ function receiptBodyHtml(doc: DocumentData, t: DocumentLabels, dir: 'ltr' | 'rtl
   </body></html>`
 }
 
+// A letter's body: no meta "bill to" box, no totals - just who it's addressed to, the letter number/date,
+// the subject (shown in the header, like a quotation's subtitle), the free-text body, and a single
+// signature block (the issuing admin only - a letter has no second party to sign).
+function letterBodyHtml(doc: DocumentData, t: DocumentLabels, dir: 'ltr' | 'rtl') {
+  const { language } = doc
+  return `<!doctype html><html dir="${dir}" lang="${language}"><head><meta charset="utf-8"><style>${styleBlock(language)}</style></head><body>
+    <div class="letter-to">${escapeHtml(t.to)}: <b>${escapeHtml(doc.billTo.name)}</b></div>
+    <table class="meta-table">
+      <tr><td class="m-label">${escapeHtml(doc.numberLabel)}:</td><td class="m-value">${escapeHtml(doc.number)}</td></tr>
+      <tr><td class="m-label">${escapeHtml(doc.dateLabel)}:</td><td class="m-value">${escapeHtml(longDate(doc.date, language))}</td></tr>
+    </table>
+    <div class="letter-body">${formatBody(doc.body ?? '')}</div>
+    ${letterSignOffHtml(doc)}
+  </body></html>`
+}
+
 export function bodyHtml(doc: DocumentData) {
   const { currency, language } = doc
   const t = labelsFor(language)
   const dir = DIRECTION[language]
   if (doc.kind === 'receipt') return receiptBodyHtml(doc, t, dir)
+  if (doc.kind === 'letter') return letterBodyHtml(doc, t, dir)
   const isLumpSum = doc.pricingMethod === 'lump_sum'
   const subtotalLabel = isLumpSum ? t.lumpSumFee : t.subtotal
 
@@ -378,6 +427,28 @@ function receiptSignatureSectionHtml(doc: DocumentData) {
       <div class="sig-grid">
         ${block(t.issuedBy, s.adminName)}
         ${block(t.receivedBy, s.receiverName)}
+      </div>
+    </div>`
+}
+
+// A letter's single sign-off: just the issuing admin, since there's no second party to sign (the
+// recipient may not even be a known, real person - it can be "To Whom It May Concern"). Reuses the same
+// .sig-block/.sig-slot markup as the receipt, narrowed to about half width via .sig-grid.single so one
+// signature block doesn't stretch across the full page.
+function letterSignOffHtml(doc: DocumentData) {
+  if (!doc.adminSignOff) return ''
+  const t = labelsFor(doc.language)
+
+  return `
+    <div class="signatures">
+      <div class="sig-grid single">
+        <div class="sig-block">
+          <div class="sig-party">${escapeHtml(t.issuedBy)}</div>
+          <div class="sig-row"><span class="sig-row-value">${escapeHtml(doc.adminSignOff)}</span></div>
+          <div class="sig-slot"></div>
+          <div class="sig-row sig-row-blank"><span class="sig-row-label">${escapeHtml(t.signature)}:</span><span class="sig-row-value"></span></div>
+          <div class="sig-row"><span class="sig-row-label">${escapeHtml(t.signatureDate)}:</span><span class="sig-row-value"></span></div>
+        </div>
       </div>
     </div>`
 }

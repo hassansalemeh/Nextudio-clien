@@ -1,0 +1,59 @@
+/* Letters' own styles - everything generic (cards, tables, modals, form fields, the doc-* document-editor
+   classes shared with Estimates/Invoices/Receipts) stays in the global design system; only what's unique
+   to the letter's single signature preview and the recipient quick-fill lives here. */
+
+.signaturePreview {
+  max-width: 45%;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.signatureParty {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 0.5rem;
+}
+
+.signatureName {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 1.75rem;
+}
+
+.signatureLine {
+  border-top: 1px dashed var(--color-border-strong);
+  padding-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.recipientRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.recipientRow input {
+  flex: 1;
+}
+
+.quickFillBtn {
+  white-space: nowrap;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.quickFillBtn:hover {
+  background: var(--color-surface-subtle);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}

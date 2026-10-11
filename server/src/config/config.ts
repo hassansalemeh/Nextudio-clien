@@ -32,6 +32,9 @@ export function clientFundsInvoiceNumber(sequence: number): string {
 // Receipts are numbered NEX-REC-0001, NEX-REC-0002, ..., their own series.
 export const RECEIPT_PREFIX = 'NEX-REC-'
 
-// The only two people allowed to sign a receipt as the issuing admin. A fixed list (not a DB check
-// constraint) so adding a third name later is a one-line change here, not a migration.
-export const RECEIPT_ADMIN_SIGNERS = ['Mohamad Omar', 'Mohamad Ramadan']
+// Letters are numbered NEX-LTR-0001, NEX-LTR-0002, ..., their own series.
+export const LETTER_PREFIX = 'NEX-LTR-'
+
+// The only two people allowed to sign a receipt or a letter as the issuing admin. A fixed list (not a
+// DB check constraint) so adding a third name later is a one-line change here, not a migration.
+export const ADMIN_SIGNERS = ['Mohamad Omar', 'Mohamad Ramadan']

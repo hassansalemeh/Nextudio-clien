@@ -11,6 +11,8 @@ import EstimateEditorPage from '../features/estimates/pages/EstimateEditorPage'
 import EstimatesPage from '../features/estimates/pages/EstimatesPage'
 import InvoiceDetailPage from '../features/invoices/pages/InvoiceDetailPage'
 import InvoicesPage from '../features/invoices/pages/InvoicesPage'
+import LetterEditorPage from '../features/letters/pages/LetterEditorPage'
+import LettersPage from '../features/letters/pages/LettersPage'
 import LoginPage from '../features/auth/pages/LoginPage'
 import PaymentsPage from '../features/payments/pages/PaymentsPage'
 import PendingWorkEntriesPage from '../features/pending-work/pages/PendingWorkEntriesPage'
@@ -30,6 +32,7 @@ const NAV_SECTIONS = [
     { to: '/projects', label: 'Projects' },
     { to: '/estimates', label: 'Estimates' },
     { to: '/invoices', label: 'Invoices' },
+    { to: '/letters', label: 'Letters' },
   ] },
   { title: 'Money', links: [
     { to: '/payments', label: 'Payments' },
@@ -162,6 +165,9 @@ function App() {
           <Route path="/receipts" element={<ReceiptsPage />} />
           <Route path="/receipts/:id" element={<ReceiptEditorPage />} />
           <Route path="/receipts/:id/preview" element={<DocumentPreviewPage kind="receipt" />} />
+          <Route path="/letters" element={<LettersPage />} />
+          <Route path="/letters/:id" element={<LetterEditorPage />} />
+          <Route path="/letters/:id/preview" element={<DocumentPreviewPage kind="letter" />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/financial-summary" element={<ProjectFinancialSummaryPage />} />
         </Routes>}

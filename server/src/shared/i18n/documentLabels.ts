@@ -11,6 +11,10 @@ export type DocumentLabels = {
   invoice: string
   receipt: string
   receiptSubtitle: string
+  letter: string
+  to: string
+  letterNumber: string
+  letterDate: string
   clientFunds: string
   clientFundsSubtitle: string
   billTo: string
@@ -73,6 +77,10 @@ const en: DocumentLabels = {
   invoice: 'Invoice',
   receipt: 'Receipt',
   receiptSubtitle: 'Proof of payment received',
+  letter: 'Letter',
+  to: 'To',
+  letterNumber: 'Letter Number',
+  letterDate: 'Date',
   clientFunds: 'Client Funds / Project Expenses',
   clientFundsSubtitle: 'Funds held for project expenses — not a professional/design fee invoice',
   billTo: 'Bill To',
@@ -136,6 +144,10 @@ const fr: DocumentLabels = {
   invoice: 'Facture',
   receipt: 'Reçu',
   receiptSubtitle: 'Preuve de paiement reçu',
+  letter: 'Lettre',
+  to: 'À',
+  letterNumber: 'Numéro de lettre',
+  letterDate: 'Date',
   clientFunds: 'Fonds Client / Dépenses de Projet',
   clientFundsSubtitle: "Fonds détenus pour les dépenses du projet — pas une facture d'honoraires professionnels",
   billTo: 'Facturé à',
@@ -199,6 +211,10 @@ const ar: DocumentLabels = {
   invoice: 'فاتورة',
   receipt: 'إيصال',
   receiptSubtitle: 'إثبات استلام الدفعة',
+  letter: 'خطاب',
+  to: 'إلى',
+  letterNumber: 'رقم الخطاب',
+  letterDate: 'التاريخ',
   clientFunds: 'أموال العميل / مصاريف المشروع',
   clientFundsSubtitle: 'أموال محتفظ بها لمصاريف المشروع — وليست فاتورة أتعاب مهنية',
   billTo: 'إلى',

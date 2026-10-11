@@ -1,6 +1,4 @@
-// The only two people allowed to sign a receipt as the issuing admin - mirrors
-// server/src/config/config.ts's RECEIPT_ADMIN_SIGNERS.
-export const ADMIN_SIGNERS = ['Mohamad Omar', 'Mohamad Ramadan']
+export { ADMIN_SIGNERS } from '../../shared/lib/adminSigners'
 
 // The receipt PDF's language; the admin app itself stays English
 export const DOCUMENT_LANGUAGES = [

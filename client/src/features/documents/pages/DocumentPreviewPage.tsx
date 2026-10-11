@@ -5,10 +5,19 @@ import PageLoader from '../../../shared/components/PageLoader'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { fetchDocumentPdf } from '../api'
 
-const COLLECTIONS = { estimate: 'estimates', invoice: 'invoices', receipt: 'receipts' } as const
+const COLLECTIONS = { estimate: 'estimates', invoice: 'invoices', receipt: 'receipts', letter: 'letters' } as const
 
-// Shows the real generated PDF (the same file the admin downloads) for a quotation, invoice, or receipt
-function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' | 'receipt' }) {
+const TITLES = { estimate: 'Quotation preview', invoice: 'Invoice preview', receipt: 'Receipt preview', letter: 'Letter preview' } as const
+
+const DESCRIPTIONS = {
+  estimate: 'Check how this estimate will look when shared or downloaded.',
+  invoice: 'Check how this invoice will look when shared or downloaded.',
+  receipt: 'Check how this receipt will look when shared or downloaded.',
+  letter: 'Check how this letter will look when shared or downloaded.',
+} as const
+
+// Shows the real generated PDF (the same file the admin downloads) for a quotation, invoice, receipt, or letter
+function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' | 'receipt' | 'letter' }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [url, setUrl] = useState('')
@@ -45,14 +54,7 @@ function DocumentPreviewPage({ kind }: { kind: 'estimate' | 'invoice' | 'receipt
   return (
     <>
       <div className="doc-topbar">
-        <PageHeader
-          title={kind === 'estimate' ? 'Quotation preview' : kind === 'invoice' ? 'Invoice preview' : 'Receipt preview'}
-          description={kind === 'estimate'
-            ? 'Check how this estimate will look when shared or downloaded.'
-            : kind === 'invoice'
-              ? 'Check how this invoice will look when shared or downloaded.'
-              : 'Check how this receipt will look when shared or downloaded.'}
-        />
+        <PageHeader title={TITLES[kind]} description={DESCRIPTIONS[kind]} />
         <div className="doc-actions">
           <button type="button" className="btn-outline" onClick={() => navigate(`/${collection}/${id}`)}>
             Back
