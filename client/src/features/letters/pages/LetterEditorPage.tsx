@@ -88,7 +88,7 @@ function LetterEditorPage() {
           placeholder={'e.g. We are writing to confirm the following requirements:\n\n- Requirement one\n- Requirement two'}
           onChange={(value) => update('body', value)}
         />
-        <div className="doc-hint" style={{ marginTop: '-0.75rem', marginBottom: '1rem' }}>
+        <div className="doc-hint" style={{ marginTop: '0.5rem' }}>
           Blank line = new paragraph. Use the bullet button (or start a line with "- ") for a list. **word** for bold.
         </div>
 
