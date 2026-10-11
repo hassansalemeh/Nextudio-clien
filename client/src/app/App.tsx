@@ -16,6 +16,7 @@ import LettersPage from '../features/letters/pages/LettersPage'
 import LoginPage from '../features/auth/pages/LoginPage'
 import PaymentsPage from '../features/payments/pages/PaymentsPage'
 import PendingWorkEntriesPage from '../features/pending-work/pages/PendingWorkEntriesPage'
+import MyWorkDashboardPage from '../features/my-work-dashboard/pages/MyWorkDashboardPage'
 import MyWorkPage from '../features/time-tracking/pages/MyWorkPage'
 import ProjectDetailPage from '../features/projects/pages/ProjectDetailPage'
 import ProjectFinancialSummaryPage from '../features/projects/pages/ProjectFinancialSummaryPage'
@@ -72,7 +73,12 @@ function App() {
   }
 
   const isEmployee = user.role === 'employee'
-  const sections = isEmployee ? [{ title: 'My work', links: [{ to: '/', label: 'My Work' }] }] : NAV_SECTIONS
+  const sections = isEmployee
+    ? [{ title: 'My work', links: [
+        { to: '/', label: 'My Work' },
+        { to: '/calendar', label: 'My Calendar' },
+      ] }]
+    : NAV_SECTIONS
 
   return (
     <div className="app-shell">
@@ -143,6 +149,7 @@ function App() {
       <main className="app-main">
         {isEmployee ? <Routes>
           <Route path="/" element={<MyWorkPage />} />
+          <Route path="/calendar" element={<MyWorkDashboardPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes> : <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -34,6 +34,7 @@ const EMPLOYEE_ROUTES = new Set([
   'GET /projects/active-names',
   'GET /time/status',
   'GET /time/day',
+  'GET /time/first-activity',
   'POST /time/clock-in',
   'POST /time/start',
   'POST /time/stop',

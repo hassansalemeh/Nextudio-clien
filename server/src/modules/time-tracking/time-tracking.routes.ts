@@ -79,6 +79,19 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
+  // The earliest activity this employee has ever logged - lets the client tell "before they started" apart from "missed"
+  app.get('/api/time/first-activity', async (req, res) => {
+    const employee_id = resolveEmployeeId(req, req.query.employee_id)
+    if (typeof employee_id !== 'string' || !employee_id) {
+      return res.status(400).json({ error: 'employee_id is required' })
+    }
+    try {
+      res.json(await timeTrackingService.getFirstActivityDate(organizationIdOf(req), employee_id))
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch first activity date' })
+    }
+  })
+
   app.post('/api/time/clock-in', async (req, res) => {
     const employee_id = resolveEmployeeId(req, req.body.employee_id)
     if (!employee_id) {

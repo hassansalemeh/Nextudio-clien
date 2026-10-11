@@ -75,6 +75,18 @@ export function dayRange(dateString: string) {
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
+// ISO instants for the start of the given local calendar month (1-12) and the start of the next one
+export function monthRange(year: number, month: number) {
+  const from = new Date(year, month - 1, 1)
+  const to = new Date(year, month, 1)
+  return { from: from.toISOString(), to: to.toISOString() }
+}
+
+// 0 (Sunday) to 6 (Saturday), for a YYYY-MM-DD date, in local time
+export function dayOfWeek(dateString: string) {
+  return parseDateString(dateString).getDay()
+}
+
 export function formatTime(iso: string | null) {
   if (!iso) return '—'
   const date = new Date(iso)

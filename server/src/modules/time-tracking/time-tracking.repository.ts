@@ -53,6 +53,24 @@ export async function selectTimeEntriesInRange(organizationId: string, employeeI
   return result.rows
 }
 
+// Earliest activity this employee has ever logged, across both tables - used to tell "before they
+// started" apart from "missed" on a calendar that can show months before their first entry.
+export async function selectFirstActivityDate(organizationId: string, employeeId: string) {
+  const result = await pool.query(
+    `SELECT MIN(first_at) AS first_at FROM (
+       SELECT MIN(attendance.clock_in) AS first_at FROM attendance
+       JOIN employees ON employees.id = attendance.employee_id AND employees.organization_id = $2
+       WHERE attendance.employee_id = $1
+       UNION ALL
+       SELECT MIN(time_entries.started_at) AS first_at FROM time_entries
+       JOIN employees ON employees.id = time_entries.employee_id AND employees.organization_id = $2
+       WHERE time_entries.employee_id = $1
+     ) AS first_activity`,
+    [employeeId, organizationId]
+  )
+  return (result.rows[0]?.first_at as string | null) ?? null
+}
+
 export async function selectActiveEmployee(organizationId: string, employeeId: string) {
   const result = await pool.query('SELECT id FROM employees WHERE id = $1 AND organization_id = $2 AND is_active = true', [employeeId, organizationId])
   return result.rows[0] ?? null

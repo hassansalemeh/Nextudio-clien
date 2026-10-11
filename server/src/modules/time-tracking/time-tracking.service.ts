@@ -52,6 +52,11 @@ export async function getTimeDay(organizationId: string, employeeId: string, fro
   return { sessions, entries }
 }
 
+export async function getFirstActivityDate(organizationId: string, employeeId: string) {
+  const date = await timeTrackingRepository.selectFirstActivityDate(organizationId, employeeId)
+  return { date }
+}
+
 export async function clockIn(organizationId: string, employeeId: unknown) {
   const employee = await timeTrackingRepository.selectActiveEmployee(organizationId, employeeId as string)
   if (!employee) throw new HttpError(400, 'Employee does not exist or is inactive')

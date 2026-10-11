@@ -1,0 +1,151 @@
+/* My Calendar's own styles - cards, tables, stat labels/values and buttons reuse the global design
+   system; only the calendar grid itself (day cells, status colors, nav header) is unique here. */
+
+.calendarCard {
+  overflow: visible;
+}
+
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.calendarHeader h2 {
+  min-width: 10rem;
+  text-align: center;
+}
+
+.weekdayRow,
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.35rem;
+}
+
+.weekdayLabel {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding-bottom: 0.3rem;
+}
+
+.dayCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  min-height: 4.2rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.dayCell:disabled {
+  cursor: default;
+}
+
+.dayOutside {
+  opacity: 0.35;
+  background: transparent;
+}
+
+.daySelected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.dayNumber {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.dayStateLabel {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dayHint {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.day-submitted {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.day-submitted .dayStateLabel {
+  color: var(--color-accent);
+}
+
+/* "Missed" is deliberately gentle - a dashed border and a muted amber label, not the red used for
+   rejected entries elsewhere, since missing a day isn't an error the way a rejected entry is. */
+.day-missed {
+  border-style: dashed;
+  border-color: #c99a56;
+}
+
+.day-missed .dayStateLabel {
+  color: #a87a3a;
+}
+
+.day-today-pending {
+  border-color: var(--color-accent);
+  border-style: dashed;
+}
+
+.day-today-pending .dayStateLabel {
+  color: var(--color-accent);
+}
+
+.day-weekend,
+.day-future,
+.day-before-history {
+  color: var(--color-text-muted);
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1rem;
+}
+
+.projectBreakdown {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.projectRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .dayCell {
+    min-height: 3.2rem;
+    padding: 0.3rem;
+  }
+
+  .dayHint {
+    display: none;
+  }
+}
