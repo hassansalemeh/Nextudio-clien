@@ -30,6 +30,7 @@ import { registerPendingWorkRoutes } from './modules/pending-work/pending-work.r
 import { registerDayOffRoutes } from './modules/day-off-requests/day-off-requests.routes'
 import { registerProjectFinancialsRoutes } from './modules/project-financials/project-financials.routes'
 import { registerDashboardRoutes } from './modules/dashboard/dashboard.routes'
+import { registerReminderRoutes } from './modules/reminders/reminders.routes'
 
 export const app = express()
 
@@ -82,6 +83,7 @@ registerPendingWorkRoutes(app)
 registerDayOffRoutes(app)
 registerProjectFinancialsRoutes(app)
 registerDashboardRoutes(app)
+registerReminderRoutes(app)
 
 // ---- the website itself: the built front end is served by this same server ----
 const publicDir = path.resolve(__dirname, '../public')

@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { app } from './app'
 import { isProduction } from './middleware/security'
+import { startReminderScheduler } from './modules/reminders/reminders.scheduler'
 
 // The host (GoDaddy / Passenger) supplies the port in PORT; 4000 is only the local development default
 const port = process.env.PORT ?? 4000
@@ -17,3 +18,5 @@ process.on('uncaughtException', (err) => {
 app.listen(Number(port), () => {
   console.log(`Server started on port ${port} (${isProduction ? 'production' : 'development'})`)
 })
+
+startReminderScheduler()

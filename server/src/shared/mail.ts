@@ -9,6 +9,7 @@ export type MailMessage = {
   cc?: string | null
   subject: string
   text: string
+  html?: string
   attachments?: MailAttachment[]
 }
 
@@ -61,6 +62,7 @@ export async function sendMail(message: MailMessage): Promise<void> {
     subject: message.subject,
     text: message.text,
   }
+  if (message.html) payload.html = message.html
   if (message.cc) payload.cc = splitAddresses(message.cc)
   // Resend is a one-way HTTPS API, not SMTP, so sent mail never lands in our Gmail "Sent" folder on its own;
   // BCC-ing every outgoing message to MAIL_BCC_EMAIL keeps a copy there without changing how recipients see it.

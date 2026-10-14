@@ -24,10 +24,11 @@ function EmployeesPage() {
   const [fullName, setFullName] = useState('')
   const [position, setPosition] = useState('')
   const [monthlySalary, setMonthlySalary] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
   const [formOpen, setFormOpen] = useState(false)
 
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [edit, setEdit] = useState({ full_name: '', position: '', monthly_salary: '', is_active: true })
+  const [edit, setEdit] = useState({ full_name: '', position: '', monthly_salary: '', contact_email: '', is_active: true })
   const [editError, setEditError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -55,12 +56,14 @@ function EmployeesPage() {
         full_name: fullName,
         position,
         monthly_salary: Number(monthlySalary),
+        contact_email: contactEmail.trim() || null,
       })
       setEmployees((previousEmployees) => [newEmployee, ...previousEmployees])
 
       setFullName('')
       setPosition('')
       setMonthlySalary('')
+      setContactEmail('')
       setFormOpen(false)
       toast.success('Employee added.')
     } catch (err) {
@@ -77,6 +80,7 @@ function EmployeesPage() {
       full_name: employee.full_name,
       position: employee.position,
       monthly_salary: String(employee.monthly_salary),
+      contact_email: employee.contact_email ?? '',
       is_active: employee.is_active,
     })
   }
@@ -92,7 +96,7 @@ function EmployeesPage() {
 
     setSaving(true)
     try {
-      const updated = await updateEmployee(editingId!, { ...edit, monthly_salary: salary })
+      const updated = await updateEmployee(editingId!, { ...edit, monthly_salary: salary, contact_email: edit.contact_email.trim() || null })
       setEmployees((previous) => previous.map((employee) => (employee.id === updated.id ? updated : employee)))
       setEditingId(null)
       toast.success('Employee updated.')
@@ -138,6 +142,10 @@ function EmployeesPage() {
                 required
               />
             </label>
+            <label className="form-field">
+              Contact Email (optional)
+              <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Used for reminder emails" />
+            </label>
           </div>
           <button type="submit" className="btn-primary" disabled={submitting}>
             {submitting && <Spinner />} Add Employee
@@ -160,6 +168,7 @@ function EmployeesPage() {
                 <th>Full Name</th>
                 <th>Position</th>
                 <th className="num">Monthly Salary</th>
+                <th>Contact Email</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -170,6 +179,7 @@ function EmployeesPage() {
                   <td data-label="Full Name"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(employee) }}>{employee.full_name}</button></td>
                   <td data-label="Position">{employee.position}</td>
                   <td data-label="Monthly Salary" className="num">{currencyFormatter.format(Number(employee.monthly_salary))}</td>
+                  <td data-label="Contact Email">{employee.contact_email || '—'}</td>
                   <td data-label="Status">
                     <span className={`status-badge ${employee.is_active ? 'status-active' : 'status-inactive'}`}>
                       {employee.is_active ? 'Active' : 'Inactive'}
@@ -183,7 +193,7 @@ function EmployeesPage() {
                 </tr>,
                 editingId === employee.id && (
                   <tr key={`${employee.id}-edit`}>
-                    <td colSpan={5}>
+                    <td colSpan={6}>
                       <div className="form-grid">
                         <label className="form-field">
                           Full Name
@@ -201,6 +211,15 @@ function EmployeesPage() {
                             step="0.01"
                             value={edit.monthly_salary}
                             onChange={(e) => setEdit({ ...edit, monthly_salary: e.target.value })}
+                          />
+                        </label>
+                        <label className="form-field">
+                          Contact Email (optional)
+                          <input
+                            type="email"
+                            value={edit.contact_email}
+                            onChange={(e) => setEdit({ ...edit, contact_email: e.target.value })}
+                            placeholder="Used for reminder emails"
                           />
                         </label>
                         <label className="form-field">

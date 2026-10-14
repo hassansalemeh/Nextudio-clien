@@ -1,21 +1,6 @@
 import { ADMIN_SIGNERS, ADMIN_WHATSAPP_NUMBERS } from '../../config'
-import { HttpError, isIsoDate } from '../../shared'
+import { HttpError, isIsoDate, isWeekend, todayInCompanyTimezone } from '../../shared'
 import * as dayOffRequestsRepository from './day-off-requests.repository'
-
-// The company runs on Beirut time; the server (and its UTC clock) can be hours behind it, so "today"/"the
-// past" for a day-off request must be computed in the company's own timezone, not the server's.
-const COMPANY_TIMEZONE = 'Asia/Beirut'
-
-function todayInCompanyTimezone(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: COMPANY_TIMEZONE })
-}
-
-// A calendar date's day of week is the same everywhere, so this doesn't need a timezone - only "today" does.
-function isWeekend(dateString: string): boolean {
-  const [year, month, day] = dateString.split('-').map(Number)
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
-  return weekday === 0 || weekday === 6
-}
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 

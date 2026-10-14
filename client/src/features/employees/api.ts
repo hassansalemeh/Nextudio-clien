@@ -9,7 +9,12 @@ export async function fetchEmployees(): Promise<Employee[]> {
   return response.json()
 }
 
-export async function createEmployee(input: { full_name: string; position: string; monthly_salary: number }): Promise<Employee> {
+export async function createEmployee(input: {
+  full_name: string
+  position: string
+  monthly_salary: number
+  contact_email: string | null
+}): Promise<Employee> {
   const response = await apiPost('/api/employees', input)
   if (!response.ok) {
     throw new Error('Failed to create employee')
@@ -19,7 +24,7 @@ export async function createEmployee(input: { full_name: string; position: strin
 
 export async function updateEmployee(
   id: string,
-  input: { full_name: string; position: string; monthly_salary: number; is_active: boolean }
+  input: { full_name: string; position: string; monthly_salary: number; contact_email: string | null; is_active: boolean }
 ): Promise<Employee> {
   const response = await apiPut(`/api/employees/${id}`, input)
   if (!response.ok) {
