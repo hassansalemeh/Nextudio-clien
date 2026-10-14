@@ -80,7 +80,7 @@ function DayOffRequestsPage({ onPendingCountChange }: { onPendingCountChange?: (
         <td data-label="Status">
           <span className={`status-badge status-${request.status}`}>{STATUS_LABELS[request.status]}</span>
         </td>
-        <td data-label="">
+        <td data-label="Actions">
           {request.status === 'pending' && (
             <div className="edit-actions">
               <button type="button" className="btn-sm btn-solid" disabled={busyId === request.id} onClick={() => review(request, 'approve')}>

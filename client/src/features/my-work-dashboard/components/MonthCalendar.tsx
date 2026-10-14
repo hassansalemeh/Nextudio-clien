@@ -55,6 +55,16 @@ function MonthCalendar({ year, month, weeks, selectedDate, onSelectDate, onNavig
         </button>
       </div>
 
+      {/* Phone-only: the grid below hides each day's text label to keep all 7 columns on screen, so this
+          explains what the remaining colors/borders mean. Hidden on wider screens, where the cells keep their labels. */}
+      <div className={styles.calendarLegend}>
+        <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendSubmitted}`} />Logged</span>
+        <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendMissed}`} />Missed</span>
+        <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendToday}`} />Today</span>
+        <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendDayOff}`} />Day off</span>
+        <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendRequested}`} />Requested</span>
+      </div>
+
       <div className={styles.weekdayRow}>
         {WEEKDAY_LABELS.map((label) => (
           <div key={label} className={styles.weekdayLabel}>{label}</div>

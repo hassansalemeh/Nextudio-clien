@@ -21,8 +21,12 @@
 .weekdayRow,
 .calendarGrid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.35rem;
+}
+
+.calendarLegend {
+  display: none;
 }
 
 .weekdayLabel {
@@ -36,10 +40,12 @@
 }
 
 .dayCell {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.15rem;
+  min-width: 0;
   min-height: 4.2rem;
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--color-border);
@@ -172,11 +178,90 @@
 
 @media (max-width: 640px) {
   .dayCell {
-    min-height: 3.2rem;
-    padding: 0.3rem;
+    align-items: center;
+    justify-content: center;
+    min-height: 3rem;
+    padding: 0.3rem 0.15rem;
   }
 
-  .dayHint {
+  .dayHint,
+  .dayStateLabel {
     display: none;
+  }
+
+  /* Submitted and approved-day-off cells otherwise share the same soft tint; with the text label gone,
+     give day-off a solid fill so the two stay visually distinct using only color. */
+  .day-day-off {
+    background: var(--color-accent);
+  }
+
+  .day-day-off .dayNumber {
+    color: var(--color-on-accent);
+  }
+
+  /* The pending/rejected day-off pill becomes a small corner dot - enough space left for only a color cue. */
+  .dayOffBadge {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    min-width: 0;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 0;
+    line-height: 0;
+    overflow: hidden;
+  }
+
+  .dayOffBadge-pending {
+    background: #c99a56;
+  }
+
+  .dayOffBadge-rejected {
+    background: var(--color-danger);
+  }
+
+  .calendarLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.9rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+  }
+
+  .legendItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .legendDot {
+    flex: none;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+  }
+
+  .legendSubmitted {
+    background: var(--color-accent-soft);
+    border: 1px solid var(--color-accent);
+  }
+
+  .legendMissed {
+    border: 1px dashed #c99a56;
+  }
+
+  .legendToday {
+    border: 1px dashed var(--color-accent);
+  }
+
+  .legendDayOff {
+    background: var(--color-accent);
+  }
+
+  .legendRequested {
+    background: #c99a56;
   }
 }
