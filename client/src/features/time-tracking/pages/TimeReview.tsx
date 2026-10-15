@@ -1,81 +1,98 @@
-import { useCallback, useEffect, useState } from 'react'
-import { CheckIcon, CloseIcon, PencilIcon } from '../../../shared/components/icons'
-import Spinner from '../../../shared/components/Spinner'
-import EmptyState from '../../../shared/components/EmptyState'
-import { useToast } from '../../../shared/components/Toast'
-import { getErrorMessage } from '../../../shared/lib/apiError'
+import { useCallback, useEffect, useState } from "react";
+import {
+  CheckIcon,
+  CloseIcon,
+  PencilIcon,
+} from "../../../shared/components/icons";
+import Spinner from "../../../shared/components/Spinner";
+import EmptyState from "../../../shared/components/EmptyState";
+import { useToast } from "../../../shared/components/Toast";
+import { getErrorMessage } from "../../../shared/lib/apiError";
 import {
   dayRange,
   durationMs,
   formatDuration,
   formatTime,
   fromLocalInput,
-  localDateString,
   toLocalInput,
-} from '../../../shared/lib/timeUtils'
-import type { DayData } from '../../../shared/lib/timeUtils'
-import { fetchEmployeeDay, fetchEmployeesForReview, saveTimeEdit } from '../api'
-import type { Editing, Employee } from '../types'
+} from "../../../shared/lib/timeUtils";
+import type { DayData } from "../../../shared/lib/timeUtils";
+import { fetchEmployeeDay, saveTimeEdit } from "../api";
+import type { Editing } from "../types";
 
-function TimeReview() {
-  const toast = useToast()
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [employeeId, setEmployeeId] = useState('')
-  const [date, setDate] = useState(localDateString())
-  const [data, setData] = useState<DayData>({ sessions: [], entries: [] })
-  const [error, setError] = useState('')
-  const [editing, setEditing] = useState<Editing | null>(null)
-  const [saving, setSaving] = useState(false)
+type TimeReviewProps = {
+  employeeId: string;
+  date: string;
+  onSaved?: () => void; // lets the calendar refresh after an edit
+};
 
-  useEffect(() => {
-    fetchEmployeesForReview()
-      .then(setEmployees)
-      .catch((err) => setError(getErrorMessage(err, 'Could not load employees.')))
-  }, [])
+function TimeReview({ employeeId, date, onSaved }: TimeReviewProps) {
+  const toast = useToast();
+  const [data, setData] = useState<DayData>({ sessions: [], entries: [] });
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const [saving, setSaving] = useState(false);
+
+
 
   const load = useCallback(async () => {
     if (!employeeId || !date) {
-      setData({ sessions: [], entries: [] })
-      return
+      setData({ sessions: [], entries: [] });
+      return;
     }
-    const { from, to } = dayRange(date)
+    const { from, to } = dayRange(date);
     try {
-      setData(await fetchEmployeeDay(employeeId, from, to))
+      setData(await fetchEmployeeDay(employeeId, from, to));
     } catch (err) {
-      setError(getErrorMessage(err, 'Could not load time records.'))
+      setError(getErrorMessage(err, "Could not load time records."));
     }
-  }, [employeeId, date])
+  }, [employeeId, date]);
 
   useEffect(() => {
-    setEditing(null)
-    load()
-  }, [load])
+    setEditing(null);
+    load();
+  }, [load]);
 
   async function saveEdit() {
-    if (!editing) return
-    setError('')
+    if (!editing) return;
+    setError("");
     if (!editing.start) {
-      setError('Start time is required.')
-      return
+      setError("Start time is required.");
+      return;
     }
-    setSaving(true)
+    setSaving(true);
     try {
-      await saveTimeEdit(editing, fromLocalInput(editing.start), fromLocalInput(editing.end))
-      setEditing(null)
-      await load()
-      toast.success('Time record updated.')
+      await saveTimeEdit(
+        editing,
+        fromLocalInput(editing.start),
+        fromLocalInput(editing.end),
+      );
+      setEditing(null);
+      await load();
+      onSaved?.();
+      toast.success("Time record updated.");
     } catch (err) {
-      const message = getErrorMessage(err, 'Failed to save')
-      setError(message)
-      toast.error(message)
+      const message = getErrorMessage(err, "Failed to save");
+      setError(message);
+      toast.error(message);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
-  function startEdit(kind: Editing['kind'], id: string, start: string, end: string | null) {
-    setError('')
-    setEditing({ kind, id, start: toLocalInput(start), end: toLocalInput(end) })
+  function startEdit(
+    kind: Editing["kind"],
+    id: string,
+    start: string,
+    end: string | null,
+  ) {
+    setError("");
+    setEditing({
+      kind,
+      id,
+      start: toLocalInput(start),
+      end: toLocalInput(end),
+    });
   }
 
   // Kept outside the table on purpose: a whole form doesn't belong inside a horizontally-scrolling table
@@ -89,7 +106,9 @@ function TimeReview() {
             <input
               type="datetime-local"
               value={editing!.start}
-              onChange={(e) => setEditing({ ...editing!, start: e.target.value })}
+              onChange={(e) =>
+                setEditing({ ...editing!, start: e.target.value })
+              }
             />
           </label>
           <label className="form-field">
@@ -102,45 +121,45 @@ function TimeReview() {
           </label>
         </div>
         <div className="edit-actions">
-          <button type="button" className="btn-sm btn-solid" disabled={saving} onClick={saveEdit}>
+          <button
+            type="button"
+            className="btn-sm btn-solid"
+            disabled={saving}
+            onClick={saveEdit}
+          >
             {saving ? <Spinner /> : <CheckIcon />} Save
           </button>
-          <button type="button" className="btn-sm btn-ghost" disabled={saving} onClick={() => setEditing(null)}>
+          <button
+            type="button"
+            className="btn-sm btn-ghost"
+            disabled={saving}
+            onClick={() => setEditing(null)}
+          >
             <CloseIcon /> Cancel
           </button>
         </div>
       </div>
-    )
+    );
   }
 
-  const officeMs = data.sessions.reduce((sum, s) => sum + durationMs(s.clock_in, s.clock_out), 0)
+  const officeMs = data.sessions.reduce(
+    (sum, s) => sum + durationMs(s.clock_in, s.clock_out),
+    0,
+  );
 
   // Separate entries stay separate in the table; only the totals add them together
-  const perProject = new Map<string, number>()
+  const perProject = new Map<string, number>();
   for (const entry of data.entries) {
-    perProject.set(entry.project_name, (perProject.get(entry.project_name) ?? 0) + durationMs(entry.started_at, entry.ended_at))
+    perProject.set(
+      entry.project_name,
+      (perProject.get(entry.project_name) ?? 0) +
+        durationMs(entry.started_at, entry.ended_at),
+    );
   }
 
   return (
     <div className="card">
-      <h2>Review Hours</h2>
-      <div className="form-grid">
-        <label className="form-field">
-          Employee
-          <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-            <option value="">Select an employee</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.full_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="form-field">
-          Date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-      </div>
+      <h2>Time records</h2>
       {error && <p className="error-message">{error}</p>}
 
       {employeeId && (
@@ -160,15 +179,58 @@ function TimeReview() {
               </thead>
               <tbody>
                 {data.sessions.map((session) => (
-                  <tr key={session.id} className="clickable-row" onClick={() => startEdit('sessions', session.id, session.clock_in, session.clock_out)}>
-                    <td data-label="Clock In"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit('sessions', session.id, session.clock_in, session.clock_out) }}>{formatTime(session.clock_in)}</button></td>
-                    <td data-label="Clock Out">{session.clock_out ? formatTime(session.clock_out) : 'still clocked in'}</td>
-                    <td data-label="Duration">{formatDuration(durationMs(session.clock_in, session.clock_out))}</td>
+                  <tr
+                    key={session.id}
+                    className="clickable-row"
+                    onClick={() =>
+                      startEdit(
+                        "sessions",
+                        session.id,
+                        session.clock_in,
+                        session.clock_out,
+                      )
+                    }
+                  >
+                    <td data-label="Clock In">
+                      <button
+                        type="button"
+                        className="row-main-button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startEdit(
+                            "sessions",
+                            session.id,
+                            session.clock_in,
+                            session.clock_out,
+                          );
+                        }}
+                      >
+                        {formatTime(session.clock_in)}
+                      </button>
+                    </td>
+                    <td data-label="Clock Out">
+                      {session.clock_out
+                        ? formatTime(session.clock_out)
+                        : "still clocked in"}
+                    </td>
+                    <td data-label="Duration">
+                      {formatDuration(
+                        durationMs(session.clock_in, session.clock_out),
+                      )}
+                    </td>
                     <td data-label="Actions">
                       <button
                         type="button"
                         className="btn-sm btn-ghost"
-                        onClick={(event) => { event.stopPropagation(); startEdit('sessions', session.id, session.clock_in, session.clock_out) }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startEdit(
+                            "sessions",
+                            session.id,
+                            session.clock_in,
+                            session.clock_out,
+                          );
+                        }}
                       >
                         <PencilIcon /> Edit
                       </button>
@@ -178,7 +240,7 @@ function TimeReview() {
               </tbody>
             </table>
           )}
-          {editing?.kind === 'sessions' && editPanel()}
+          {editing?.kind === "sessions" && editPanel()}
 
           <h3>Project Time</h3>
           {data.entries.length === 0 ? (
@@ -197,22 +259,55 @@ function TimeReview() {
               </thead>
               <tbody>
                 {data.entries.map((entry) => (
-                  <tr key={entry.id} className="clickable-row" onClick={() => startEdit('entries', entry.id, entry.started_at, entry.ended_at)}>
-                    <td data-label="Project"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit('entries', entry.id, entry.started_at, entry.ended_at) }}>{entry.project_name}</button></td>
+                  <tr
+                    key={entry.id}
+                    className="clickable-row"
+                    onClick={() =>
+                      startEdit(
+                        "entries",
+                        entry.id,
+                        entry.started_at,
+                        entry.ended_at,
+                      )
+                    }
+                  >
+                    <td data-label="Project">
+                      <button
+                        type="button"
+                        className="row-main-button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startEdit(
+                            "entries",
+                            entry.id,
+                            entry.started_at,
+                            entry.ended_at,
+                          );
+                        }}
+                      >
+                        {entry.project_name}
+                      </button>
+                    </td>
                     <td data-label="Start">{formatTime(entry.started_at)}</td>
-                    <td data-label="End">{entry.ended_at ? formatTime(entry.ended_at) : 'running'}</td>
-                    <td data-label="Duration">{formatDuration(durationMs(entry.started_at, entry.ended_at))}</td>
+                    <td data-label="End">
+                      {entry.ended_at ? formatTime(entry.ended_at) : "running"}
+                    </td>
+                    <td data-label="Duration">
+                      {formatDuration(
+                        durationMs(entry.started_at, entry.ended_at),
+                      )}
+                    </td>
                     <td data-label="Status">
-                      {entry.status && entry.status !== 'approved' && (
+                      {entry.status && entry.status !== "approved" && (
                         <span
                           className={`status-badge status-${entry.status}`}
                           title={
-                            entry.status === 'pending'
-                              ? 'Waiting for approval; not yet counted in hours or labor cost'
-                              : 'Rejected; never counted in hours or labor cost'
+                            entry.status === "pending"
+                              ? "Waiting for approval; not yet counted in hours or labor cost"
+                              : "Rejected; never counted in hours or labor cost"
                           }
                         >
-                          {entry.status === 'pending' ? 'Pending' : 'Rejected'}
+                          {entry.status === "pending" ? "Pending" : "Rejected"}
                         </span>
                       )}
                     </td>
@@ -220,7 +315,15 @@ function TimeReview() {
                       <button
                         type="button"
                         className="btn-sm btn-ghost"
-                        onClick={(event) => { event.stopPropagation(); startEdit('entries', entry.id, entry.started_at, entry.ended_at) }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startEdit(
+                            "entries",
+                            entry.id,
+                            entry.started_at,
+                            entry.ended_at,
+                          );
+                        }}
                       >
                         <PencilIcon /> Edit
                       </button>
@@ -230,7 +333,7 @@ function TimeReview() {
               </tbody>
             </table>
           )}
-          {editing?.kind === 'entries' && editPanel()}
+          {editing?.kind === "entries" && editPanel()}
 
           <h3>Totals</h3>
           <p>
@@ -244,7 +347,7 @@ function TimeReview() {
         </>
       )}
     </div>
-  )
+  );
 }
 
-export default TimeReview
+export default TimeReview;

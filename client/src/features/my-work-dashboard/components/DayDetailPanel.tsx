@@ -5,7 +5,7 @@ import type { CalendarDay } from '../lib/calendar'
 type Props = {
   day: CalendarDay | null
   // Opens a confirmation dialog; the dialog itself shows the busy state while cancelling
-  onCancelDayOff: (id: string) => void
+  onCancelDayOff?: (id: string) => void
 }
 
 function emptyMessage(day: CalendarDay) {
@@ -45,7 +45,7 @@ function DayDetailPanel({ day, onCancelDayOff }: Props) {
             {day.dayOff.status === 'pending' ? 'Day off requested' : day.dayOff.status === 'approved' ? 'Day off approved' : 'Day off declined'}
           </span>
           {day.dayOff.reason && <> — {day.dayOff.reason}</>}
-          {day.dayOff.status === 'pending' && (
+                    {day.dayOff.status === 'pending' && onCancelDayOff && (
             <>
               {' '}
               <button type="button" className="btn-sm btn-ghost" onClick={() => onCancelDayOff(day.dayOff!.id)}>
