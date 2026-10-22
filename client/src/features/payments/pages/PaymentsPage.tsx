@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../../../shared/components/PageHeader'
 import { Link, useSearchParams } from 'react-router-dom'
+import CancelWithReasonDialog from '../../../shared/components/CancelWithReasonDialog'
 import { CloseIcon, PencilIcon, PlusIcon } from '../../../shared/components/icons'
 import Spinner from '../../../shared/components/Spinner'
 import PageLoader from '../../../shared/components/PageLoader'
@@ -8,7 +9,7 @@ import EmptyState from '../../../shared/components/EmptyState'
 import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
-import { fetchPaymentsAndInvoices, fetchProjectsForPayments, savePayment } from '../api'
+import { cancelPayment, fetchPaymentsAndInvoices, fetchProjectsForPayments, savePayment } from '../api'
 import type { InvoiceRow, Payment, Project } from '../types'
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
@@ -45,6 +46,7 @@ function PaymentsPage() {
   const [error, setError] = useState('')
   const [done, setDone] = useState('')
   const [saving, setSaving] = useState(false)
+  const [cancelTarget, setCancelTarget] = useState<Payment | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -88,6 +90,18 @@ function PaymentsPage() {
   }
 
   function startEdit(payment: Payment) {
+    if (payment.cancelled_at) {
+      const message = 'This payment is cancelled and can no longer be corrected.'
+      setError(message)
+      toast.error(message)
+      return
+    }
+    if (payment.receipt_number) {
+      const message = `This payment has receipt ${payment.receipt_number}. Cancel the receipt to correct it.`
+      setError(message)
+      toast.error(message)
+      return
+    }
     setDone('')
     setError('')
     setEditing(payment)
@@ -137,6 +151,14 @@ function PaymentsPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleCancelPayment(reason: string) {
+    if (!cancelTarget) return
+    await cancelPayment(cancelTarget.id, reason)
+    setCancelTarget(null)
+    toast.success('Payment cancelled.')
+    await load()
   }
 
   return (
@@ -248,7 +270,11 @@ function PaymentsPage() {
             </thead>
             <tbody>
               {payments.map((payment) => (
-                <tr key={payment.id} className="clickable-row" onClick={() => startEdit(payment)}>
+                <tr
+                  key={payment.id}
+                  className={'clickable-row' + (payment.cancelled_at ? ' row-cancelled' : '')}
+                  onClick={() => startEdit(payment)}
+                >
                   <td data-label="Date"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(payment) }}>{payment.payment_date}</button></td>
                   <td data-label="Project">
                     <Link to={`/projects/${payment.project_id}`} onClick={(event) => event.stopPropagation()}>{payment.project_name}</Link>
@@ -267,13 +293,45 @@ function PaymentsPage() {
                         Corrected
                       </span>
                     )}
+                    {payment.cancelled_at && (
+                      <span className="status-badge status-rejected" title={payment.cancel_reason ?? ''}>
+                        Cancelled
+                      </span>
+                    )}
+                    {payment.receipt_number && (
+                      <div className="stat-note">
+                        Receipt: <Link to={`/receipts/${payment.receipt_id}`} onClick={(event) => event.stopPropagation()}>{payment.receipt_number}</Link>
+                      </div>
+                    )}
                   </td>
                   <td data-label="Amount" className="num">{usd.format(Number(payment.amount))}</td>
                   <td data-label="Method">{payment.method ? METHOD_LABELS[payment.method] : '—'}</td>
                   <td data-label="Actions">
-                    <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); startEdit(payment) }}>
-                      <PencilIcon /> Correct
-                    </button>
+                    {payment.cancelled_at ? null : payment.receipt_number ? (
+                      <span className="status-badge" title="This payment has a receipt. Cancel the receipt to correct it.">
+                        Has receipt
+                      </span>
+                    ) : (
+                      <>
+                        <button type="button" className="btn-sm btn-ghost" onClick={(event) => { event.stopPropagation(); startEdit(payment) }}>
+                          <PencilIcon /> Correct
+                        </button>
+                        <Link
+                          to={`/receipts/new?payment_id=${payment.id}`}
+                          className="btn-sm btn-ghost"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          Create receipt
+                        </Link>
+                        <button
+                          type="button"
+                          className="btn-sm btn-ghost"
+                          onClick={(event) => { event.stopPropagation(); setCancelTarget(payment) }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -281,6 +339,16 @@ function PaymentsPage() {
           </table>
         )}
       </div>
+
+      {cancelTarget && (
+        <CancelWithReasonDialog
+          title="Cancel this payment?"
+          message={`This cancels the ${usd.format(Number(cancelTarget.amount))} payment on ${cancelTarget.payment_date}. It can't be edited afterwards.`}
+          confirmLabel="Cancel payment"
+          onConfirm={handleCancelPayment}
+          onClose={() => setCancelTarget(null)}
+        />
+      )}
     </>
   )
 }

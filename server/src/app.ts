@@ -31,6 +31,8 @@ import { registerDayOffRoutes } from './modules/day-off-requests/day-off-request
 import { registerProjectFinancialsRoutes } from './modules/project-financials/project-financials.routes'
 import { registerDashboardRoutes } from './modules/dashboard/dashboard.routes'
 import { registerReminderRoutes } from './modules/reminders/reminders.routes'
+import { registerDocumentSignerRoutes } from './modules/signatures-and-stamps/document-signers.routes'
+import { registerOrganizationStampRoutes } from './modules/signatures-and-stamps/organization-stamps.routes'
 
 export const app = express()
 
@@ -84,6 +86,8 @@ registerDayOffRoutes(app)
 registerProjectFinancialsRoutes(app)
 registerDashboardRoutes(app)
 registerReminderRoutes(app)
+registerDocumentSignerRoutes(app)
+registerOrganizationStampRoutes(app)
 
 // ---- the website itself: the built front end is served by this same server ----
 const publicDir = path.resolve(__dirname, '../public')

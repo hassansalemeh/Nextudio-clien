@@ -61,7 +61,16 @@ export type InvoiceDetail = {
   amount_due: number
   status: string
   items: { id: string; name: string; description: string | null; quantity: string; unit: string; unit_price: string; amount: string }[]
-  payments: { id: string; payment_date: string; amount: string; reason: string; method: string | null; reference: string | null }[]
+  payments: {
+    id: string
+    payment_date: string
+    amount: string
+    reason: string
+    method: string | null
+    reference: string | null
+    cancelled_at: string | null
+    cancel_reason: string | null
+  }[]
 }
 
 export type Disbursement = {

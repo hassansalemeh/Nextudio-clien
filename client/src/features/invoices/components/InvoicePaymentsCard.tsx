@@ -56,9 +56,16 @@ function InvoicePaymentsCard({
           </thead>
           <tbody>
             {invoice.payments.map((payment) => (
-              <tr key={payment.id}>
+              <tr key={payment.id} className={payment.cancelled_at ? 'row-cancelled' : undefined}>
                 <td data-label="Date">{payment.payment_date}</td>
-                <td data-label="Reason">{payment.reason}</td>
+                <td data-label="Reason">
+                  {payment.reason}
+                  {payment.cancelled_at && (
+                    <span className="status-badge status-rejected" title={payment.cancel_reason ?? ''}>
+                      Cancelled
+                    </span>
+                  )}
+                </td>
                 <td data-label="Method">{payment.method ? (METHOD_LABELS[payment.method] ?? payment.method) : '—'}</td>
                 <td data-label="Reference / Note">{payment.reference || '—'}</td>
                 <td data-label="Amount" className="num">{money(payment.amount)}</td>

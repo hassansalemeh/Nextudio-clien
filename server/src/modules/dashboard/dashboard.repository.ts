@@ -4,7 +4,8 @@ export async function selectProfessionalPaymentsReceivedTotal(organizationId: st
   const result = await pool.query(
     `SELECT coalesce(sum(payments.amount), 0) AS total FROM payments
      LEFT JOIN invoices ON invoices.id = payments.invoice_id
-     WHERE payments.organization_id = $1 AND (invoices.id IS NULL OR invoices.invoice_type = 'professional_services')`,
+     WHERE payments.organization_id = $1 AND payments.cancelled_at IS NULL
+       AND (invoices.id IS NULL OR invoices.invoice_type = 'professional_services')`,
     [organizationId]
   )
   return Number(result.rows[0].total)
@@ -14,18 +15,20 @@ export async function selectClientFundsPaymentsReceivedTotal(organizationId: str
   const result = await pool.query(
     `SELECT coalesce(sum(payments.amount), 0) AS total FROM payments
      JOIN invoices ON invoices.id = payments.invoice_id
-     WHERE payments.organization_id = $1 AND invoices.invoice_type = 'client_funds'`,
+     WHERE payments.organization_id = $1 AND payments.cancelled_at IS NULL AND invoices.invoice_type = 'client_funds'`,
     [organizationId]
   )
   return Number(result.rows[0].total)
 }
 
+// A cancelled payment never happened as far as the dashboard is concerned - left out of the feed entirely,
+// not just greyed out, since this is a feed of real money movements rather than a ledger of every record.
 export async function selectRecentPayments(organizationId: string) {
   const result = await pool.query(
     `SELECT payments.id, payments.project_id, projects.name AS project_name, clients.name AS client_name,
             to_char(payments.payment_date, 'YYYY-MM-DD') AS payment_date, payments.amount, payments.reason
      FROM payments JOIN projects ON projects.id = payments.project_id JOIN clients ON clients.id = projects.client_id
-     WHERE payments.organization_id = $1
+     WHERE payments.organization_id = $1 AND payments.cancelled_at IS NULL
      ORDER BY payments.payment_date DESC, payments.id DESC LIMIT 5`,
     [organizationId]
   )

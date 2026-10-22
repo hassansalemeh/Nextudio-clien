@@ -87,15 +87,20 @@ export async function getProjectDetail(organizationId: string, projectId: string
 
   // Client Funds payments (money held for this project's expenses, not Nextudio's design fee) are kept out
   // of this project's client-side figures below, and reported separately in the client_funds block instead.
+  // Cancelled payments stay in the list (shown greyed out), but never count toward a total
   const paymentRows = await projectsRepository.selectProjectPayments(organizationId, projectId)
   const professionalPaymentRows = paymentRows.filter((row) => row.invoice_type !== 'client_funds')
   const clientFundsPaymentRows = paymentRows.filter((row) => row.invoice_type === 'client_funds')
-  const paymentsReceived = roundMoney(professionalPaymentRows.reduce((total, row) => total + Number(row.amount), 0))
+  const paymentsReceived = roundMoney(
+    professionalPaymentRows.filter((row) => !row.cancelled_at).reduce((total, row) => total + Number(row.amount), 0)
+  )
 
   const clientFundsInvoices = (await listInvoices(organizationId)).filter(
     (invoice) => invoice.invoice_type === 'client_funds' && String(invoice.project_id) === String(projectId)
   )
-  const clientFundsReceived = roundMoney(clientFundsPaymentRows.reduce((total, row) => total + Number(row.amount), 0))
+  const clientFundsReceived = roundMoney(
+    clientFundsPaymentRows.filter((row) => !row.cancelled_at).reduce((total, row) => total + Number(row.amount), 0)
+  )
   const disbursementRows =
     clientFundsInvoices.length === 0 ? [] : await projectsRepository.selectDisbursementAmounts(clientFundsInvoices.map((i) => i.id))
   const clientFundsSpent = roundMoney(disbursementRows.reduce((total, row) => total + Number(row.amount), 0))
@@ -169,6 +174,12 @@ export async function deleteProjectById(organizationId: string, projectId: strin
     const hasFinancialRecords = await projectsRepository.selectFinancialRecordsForProject(client, projectId)
     if (hasFinancialRecords) {
       throw new HttpError(400, "This project has financial records and can't be deleted.")
+    }
+
+    // A receipt (and the payment behind it) is never deleted with its project - cancel it first
+    const hasReceipts = await projectsRepository.selectReceiptsForProject(client, projectId)
+    if (hasReceipts) {
+      throw new HttpError(400, "This project has receipts and can't be deleted. Cancel them first.")
     }
 
     // Every payment recorded against the project (applied to its invoice or not) goes with it, then the invoice (items go with it)

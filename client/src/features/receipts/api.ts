@@ -25,6 +25,13 @@ export async function fetchProjectsForReceipts(): Promise<Project[]> {
   return response.json()
 }
 
+// Prefills a new, linked receipt from an existing payment (the Payments page's "Create receipt" action)
+export async function fetchPaymentForReceipt(paymentId: string): Promise<any> {
+  const response = await apiGet(`/api/payments/${paymentId}`)
+  if (!response.ok) throw new Error('Could not load the payment.')
+  return response.json()
+}
+
 export async function fetchReceipt(id: string): Promise<any> {
   const response = await apiGet(`/api/receipts/${id}`)
   if (response.status === 404) throw new Error('Receipt not found.')
@@ -54,5 +61,13 @@ export async function sendReceiptEmail(
   const response = await apiPost(`/api/receipts/${receiptId}/send-email`, input)
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new Error(body?.error || 'Could not send the email.')
+  return body
+}
+
+// Cancels the receipt AND its linked payment together. Never deletes either.
+export async function cancelReceipt(id: string, reason: string): Promise<any> {
+  const response = await apiPost(`/api/receipts/${id}/cancel`, { reason })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.error || 'Could not cancel the receipt.')
   return body
 }

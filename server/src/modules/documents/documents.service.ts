@@ -4,6 +4,8 @@ import { loadEstimate } from '../estimates/estimates.service'
 import { loadInvoice } from '../invoices/invoices.service'
 import { loadReceipt } from '../receipts/receipts.service'
 import { loadLetter } from '../letters/letters.service'
+import { signerSignatureDataUri } from '../signatures-and-stamps/document-signers.service'
+import { stampDataUri } from '../signatures-and-stamps/organization-stamps.service'
 import { DocumentData } from './documents.layout'
 
 export { renderPdf, checkPdfEngine } from './documents.pdf'
@@ -93,7 +95,8 @@ export async function invoiceDocument(organizationId: string, invoiceId: string)
     discountValue: invoice.discount_value,
     total: invoice.total,
     sections: sectionsOf(invoice),
-    payments: invoice.payments,
+    // A cancelled payment no longer counts - don't print it on a document the client sees
+    payments: invoice.payments.filter((payment: { cancelled_at: string | null }) => !payment.cancelled_at),
     amountDue: invoice.amount_due,
     contract: isClientFunds
       ? null
@@ -111,6 +114,16 @@ export async function receiptDocument(organizationId: string, receiptId: string)
   const receipt = await loadReceipt(organizationId, receiptId)
   if (!receipt) throw new HttpError(404, 'Receipt not found')
   const t = labelsFor(receipt.document_language)
+
+  // Looked up by signer id, not by the snapshotted name text - a legacy receipt with no signer_id (the
+  // two that predate this feature) simply gets no signature image, same as before this feature existed.
+  const [adminSignatureDataUri, receiverSignatureDataUri, paidStampDataUri, companyStampDataUri] = await Promise.all([
+    receipt.issued_by_signer_id ? signerSignatureDataUri(organizationId, receipt.issued_by_signer_id) : Promise.resolve(null),
+    receipt.received_by_signer_id ? signerSignatureDataUri(organizationId, receipt.received_by_signer_id) : Promise.resolve(null),
+    receipt.show_paid_stamp ? stampDataUri(organizationId, 'paid_stamp') : Promise.resolve(null),
+    receipt.show_company_stamp ? stampDataUri(organizationId, 'company_stamp') : Promise.resolve(null),
+  ])
+
   return {
     kind: 'receipt',
     language: receipt.document_language,
@@ -138,7 +151,17 @@ export async function receiptDocument(organizationId: string, receiptId: string)
     amountDue: null,
     contract: null,
     reason: receipt.reason,
-    signOff: { adminName: receipt.issued_by_admin, receiverName: receipt.receiver_name },
+    // "Received By" is the admin who received the money, never the client's name (receiver_name is
+    // already shown above, under "Received From")
+    signOff: {
+      adminName: receipt.issued_by_admin,
+      receiverName: receipt.received_by_admin ?? '',
+      adminSignatureDataUri,
+      receiverSignatureDataUri,
+    },
+    paidStampDataUri,
+    companyStampDataUri,
+    cancelled: Boolean(receipt.cancelled_at),
   }
 }
 

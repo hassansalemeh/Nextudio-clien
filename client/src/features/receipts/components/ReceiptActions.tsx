@@ -5,12 +5,14 @@ import Spinner from '../../../shared/components/Spinner'
 type Props = {
   busy: boolean
   isNew: boolean
+  cancelled: boolean
   onPreview: () => void
   onOpenEmail: () => void
   onSave: () => void
+  onCancel: () => void
 }
 
-function ReceiptActions({ busy, isNew, onPreview, onOpenEmail, onSave }: Props) {
+function ReceiptActions({ busy, isNew, cancelled, onPreview, onOpenEmail, onSave, onCancel }: Props) {
   const navigate = useNavigate()
 
   return (
@@ -26,9 +28,16 @@ function ReceiptActions({ busy, isNew, onPreview, onOpenEmail, onSave }: Props) 
           <MailIcon /> Send by Email
         </button>
       )}
-      <button type="button" className="btn-pill" disabled={busy} onClick={onSave}>
-        {busy && <Spinner />} Save and continue
-      </button>
+      {!isNew && !cancelled && (
+        <button type="button" className="btn-danger" disabled={busy} onClick={onCancel}>
+          Cancel receipt
+        </button>
+      )}
+      {!cancelled && (
+        <button type="button" className="btn-pill" disabled={busy} onClick={onSave}>
+          {busy && <Spinner />} Save and continue
+        </button>
+      )}
     </div>
   )
 }

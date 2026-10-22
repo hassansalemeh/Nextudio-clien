@@ -24,6 +24,7 @@ import ProjectFinancialSummaryPage from '../features/projects/pages/ProjectFinan
 import ProjectsPage from '../features/projects/pages/ProjectsPage'
 import ReceiptEditorPage from '../features/receipts/pages/ReceiptEditorPage'
 import ReceiptsPage from '../features/receipts/pages/ReceiptsPage'
+import SignaturesAndStampsPage from '../features/signatures-and-stamps/pages/SignaturesAndStampsPage'
 import AssignWorkPage from '../features/work-assignments/pages/AssignWorkPage'
 import TimeTrackingPage from '../features/time-tracking/pages/TimeTrackingPage'
 
@@ -40,6 +41,7 @@ const NAV_SECTIONS = [
     { to: '/payments', label: 'Payments' },
     { to: '/receipts', label: 'Receipts' },
     { to: '/financial-summary', label: 'Financial Summary' },
+    { to: '/signatures', label: 'Signatures & Stamps' },
   ] },
   { title: 'Team', links: [
     { to: '/employees', label: 'Employees' },
@@ -183,6 +185,7 @@ function App() {
           <Route path="/letters/:id/preview" element={<DocumentPreviewPage kind="letter" />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/financial-summary" element={<ProjectFinancialSummaryPage />} />
+          <Route path="/signatures" element={<SignaturesAndStampsPage />} />
         </Routes>}
       </main>
     </div>

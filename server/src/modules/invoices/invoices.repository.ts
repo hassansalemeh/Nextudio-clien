@@ -20,7 +20,7 @@ export const INVOICE_SELECT = `
          -- the forward link (both invoice types) falls back to the estimate-approval reverse link, for old rows
          coalesce(invoices.project_id, reverse_project.id) AS project_id,
          coalesce(fwd_project.name, reverse_project.name) AS project_name,
-         coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id), 0) AS paid
+         coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id AND payments.cancelled_at IS NULL), 0) AS paid
   FROM invoices
   LEFT JOIN estimates ON estimates.id = invoices.estimate_id
   LEFT JOIN projects fwd_project ON fwd_project.id = invoices.project_id
@@ -49,7 +49,8 @@ export async function selectInvoiceItems(invoiceId: string | number) {
 
 export async function selectInvoicePayments(invoiceId: string | number) {
   const result = await pool.query(
-    `SELECT id, to_char(payment_date, 'YYYY-MM-DD') AS payment_date, amount, reason, method, reference, created_at
+    `SELECT id, to_char(payment_date, 'YYYY-MM-DD') AS payment_date, amount, reason, method, reference, created_at,
+            cancelled_at, cancel_reason
      FROM payments WHERE invoice_id = $1 ORDER BY payment_date, id`,
     [invoiceId]
   )
@@ -156,7 +157,7 @@ export async function selectInvoiceForUpdate(client: PoolClient, organizationId:
   const result = await client.query(
     `SELECT invoices.invoice_type, invoices.client_id, invoices.client_name, invoices.client_email,
             invoices.client_phone, invoices.client_address,
-            coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id), 0) AS paid
+            coalesce((SELECT sum(amount) FROM payments WHERE payments.invoice_id = invoices.id AND payments.cancelled_at IS NULL), 0) AS paid
      FROM invoices WHERE invoices.id = $1 AND invoices.organization_id = $2 FOR UPDATE`,
     [invoiceId, organizationId]
   )

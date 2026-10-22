@@ -43,7 +43,7 @@ export type ProjectDetails = {
   total_labor_cost: number
   confirmed_revenue: number
   current_position: number
-  payments: { id: string; payment_date: string; reason: string; amount: string }[]
+  payments: { id: string; payment_date: string; reason: string; amount: string; cancelled_at: string | null; cancel_reason: string | null }[]
   payments_received: number
   client_balance_due: number
   client_funds: {

@@ -54,8 +54,15 @@ function ReceiptsPage() {
             </thead>
             <tbody>
               {receipts.map((receipt) => (
-                <tr key={receipt.id} className="clickable-row" onClick={() => navigate(`/receipts/${receipt.id}`)}>
-                  <td data-label="Receipt">{receipt.receipt_number}</td>
+                <tr
+                  key={receipt.id}
+                  className={'clickable-row' + (receipt.cancelled_at ? ' row-cancelled' : '')}
+                  onClick={() => navigate(`/receipts/${receipt.id}`)}
+                >
+                  <td data-label="Receipt">
+                    {receipt.receipt_number}
+                    {receipt.cancelled_at && <span className="status-badge status-rejected" title={receipt.cancel_reason ?? ''}>Cancelled</span>}
+                  </td>
                   <td data-label="Receiver">{receipt.receiver_name}</td>
                   <td data-label="Date">{receipt.receipt_date}</td>
                   <td data-label="Amount" className="num">{formatMoney(receipt.amount, receipt.currency)}</td>

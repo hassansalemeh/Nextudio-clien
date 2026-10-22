@@ -3,7 +3,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
-import { fetchClientsForReceipts, fetchNextReceiptNumber, fetchProjectsForReceipts, fetchReceipt, saveReceipt } from '../api'
+import { fetchSigners } from '../../signatures-and-stamps/document-signers-api'
+import type { DocumentSigner } from '../../signatures-and-stamps/document-signers-api'
+import { cancelReceipt, fetchClientsForReceipts, fetchNextReceiptNumber, fetchPaymentForReceipt, fetchProjectsForReceipts, fetchReceipt, saveReceipt } from '../api'
 import type { Client, Project } from '../types'
 
 function emptyForm() {
@@ -17,8 +19,12 @@ function emptyForm() {
     amount: '',
     currency: 'USD',
     reason: '',
-    issued_by_admin: '',
+    issued_by_signer_id: '',
+    received_by_signer_id: '',
+    show_paid_stamp: true,
+    show_company_stamp: true,
     document_language: 'en',
+    payment_id: '',
   }
 }
 
@@ -34,9 +40,18 @@ export function useReceiptEditor() {
   const justSavedId = useRef<string | null>(null)
   const [emailOpen, setEmailOpen] = useState(false)
 
+  // Set only when creating a new receipt from the Payments page's "Create receipt" action - the receipt
+  // links to this existing payment instead of creating a new one, and its amount/date/project are locked.
+  const linkedPaymentId = isNew ? searchParams.get('payment_id') : null
+
   const [form, setForm] = useState(emptyForm())
+  const [linkedPayment, setLinkedPayment] = useState<any | null>(null)
+  const [cancelledAt, setCancelledAt] = useState<string | null>(null)
+  const [cancelReason, setCancelReason] = useState<string | null>(null)
+  const [cancelOpen, setCancelOpen] = useState(false)
   const [clients, setClients] = useState<Client[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [signers, setSigners] = useState<DocumentSigner[]>([])
   const [loading, setLoading] = useState(!isNew)
   const [pickingCustomer, setPickingCustomer] = useState(false)
   const [error, setError] = useState('')
@@ -51,6 +66,24 @@ export function useReceiptEditor() {
       .catch(() => undefined)
   }, [isNew])
 
+  // Prefills (and locks) amount/date/project from the payment being linked
+  useEffect(() => {
+    if (!linkedPaymentId) return
+    fetchPaymentForReceipt(linkedPaymentId)
+      .then((payment) => {
+        setLinkedPayment(payment)
+        setForm((previous) => ({
+          ...previous,
+          payment_id: String(payment.id),
+          project_id: String(payment.project_id),
+          receipt_date: payment.payment_date,
+          amount: String(Number(payment.amount)),
+          receiver_name: previous.receiver_name || payment.client_name || '',
+        }))
+      })
+      .catch(() => setError('Could not load the payment to link.'))
+  }, [linkedPaymentId])
+
   useEffect(() => {
     fetchClientsForReceipts()
       .then(setClients)
@@ -58,7 +91,19 @@ export function useReceiptEditor() {
     fetchProjectsForReceipts()
       .then(setProjects)
       .catch(() => setError('Could not load projects.'))
+    fetchSigners()
+      .then(setSigners)
+      .catch(() => setError('Could not load signers.'))
   }, [])
+
+  // Only active signers can be freshly chosen - but a signer already selected on this receipt (even if
+  // deactivated since) still needs to appear, so the dropdown doesn't go blank on a receipt that already
+  // names them.
+  const signerOptions = (() => {
+    const selectedIds = new Set([form.issued_by_signer_id, form.received_by_signer_id].filter(Boolean))
+    const alreadySelectedInactive = signers.filter((signer) => !signer.is_active && selectedIds.has(signer.id))
+    return [...signers.filter((signer) => signer.is_active), ...alreadySelectedInactive]
+  })()
 
   // Puts a saved receipt (as returned by the server) into the editor
   function applyReceipt(receipt: any) {
@@ -72,10 +117,21 @@ export function useReceiptEditor() {
       amount: Number(receipt.amount) ? String(Number(receipt.amount)) : '',
       currency: receipt.currency,
       reason: receipt.reason,
-      issued_by_admin: receipt.issued_by_admin,
+      issued_by_signer_id: receipt.issued_by_signer_id ?? '',
+      received_by_signer_id: receipt.received_by_signer_id ?? '',
+      show_paid_stamp: receipt.show_paid_stamp ?? true,
+      show_company_stamp: receipt.show_company_stamp ?? true,
       document_language: receipt.document_language ?? 'en',
+      payment_id: receipt.payment_id ?? '',
     })
+    setCancelledAt(receipt.cancelled_at ?? null)
+    setCancelReason(receipt.cancel_reason ?? null)
   }
+
+  // True once a receipt is linked to a payment (either just now, or already saved that way) - amount,
+  // date and project are then sourced from the payment and can't be edited here.
+  const moneyLocked = Boolean(form.payment_id)
+  const cancelled = Boolean(cancelledAt)
 
   useEffect(() => {
     if (isNew) return
@@ -106,6 +162,16 @@ export function useReceiptEditor() {
     setForm((previous) => ({ ...previous, [field]: value }))
   }
 
+  const toggleShowPaidStamp = (value: boolean) => {
+    setSaved(false)
+    setForm((previous) => ({ ...previous, show_paid_stamp: value }))
+  }
+
+  const toggleShowCompanyStamp = (value: boolean) => {
+    setSaved(false)
+    setForm((previous) => ({ ...previous, show_company_stamp: value }))
+  }
+
   const client = clients.find((c) => c.id === form.client_id)
 
   // Picking a client only prefills the receiver's name/email if they're still empty - it never
@@ -127,11 +193,15 @@ export function useReceiptEditor() {
     setError('')
     setSaved(false)
 
+    if (cancelled) return setError('This receipt is cancelled and can no longer be edited.'), null
     if (!form.receipt_date) return setError('Receipt date is required.'), null
     if (!form.receiver_name.trim()) return setError("Enter the receiver's name."), null
     if (!(Number(form.amount) > 0)) return setError('Enter an amount greater than 0.'), null
     if (!form.reason.trim()) return setError('Enter the reason for the payment.'), null
-    if (!form.issued_by_admin) return setError('Choose the issuing admin.'), null
+    if (form.reason.trim().length > 200) return setError('The reason is too long (200 characters at most).'), null
+    if (!form.issued_by_signer_id) return setError('Choose the issuing signer.'), null
+    if (!form.received_by_signer_id) return setError('Choose the receiving signer.'), null
+    if (isNew && !form.payment_id && !form.project_id) return setError('Choose a project.'), null
 
     try {
       const receipt = await saveReceipt(id, isNew, {
@@ -140,6 +210,7 @@ export function useReceiptEditor() {
         project_id: form.project_id || null,
         receiver_email: form.receiver_email || null,
         amount: Number(form.amount),
+        payment_id: form.payment_id || null,
       })
       applyReceipt(receipt)
       setSaved(true)
@@ -164,10 +235,21 @@ export function useReceiptEditor() {
   }
 
   async function handlePreview() {
+    // A cancelled receipt can't be saved (nothing to save - it's unchanged), but its PDF, with the
+    // CANCELLED mark, must still be viewable.
+    if (cancelled) return navigate(`/receipts/${id}/preview`)
     setBusy(true)
     const receipt = await save()
     setBusy(false)
     if (receipt) navigate(`/receipts/${receipt.id}/preview`)
+  }
+
+  // Cancels this receipt AND its linked payment together. Never deletes either.
+  async function handleCancel(reason: string) {
+    const receipt = await cancelReceipt(id!, reason)
+    applyReceipt(receipt)
+    setCancelOpen(false)
+    toast.success('Receipt cancelled.')
   }
 
   return {
@@ -175,9 +257,17 @@ export function useReceiptEditor() {
     isNew,
     emailOpen,
     setEmailOpen,
+    cancelOpen,
+    setCancelOpen,
+    handleCancel,
     form,
+    linkedPayment,
+    moneyLocked,
+    cancelled,
+    cancelReason,
     clients,
     projects,
+    signerOptions,
     loading,
     pickingCustomer,
     setPickingCustomer,
@@ -185,6 +275,8 @@ export function useReceiptEditor() {
     saved,
     busy,
     update,
+    toggleShowPaidStamp,
+    toggleShowCompanyStamp,
     client,
     chooseClient,
     handleSave,

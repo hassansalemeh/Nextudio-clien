@@ -140,9 +140,16 @@ function ProjectDetailPage() {
             </thead>
             <tbody>
               {details.payments.map((payment) => (
-                <tr key={payment.id}>
+                <tr key={payment.id} className={payment.cancelled_at ? 'row-cancelled' : undefined}>
                   <td data-label="Date">{payment.payment_date}</td>
-                  <td data-label="Reason">{payment.reason}</td>
+                  <td data-label="Reason">
+                    {payment.reason}
+                    {payment.cancelled_at && (
+                      <span className="status-badge status-rejected" title={payment.cancel_reason ?? ''}>
+                        Cancelled
+                      </span>
+                    )}
+                  </td>
                   <td data-label="Amount" className="num">{currencyFormatter.format(Number(payment.amount))}</td>
                 </tr>
               ))}

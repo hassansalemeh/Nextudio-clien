@@ -89,11 +89,15 @@ export type ContractData = {
   nextudioRepTitle: string | null
 }
 
-// A receipt's two hand-signature blocks: the admin who issued it, and the person who received the money.
-// No stored signature image yet - just the printed name and a blank line - but kept as its own small
-// type (rather than reusing ContractData) so a later `adminSignatureUrl`/`receiverSignatureUrl` can be
-// added here without touching the quotation/invoice contract shape at all.
-export type ReceiptSignOff = { adminName: string; receiverName: string }
+// A receipt's two hand-signature blocks: the signer who issued it, and the signer who received the money
+// (never the client - see receipts.service's received_by_admin). Each signature image is a data URI,
+// looked up by signer id; null if that signer never uploaded one, in which case the line stays blank.
+export type ReceiptSignOff = {
+  adminName: string
+  receiverName: string
+  adminSignatureDataUri: string | null
+  receiverSignatureDataUri: string | null
+}
 
 export type DocumentData = {
   kind: 'quotation' | 'invoice' | 'receipt' | 'letter'
@@ -129,6 +133,14 @@ export type DocumentData = {
   // Only set for `kind: 'receipt'`
   reason?: string
   signOff?: ReceiptSignOff | null
+  // Only set for `kind: 'receipt'`: the receipt (and its payment) were cancelled after being issued
+  cancelled?: boolean
+  // Only set for `kind: 'receipt'`: the organization's PAID stamp image, shown only when the receipt
+  // opts in (show_paid_stamp) and one has been uploaded
+  paidStampDataUri?: string | null
+  // Only set for `kind: 'receipt'`: the organization's company stamp image, shown only when the receipt
+  // opts in (show_company_stamp) and one has been uploaded - stamped over the "Issued By" block
+  companyStampDataUri?: string | null
   // Only set for `kind: 'letter'`. Unlike a receipt, a letter has only the issuing admin's signature -
   // there's no second party to sign (the recipient may not even be a real, known person: it can be
   // "To Whom It May Concern").
@@ -228,13 +240,26 @@ const styleBlock = (language: DocumentLanguage) => `
     .sig-row-label { white-space: nowrap; color: #555; }
     .sig-row-value { flex: 1; overflow-wrap: anywhere; }
     .sig-row-blank { margin-top: 24px; padding-bottom: 26px; }
-    .sig-slot { min-height: 40px; }
+    .sig-slot { min-height: 40px; display: flex; align-items: center; }
+    .sig-image { max-height: 38px; max-width: 100%; display: block; }
     .sig-grid.single { max-width: 45%; }
+    .paid-stamp { display: flex; justify-content: flex-end; margin: -6px 0 10px; }
+    .paid-stamp img { height: 64px; opacity: 0.8; transform: rotate(-8deg); }
+    /* Beside the issuer's signature image, inside the same .sig-slot row - confined to that row, so it
+       can never reach the party label, the printed name, or the "Signature:" line above/below it. A
+       slight negative margin lets it lap the signature's edge like a real stamp would. */
+    .company-stamp { width: 130px; height: auto; opacity: 0.9; transform: rotate(-8deg); margin-left: -18px; pointer-events: none; }
     .letter-to { margin: 4px 0 18px; font-size: 10.5px; }
     .letter-body { font-size: 10.5px; line-height: 1.6; color: #222; }
     .letter-body p { margin: 0 0 12px; overflow-wrap: anywhere; }
     .letter-body ul { margin: 0 0 12px 20px; padding: 0; }
     .letter-body li { margin-bottom: 4px; overflow-wrap: anywhere; }
+    .cancelled-mark {
+      position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-25deg);
+      font-size: 64px; font-weight: 800; letter-spacing: 6px; text-transform: uppercase;
+      color: rgba(190, 20, 20, 0.35); border: 6px solid rgba(190, 20, 20, 0.35);
+      padding: 8px 36px; z-index: 1000; pointer-events: none;
+    }
 `
 
 // A receipt's body: no items/totals table (a receipt records one amount, not a priced scope of work) -
@@ -243,6 +268,7 @@ const styleBlock = (language: DocumentLanguage) => `
 function receiptBodyHtml(doc: DocumentData, t: DocumentLabels, dir: 'ltr' | 'rtl') {
   const { currency, language } = doc
   return `<!doctype html><html dir="${dir}" lang="${language}"><head><meta charset="utf-8"><style>${styleBlock(language)}</style></head><body>
+    ${doc.cancelled ? '<div class="cancelled-mark">CANCELLED</div>' : ''}
     <div class="meta">
       <div class="bill-to">
         <div class="label">${escapeHtml(t.receivedFrom)}</div>
@@ -255,6 +281,7 @@ function receiptBodyHtml(doc: DocumentData, t: DocumentLabels, dir: 'ltr' | 'rtl
         <tr class="band"><td class="m-label">${escapeHtml(t.amountReceived)} (${escapeHtml(currency)}):</td><td class="m-value">${money(doc.total, currency)}</td></tr>
       </table>
     </div>
+    ${doc.paidStampDataUri ? `<div class="paid-stamp"><img src="${doc.paidStampDataUri}" alt="" /></div>` : ''}
     <div class="notes"><h4>${escapeHtml(t.reasonForPayment)}</h4><div class="text">${formatText(doc.reason ?? '')}</div></div>
     <div class="thanks">${escapeHtml(t.thankYou)}</div>
     ${receiptSignatureSectionHtml(doc)}
@@ -404,20 +431,25 @@ function signatureSectionHtml(doc: DocumentData) {
     </div>`
 }
 
-// The Receipt's own two-party sign-off: the admin who issued it, and the person who received the money.
-// No acceptance paragraph (a receipt isn't a contract) - just each name, a blank line for a handwritten
-// signature, and a date line. The empty .sig-slot above each blank line is reserved for a stored
-// signature image later: today it renders empty, so adding one is filling this slot in, not a rework.
+// The Receipt's own two-party sign-off: the signer who issued it, and the signer who received the money
+// (never the client's name - see receipts.service's received_by_admin). No acceptance paragraph (a
+// receipt isn't a contract) - just each name, their stored signature image (if one was ever uploaded for
+// them) or a blank line, and a date line. The company stamp, if any, sits inside the "Issued By" block's
+// .sig-slot, beside the signature image - never in the "Received By" block, and confined to that one
+// row so it can never reach the party label, the printed name, or the "Signature:" line.
 function receiptSignatureSectionHtml(doc: DocumentData) {
   if (!doc.signOff) return ''
   const t = labelsFor(doc.language)
   const s = doc.signOff
 
-  const block = (party: string, name: string) => `
+  const block = (party: string, name: string, signatureDataUri: string | null, companyStampDataUri?: string | null) => `
       <div class="sig-block">
         <div class="sig-party">${escapeHtml(party)}</div>
         <div class="sig-row"><span class="sig-row-value">${escapeHtml(name)}</span></div>
-        <div class="sig-slot"></div>
+        <div class="sig-slot">
+          ${signatureDataUri ? `<img class="sig-image" src="${signatureDataUri}" alt="" />` : ''}
+          ${companyStampDataUri ? `<img class="company-stamp" src="${companyStampDataUri}" alt="" />` : ''}
+        </div>
         <div class="sig-row sig-row-blank"><span class="sig-row-label">${escapeHtml(t.signature)}:</span><span class="sig-row-value"></span></div>
         <div class="sig-row"><span class="sig-row-label">${escapeHtml(t.signatureDate)}:</span><span class="sig-row-value"></span></div>
       </div>`
@@ -425,8 +457,8 @@ function receiptSignatureSectionHtml(doc: DocumentData) {
   return `
     <div class="signatures">
       <div class="sig-grid">
-        ${block(t.issuedBy, s.adminName)}
-        ${block(t.receivedBy, s.receiverName)}
+        ${block(t.issuedBy, s.adminName, s.adminSignatureDataUri, doc.companyStampDataUri)}
+        ${block(t.receivedBy, s.receiverName, s.receiverSignatureDataUri)}
       </div>
     </div>`
 }

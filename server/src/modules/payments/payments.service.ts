@@ -78,12 +78,16 @@ export async function listPayments(organizationId: string, projectId: string | n
   return paymentsRepository.selectPayments(organizationId, projectId)
 }
 
-export async function createPayment(organizationId: string, body: Record<string, unknown>) {
+// The create logic, usable inside a transaction the caller already holds - receipts.service uses this
+// to create a receipt's payment in the same transaction as the receipt itself.
+export async function createPaymentWithinTransaction(client: PoolClient, organizationId: string, body: Record<string, unknown>) {
   const input = parsePayment(body)
-  return withTransaction(async (client) => {
-    await checkPayment(client, organizationId, input, null)
-    return paymentsRepository.insertPayment(client, organizationId, input)
-  })
+  await checkPayment(client, organizationId, input, null)
+  return paymentsRepository.insertPayment(client, organizationId, input)
+}
+
+export async function createPayment(organizationId: string, body: Record<string, unknown>) {
+  return withTransaction((client) => createPaymentWithinTransaction(client, organizationId, body))
 }
 
 // A correction: what the payment looked like before is kept in payment_revisions. Payments are never deleted.
@@ -92,8 +96,29 @@ export async function correctPayment(organizationId: string, id: string, body: R
   await withTransaction(async (client) => {
     const current = await paymentsRepository.selectPaymentRowForUpdate(client, organizationId, id)
     if (!current) throw new HttpError(404, 'Payment not found')
+    if (current.row.cancelled_at) throw new HttpError(400, 'This payment is cancelled and can no longer be corrected')
+    // An issued receipt must never change silently - the receipt has to be cancelled first.
+    const receipt = await paymentsRepository.selectActiveReceiptForPayment(client, id)
+    if (receipt) throw new HttpError(400, `This payment has receipt ${receipt.receipt_number}. Cancel the receipt to correct it.`)
     await checkPayment(client, organizationId, input, id)
     await paymentsRepository.insertPaymentRevision(client, id, current.row)
     await paymentsRepository.updatePayment(client, organizationId, id, input)
+  })
+}
+
+// Cancelling a payment WITHOUT a receipt - a payment that has one can only be cancelled by cancelling
+// the receipt (receipts.service.cancelReceipt), which cancels this payment along with it.
+export async function cancelPayment(organizationId: string, id: string, reason: string, cancelledBy: string) {
+  const trimmedReason = reason.trim()
+  if (!trimmedReason) throw new HttpError(400, 'A reason is required to cancel a payment')
+  if (trimmedReason.length > 500) throw new HttpError(400, 'The reason is too long (500 characters at most)')
+
+  await withTransaction(async (client) => {
+    const payment = await paymentsRepository.lockPaymentForCancel(client, organizationId, id)
+    if (!payment) throw new HttpError(404, 'Payment not found')
+    if (payment.cancelled_at) throw new HttpError(400, 'This payment is already cancelled')
+    const receipt = await paymentsRepository.selectActiveReceiptForPayment(client, id)
+    if (receipt) throw new HttpError(400, `This payment has receipt ${receipt.receipt_number}. Cancel the receipt instead.`)
+    await paymentsRepository.updatePaymentCancelled(client, id, cancelledBy, trimmedReason)
   })
 }

@@ -42,13 +42,12 @@ export function registerReceiptRoutes(app: Express) {
       const organizationId = organizationIdOf(req)
       const body = { ...req.body }
       const autoNumber = typeof body.receipt_number !== 'string' || !body.receipt_number.trim()
-      // Only a placeholder for parseHeader's "receipt_number is required" check below - when autoNumber
-      // is true, createReceipt throws this away and computes the real number itself, under a lock, right
-      // before the insert.
+      // Only a placeholder for parseReceiptFields' "receipt_number is required" check below - when
+      // autoNumber is true, createReceipt throws this away and computes the real number itself, under a
+      // lock, right before the insert.
       if (autoNumber) body.receipt_number = await receiptsService.nextReceiptNumber(organizationId)
-      const header = receiptsService.parseHeader(body)
 
-      const id = await receiptsService.createReceipt(organizationId, header, autoNumber)
+      const id = await receiptsService.createReceipt(organizationId, body, autoNumber)
       res.status(201).json(await receiptsService.loadReceipt(organizationId, id))
     } catch (err) {
       sendError(res, err, 'Failed to create receipt', 'That receipt number is already used')
@@ -59,12 +58,24 @@ export function registerReceiptRoutes(app: Express) {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
-      const header = receiptsService.parseHeader(req.body)
 
-      await receiptsService.updateReceiptById(organizationId, id, header)
+      await receiptsService.updateReceiptById(organizationId, id, req.body)
       res.json(await receiptsService.loadReceipt(organizationId, id))
     } catch (err) {
       sendError(res, err, 'Failed to update receipt', 'That receipt number is already used')
+    }
+  })
+
+  // Cancels the receipt and its linked payment together. Never deletes either.
+  app.post('/api/receipts/:receiptId/cancel', async (req, res) => {
+    try {
+      const organizationId = organizationIdOf(req)
+      const id = requireId(req)
+      const reason = typeof req.body.reason === 'string' ? req.body.reason : ''
+      await receiptsService.cancelReceipt(organizationId, id, reason, req.user!.id)
+      res.json(await receiptsService.loadReceipt(organizationId, id))
+    } catch (err) {
+      sendError(res, err, 'Failed to cancel the receipt')
     }
   })
 }

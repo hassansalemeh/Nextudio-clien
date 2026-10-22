@@ -18,6 +18,9 @@ export type ReceiptListItem = {
   amount: string
   currency: string
   issued_by_admin: string
+  payment_id: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
 }
 
 export type ReceiptDetail = {
@@ -31,6 +34,15 @@ export type ReceiptDetail = {
   amount: string
   currency: string
   reason: string
+  // Text snapshots of each signer's name at the moment of this save - always set once a signer is chosen
   issued_by_admin: string
+  received_by_admin: string | null
+  issued_by_signer_id: string | null
+  received_by_signer_id: string | null
+  show_paid_stamp: boolean
+  show_company_stamp: boolean
   document_language: string
+  payment_id: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
 }

@@ -29,3 +29,11 @@ export async function savePayment(editingId: string | null, input: PaymentInput)
   if (!response.ok) throw new Error(body?.error || 'Could not save the payment.')
   return body
 }
+
+// Only for a payment without an active receipt - one with a receipt is cancelled through it instead
+export async function cancelPayment(id: string, reason: string): Promise<Payment> {
+  const response = await apiPost(`/api/payments/${id}/cancel`, { reason })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.error || 'Could not cancel the payment.')
+  return body
+}

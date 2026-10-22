@@ -13,4 +13,8 @@ export type Payment = {
   method: string | null
   reference: string | null
   edits: number
+  receipt_id: string | null
+  receipt_number: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
 }

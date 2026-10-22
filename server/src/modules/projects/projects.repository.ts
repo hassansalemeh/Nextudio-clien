@@ -91,10 +91,12 @@ export async function selectProjectTasks(projectId: string) {
   return result.rows
 }
 
+// Includes cancelled payments (greyed out client-side) so the history stays complete - callers that sum
+// this list must filter payments.service's cancelled_at themselves, e.g. projects.service's paymentsReceived.
 export async function selectProjectPayments(organizationId: string, projectId: string) {
   const result = await pool.query(
     `SELECT payments.id, to_char(payments.payment_date, 'YYYY-MM-DD') AS payment_date, payments.reason,
-            payments.amount, payments.method, payments.invoice_id,
+            payments.amount, payments.method, payments.invoice_id, payments.cancelled_at, payments.cancel_reason,
             coalesce(invoices.invoice_type, 'professional_services') AS invoice_type
      FROM payments LEFT JOIN invoices ON invoices.id = payments.invoice_id
      WHERE payments.project_id = $1 AND payments.organization_id = $2 ORDER BY payments.payment_date DESC, payments.id DESC`,
@@ -153,6 +155,13 @@ export async function selectFinancialRecordsForProject(client: PoolClient, proje
      LIMIT 1`,
     [projectId]
   )
+  return result.rows.length > 0
+}
+
+// A receipt (receipts.project_id, and its payment via receipts.payment_id) is RESTRICT, not CASCADE -
+// deleting the project would otherwise fail on a raw foreign-key error instead of a clear message.
+export async function selectReceiptsForProject(client: PoolClient, projectId: string) {
+  const result = await client.query('SELECT 1 FROM receipts WHERE project_id = $1 LIMIT 1', [projectId])
   return result.rows.length > 0
 }
 
