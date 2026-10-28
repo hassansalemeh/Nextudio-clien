@@ -163,10 +163,10 @@ function ReceiptCustomerAndDetails({
           {!moneyLocked && isNew && <div className="doc-hint">Required for a new receipt - it creates the payment behind it.</div>}
         </div>
 
-        <label htmlFor="rec-receiver">Receiver's name</label>
+        <label htmlFor="rec-receiver">Received from (who paid)</label>
         <input id="rec-receiver" value={receiverName} disabled={readOnly} onChange={(e) => onReceiverNameChange(e.target.value)} placeholder="e.g. John Doe" />
 
-        <label htmlFor="rec-receiver-email">Receiver's email (optional)</label>
+        <label htmlFor="rec-receiver-email">Payer's email (optional)</label>
         <input
           id="rec-receiver-email"
           type="email"

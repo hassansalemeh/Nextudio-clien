@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../../../shared/components/PageHeader'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import CancelWithReasonDialog from '../../../shared/components/CancelWithReasonDialog'
 import { CloseIcon, PencilIcon, PlusIcon } from '../../../shared/components/icons'
 import Spinner from '../../../shared/components/Spinner'
@@ -27,6 +27,7 @@ const REASON_SUGGESTIONS = ['Down payment', 'Concept Design payment', 'Permit ph
 
 function PaymentsPage() {
   const toast = useToast()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
@@ -114,6 +115,16 @@ function PaymentsPage() {
     setReference(payment.reference ?? '')
     setApplyToInvoice(payment.invoice_id !== null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Clicking a payment opens its receipt when it has one (nothing to correct there directly); otherwise
+  // it starts the correction form, which is where the "has a receipt" error still applies.
+  function openPayment(payment: Payment) {
+    if (payment.receipt_number) {
+      navigate(`/receipts/${payment.receipt_id}`)
+      return
+    }
+    startEdit(payment)
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -273,9 +284,9 @@ function PaymentsPage() {
                 <tr
                   key={payment.id}
                   className={'clickable-row' + (payment.cancelled_at ? ' row-cancelled' : '')}
-                  onClick={() => startEdit(payment)}
+                  onClick={() => openPayment(payment)}
                 >
-                  <td data-label="Date"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(payment) }}>{payment.payment_date}</button></td>
+                  <td data-label="Date"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); openPayment(payment) }}>{payment.payment_date}</button></td>
                   <td data-label="Project">
                     <Link to={`/projects/${payment.project_id}`} onClick={(event) => event.stopPropagation()}>{payment.project_name}</Link>
                     {payment.invoice_number && (

@@ -44,7 +44,7 @@ function parseReceiptFields(body: Record<string, unknown>) {
   const payment_id = parsePaymentIdInput(body.payment_id)
 
   if (!receipt_number) throw new HttpError(400, 'Receipt number is required')
-  if (!receiver_name) throw new HttpError(400, "Receiver's name is required")
+  if (!receiver_name) throw new HttpError(400, 'Who the payment was received from is required')
   if (!reason) throw new HttpError(400, 'Reason for the payment is required')
   // Every new receipt's reason also becomes its payment's reason (see createReceipt), which caps at 200 -
   // enforced here too so a long reason fails clearly instead of surfacing as a payment validation error.
@@ -214,12 +214,14 @@ export async function createReceipt(organizationId: string, body: Record<string,
 // Every other field (receiver name/email, reason, issuing admin, language) stays freely editable.
 export async function updateReceiptById(organizationId: string, id: string, body: Record<string, unknown>) {
   const fields = parseReceiptFields(body)
-  if (fields.payment_id) throw new HttpError(400, "A receipt's linked payment can't be changed")
 
   await withTransaction(async (client) => {
     const existing = await receiptsRepository.lockReceiptForUpdate(client, organizationId, id)
     if (!existing) throw new HttpError(404, 'Receipt not found')
     if (existing.cancelled_at) throw new HttpError(400, 'This receipt is cancelled and can no longer be edited')
+    if (fields.payment_id && fields.payment_id !== String(existing.payment_id ?? '')) {
+      throw new HttpError(400, "A receipt's linked payment can't be changed")
+    }
 
     let moneyFields: { receipt_date: string; amount: number; project_id: string | null; client_id: string | null }
 

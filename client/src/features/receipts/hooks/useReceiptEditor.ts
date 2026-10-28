@@ -195,7 +195,7 @@ export function useReceiptEditor() {
 
     if (cancelled) return setError('This receipt is cancelled and can no longer be edited.'), null
     if (!form.receipt_date) return setError('Receipt date is required.'), null
-    if (!form.receiver_name.trim()) return setError("Enter the receiver's name."), null
+    if (!form.receiver_name.trim()) return setError('Enter who the payment was received from.'), null
     if (!(Number(form.amount) > 0)) return setError('Enter an amount greater than 0.'), null
     if (!form.reason.trim()) return setError('Enter the reason for the payment.'), null
     if (form.reason.trim().length > 200) return setError('The reason is too long (200 characters at most).'), null
@@ -210,7 +210,8 @@ export function useReceiptEditor() {
         project_id: form.project_id || null,
         receiver_email: form.receiver_email || null,
         amount: Number(form.amount),
-        payment_id: form.payment_id || null,
+        // Only a new receipt sends payment_id (to link it); an existing receipt's link can't change.
+        payment_id: isNew ? form.payment_id || null : undefined,
       })
       applyReceipt(receipt)
       setSaved(true)
