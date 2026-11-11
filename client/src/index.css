@@ -1915,6 +1915,11 @@ input[type='number'] {
   border-radius: var(--radius-sm);
 }
 
+.chart-scroll {
+  overflow-y: auto;
+  max-height: 420px;
+}
+
 .chart-note {
   margin: 0 0 0.8rem;
   color: var(--color-text-muted);
