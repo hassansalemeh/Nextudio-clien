@@ -2,3 +2,4 @@ export { HttpError, isIsoDate, roundMoney, sendError, describeError } from './ht
 export { sendMail, redactCredentials } from './mail'
 export type { MailAttachment, MailMessage } from './mail'
 export { COMPANY_TIMEZONE, todayInCompanyTimezone, isWeekend, nowTimeInCompanyTimezone } from './companyTime'
+export { Role } from './roles'

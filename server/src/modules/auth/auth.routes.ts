@@ -1,7 +1,7 @@
 import type { Express } from 'express'
-import { authenticate } from '../../middleware/auth'
+import { allow, authenticate } from '../../middleware/auth'
 import { tooMany } from '../../middleware/security'
-import { describeError } from '../../shared'
+import { describeError, Role } from '../../shared'
 import * as authRepository from './auth.repository'
 import {
   cookieOptions,
@@ -64,11 +64,11 @@ export function registerAuthRoutes(app: Express) {
     }
   })
 
-  app.get('/api/auth/me', authenticate, (req, res) => {
+  app.get('/api/auth/me', authenticate, allow(Role.Admin, Role.Employee), (req, res) => {
     res.json({ user: req.user })
   })
 
-  app.post('/api/auth/logout', authenticate, async (req, res) => {
+  app.post('/api/auth/logout', authenticate, allow(Role.Admin, Role.Employee), async (req, res) => {
     try {
       await authRepository.deleteSession(hashToken(sessionToken(req)!))
       res.clearCookie(SESSION_COOKIE, cookieOptions)

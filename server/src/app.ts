@@ -2,7 +2,7 @@ import cors from 'cors'
 import express from 'express'
 import fs from 'fs'
 import path from 'path'
-import { authenticate, enforceRole } from './middleware/auth'
+import { assertEveryApiRouteDeclaresRoles, authenticate } from './middleware/auth'
 import { errorHandler } from './middleware/errorHandler'
 import { apiNotFound } from './middleware/notFound'
 import { requestLogger } from './middleware/requestLogger'
@@ -61,9 +61,10 @@ app.get('/api/health', async (_req, res) => {
   }
 })
 
-// Login routes, then authentication + role checks for every other /api route
+// Login routes, then authentication for every other /api route. Each route below declares its own
+// allowed roles with allow(...) (see middleware/auth.ts); authenticate only confirms who is signed in.
 registerAuthRoutes(app)
-app.use('/api', authenticate, enforceRole)
+app.use('/api', authenticate)
 
 registerEstimateRoutes(app)
 registerEstimateEmailRoutes(app)
@@ -88,6 +89,9 @@ registerDashboardRoutes(app)
 registerReminderRoutes(app)
 registerDocumentSignerRoutes(app)
 registerOrganizationStampRoutes(app)
+
+// Deny by default: refuse to start if any /api route above has no allow(...) role check.
+assertEveryApiRouteDeclaresRoles(app)
 
 // ---- the website itself: the built front end is served by this same server ----
 const publicDir = path.resolve(__dirname, '../public')

@@ -2,12 +2,13 @@ import crypto from 'crypto'
 import type { Request } from 'express'
 import { isProduction, RateLimiter } from '../../middleware/security'
 import * as authRepository from './auth.repository'
+import { Role } from '../../shared'
 
 export type AuthUser = {
   id: string
   email: string
   // What the current frontend understands: owners count as admins for now
-  role: 'admin' | 'employee'
+    role: Role
   // The real role in the company this session opened
   organizationRole: 'owner' | 'admin' | 'employee'
   organizationId: string
@@ -82,11 +83,11 @@ export async function loadUser(token: string): Promise<AuthUser | null> {
   const row = await authRepository.selectUserBySession(hashToken(token))
   if (!row) return null
   // Deactivated employees lose access immediately
-  if (row.role === 'employee' && !row.is_active) return null
+  if (row.role === Role.Employee && !row.is_active) return null
   return {
     id: row.id,
     email: row.email,
-    role: row.role === 'employee' ? 'employee' : 'admin',
+    role: row.role === Role.Employee ? Role.Employee : Role.Admin,
     organizationRole: row.role,
     organizationId: row.organization_id,
     organizationName: row.organization_name,
