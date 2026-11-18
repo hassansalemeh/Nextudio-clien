@@ -1,9 +1,10 @@
 import type { Express } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { Role } from '../../shared'
 import { getDashboard } from './dashboard.service'
 
 export function registerDashboardRoutes(app: Express) {
-  app.get('/api/dashboard', async (req, res) => {
+  app.get('/api/dashboard', allow(Role.Admin), async (req, res) => {
     try {
       const dayFrom = typeof req.query.day_from === 'string' ? req.query.day_from : undefined
       const dayTo = typeof req.query.day_to === 'string' ? req.query.day_to : undefined

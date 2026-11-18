@@ -1,10 +1,10 @@
 import type { Express } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import { invoiceDocument, letterDocument, quotationDocument, receiptDocument, renderPdf } from './documents.service'
 
 export function registerDocumentRoutes(app: Express) {
-  app.get('/api/estimates/:estimateId/pdf', async (req, res) => {
+  app.get('/api/estimates/:estimateId/pdf', allow(Role.Admin), async (req, res) => {
     try {
       if (!/^\d+$/.test(req.params.estimateId)) throw new HttpError(404, 'Estimate not found')
       const doc = await quotationDocument(organizationIdOf(req), req.params.estimateId)
@@ -17,7 +17,7 @@ export function registerDocumentRoutes(app: Express) {
     }
   })
 
-  app.get('/api/invoices/:invoiceId/pdf', async (req, res) => {
+  app.get('/api/invoices/:invoiceId/pdf', allow(Role.Admin), async (req, res) => {
     try {
       if (!/^\d+$/.test(req.params.invoiceId)) throw new HttpError(404, 'Invoice not found')
       const doc = await invoiceDocument(organizationIdOf(req), req.params.invoiceId)
@@ -31,7 +31,7 @@ export function registerDocumentRoutes(app: Express) {
     }
   })
 
-  app.get('/api/receipts/:receiptId/pdf', async (req, res) => {
+  app.get('/api/receipts/:receiptId/pdf', allow(Role.Admin), async (req, res) => {
     try {
       if (!/^\d+$/.test(req.params.receiptId)) throw new HttpError(404, 'Receipt not found')
       const doc = await receiptDocument(organizationIdOf(req), req.params.receiptId)
@@ -44,7 +44,7 @@ export function registerDocumentRoutes(app: Express) {
     }
   })
 
-  app.get('/api/letters/:letterId/pdf', async (req, res) => {
+  app.get('/api/letters/:letterId/pdf', allow(Role.Admin), async (req, res) => {
     try {
       if (!/^\d+$/.test(req.params.letterId)) throw new HttpError(404, 'Letter not found')
       const doc = await letterDocument(organizationIdOf(req), req.params.letterId)

@@ -1,6 +1,6 @@
 import type { Express, Request } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import * as lettersService from './letters.service'
 
 function requireId(req: Request) {
@@ -10,7 +10,7 @@ function requireId(req: Request) {
 }
 
 export function registerLetterRoutes(app: Express) {
-  app.get('/api/letters', async (req, res) => {
+  app.get('/api/letters', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await lettersService.listLetters(organizationIdOf(req)))
     } catch (err) {
@@ -19,7 +19,7 @@ export function registerLetterRoutes(app: Express) {
   })
 
   // Must come before /api/letters/:letterId
-  app.get('/api/letters/next-number', async (req, res) => {
+  app.get('/api/letters/next-number', allow(Role.Admin), async (req, res) => {
     try {
       res.json({ letter_number: await lettersService.nextLetterNumber(organizationIdOf(req)) })
     } catch (err) {
@@ -27,7 +27,7 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.get('/api/letters/:letterId', async (req, res) => {
+  app.get('/api/letters/:letterId', allow(Role.Admin), async (req, res) => {
     try {
       const letter = await lettersService.loadLetter(organizationIdOf(req), requireId(req))
       if (!letter) throw new HttpError(404, 'Letter not found')
@@ -37,7 +37,7 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.post('/api/letters', async (req, res) => {
+  app.post('/api/letters', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const body = { ...req.body }
@@ -55,7 +55,7 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.put('/api/letters/:letterId', async (req, res) => {
+  app.put('/api/letters/:letterId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
@@ -68,7 +68,7 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.delete('/api/letters/:letterId', async (req, res) => {
+  app.delete('/api/letters/:letterId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)

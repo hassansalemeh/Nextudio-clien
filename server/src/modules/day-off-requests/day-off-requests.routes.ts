@@ -1,11 +1,11 @@
 import type { Express } from 'express'
-import { organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
-import { sendError } from '../../shared'
+import { allow, organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
+import { Role, sendError } from '../../shared'
 import * as dayOffRequestsService from './day-off-requests.service'
 
 export function registerDayOffRoutes(app: Express) {
   // An employee gets only their own requests; an admin with no employee_id gets the whole organization's
-  app.get('/api/day-off-requests', async (req, res) => {
+  app.get('/api/day-off-requests', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employeeId = resolveEmployeeId(req, req.query.employee_id)
     try {
       res.json(await dayOffRequestsService.listDayOffRequests(organizationIdOf(req), typeof employeeId === 'string' ? employeeId : null))
@@ -14,7 +14,7 @@ export function registerDayOffRoutes(app: Express) {
     }
   })
 
-  app.post('/api/day-off-requests', async (req, res) => {
+  app.post('/api/day-off-requests', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employeeId = resolveEmployeeId(req, req.body.employee_id)
     if (typeof employeeId !== 'string' || !employeeId) {
       return res.status(400).json({ error: 'employee_id is required' })
@@ -33,8 +33,7 @@ export function registerDayOffRoutes(app: Express) {
     }
   })
 
-  // Static path (not /:id/cancel) - the employee route allowlist only matches literal paths
-  app.post('/api/day-off-requests/cancel', async (req, res) => {
+  app.post('/api/day-off-requests/cancel', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employeeId = resolveEmployeeId(req, req.body.employee_id)
     if (typeof employeeId !== 'string' || !employeeId) {
       return res.status(400).json({ error: 'employee_id is required' })
@@ -47,8 +46,7 @@ export function registerDayOffRoutes(app: Express) {
     }
   })
 
-  // Admin-only (not in EMPLOYEE_ROUTES, so default-denied to employees by enforceRole)
-  app.post('/api/day-off-requests/:id/approve', async (req, res) => {
+  app.post('/api/day-off-requests/:id/approve', allow(Role.Admin), async (req, res) => {
     try {
       await dayOffRequestsService.reviewDayOffRequest(organizationIdOf(req), req.params.id, 'approved', req.user!.id)
       res.json({ ok: true })
@@ -57,7 +55,7 @@ export function registerDayOffRoutes(app: Express) {
     }
   })
 
-  app.post('/api/day-off-requests/:id/reject', async (req, res) => {
+  app.post('/api/day-off-requests/:id/reject', allow(Role.Admin), async (req, res) => {
     try {
       await dayOffRequestsService.reviewDayOffRequest(organizationIdOf(req), req.params.id, 'rejected', req.user!.id)
       res.json({ ok: true })

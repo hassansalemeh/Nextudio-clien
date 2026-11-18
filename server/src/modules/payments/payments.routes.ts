@@ -1,6 +1,6 @@
 import type { Express, Request } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import { cancelPayment, correctPayment, createPayment, listPayments, loadPayment } from './payments.service'
 
 function requireId(req: Request) {
@@ -11,7 +11,7 @@ function requireId(req: Request) {
 
 export function registerPaymentRoutes(app: Express) {
   // newest first
-  app.get('/api/payments', async (req, res) => {
+  app.get('/api/payments', allow(Role.Admin), async (req, res) => {
     try {
       const projectId = typeof req.query.project_id === 'string' && /^\d+$/.test(req.query.project_id) ? req.query.project_id : null
       res.json(await listPayments(organizationIdOf(req), projectId))
@@ -21,7 +21,7 @@ export function registerPaymentRoutes(app: Express) {
   })
 
   // Used to prefill a receipt editor when creating a receipt for an existing payment
-  app.get('/api/payments/:paymentId', async (req, res) => {
+  app.get('/api/payments/:paymentId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const payment = await loadPayment(organizationId, requireId(req))
@@ -32,7 +32,7 @@ export function registerPaymentRoutes(app: Express) {
     }
   })
 
-  app.post('/api/payments', async (req, res) => {
+  app.post('/api/payments', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = await createPayment(organizationId, req.body)
@@ -43,7 +43,7 @@ export function registerPaymentRoutes(app: Express) {
   })
 
   // A correction: what the payment looked like before is kept in payment_revisions. Payments are never deleted.
-  app.put('/api/payments/:paymentId', async (req, res) => {
+  app.put('/api/payments/:paymentId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
@@ -55,7 +55,7 @@ export function registerPaymentRoutes(app: Express) {
   })
 
   // Only for a payment without an active receipt - one with a receipt is cancelled through it instead
-  app.post('/api/payments/:paymentId/cancel', async (req, res) => {
+  app.post('/api/payments/:paymentId/cancel', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)

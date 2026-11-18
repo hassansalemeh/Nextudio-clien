@@ -1,10 +1,10 @@
 import type { Express } from 'express'
-import { organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
-import { HttpError } from '../../shared'
+import { allow, organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
+import { HttpError, Role } from '../../shared'
 import * as assignmentsService from './assignments.service'
 
 export function registerAssignmentRoutes(app: Express) {
-  app.get('/api/projects/:projectId/assignments', async (req, res) => {
+  app.get('/api/projects/:projectId/assignments', allow(Role.Admin), async (req, res) => {
     const { projectId } = req.params
     try {
       res.json(await assignmentsService.listProjectAssignments(organizationIdOf(req), projectId))
@@ -13,7 +13,7 @@ export function registerAssignmentRoutes(app: Express) {
     }
   })
 
-  app.post('/api/projects/:projectId/assignments', async (req, res) => {
+  app.post('/api/projects/:projectId/assignments', allow(Role.Admin), async (req, res) => {
     const { projectId } = req.params
     try {
       const assignment = await assignmentsService.addProjectAssignment(organizationIdOf(req), projectId, req.body.employee_id)
@@ -24,7 +24,7 @@ export function registerAssignmentRoutes(app: Express) {
     }
   })
 
-  app.get('/api/work-assignments', async (req, res) => {
+  app.get('/api/work-assignments', allow(Role.Admin, Role.Employee), async (req, res) => {
     const { project_id, date } = req.query
     const employee_id = resolveEmployeeId(req, req.query.employee_id)
     try {
@@ -35,7 +35,7 @@ export function registerAssignmentRoutes(app: Express) {
     }
   })
 
-  app.post('/api/work-assignments', async (req, res) => {
+  app.post('/api/work-assignments', allow(Role.Admin), async (req, res) => {
     const project_id = req.body.project_id
     const employee_id = req.body.employee_id
     const start_date = typeof req.body.start_date === 'string' ? req.body.start_date.trim() : ''
@@ -51,7 +51,7 @@ export function registerAssignmentRoutes(app: Express) {
     }
   })
 
-  app.put('/api/work-assignments/:assignmentId', async (req, res) => {
+  app.put('/api/work-assignments/:assignmentId', allow(Role.Admin), async (req, res) => {
     const { assignmentId } = req.params
     const { project_id, employee_id } = req.body
     const start_date = typeof req.body.start_date === 'string' ? req.body.start_date.trim() : ''

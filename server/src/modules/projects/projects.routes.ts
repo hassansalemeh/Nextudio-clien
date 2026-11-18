@@ -1,11 +1,11 @@
 import type { Express } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role } from '../../shared'
 import { sendTimeError } from '../time-tracking/time-tracking.service'
 import * as projectsService from './projects.service'
 
 export function registerProjectRoutes(app: Express) {
-  app.get('/api/projects', async (req, res) => {
+  app.get('/api/projects', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await projectsService.listProjects(organizationIdOf(req)))
     } catch {
@@ -15,7 +15,7 @@ export function registerProjectRoutes(app: Express) {
 
   // Employee-safe project list for "Add Work Manually": names only, no client, fee or financial data,
   // and only projects that are actually open for new work.
-  app.get('/api/projects/active-names', async (req, res) => {
+  app.get('/api/projects/active-names', allow(Role.Admin, Role.Employee), async (req, res) => {
     try {
       res.json(await projectsService.listActiveProjectNames(organizationIdOf(req)))
     } catch {
@@ -23,7 +23,7 @@ export function registerProjectRoutes(app: Express) {
     }
   })
 
-  app.post('/api/projects', async (req, res) => {
+  app.post('/api/projects', allow(Role.Admin), async (req, res) => {
     try {
       const project = await projectsService.createProject(organizationIdOf(req), req.body)
       res.status(201).json(project)
@@ -33,7 +33,7 @@ export function registerProjectRoutes(app: Express) {
     }
   })
 
-  app.get('/api/projects/:projectId', async (req, res) => {
+  app.get('/api/projects/:projectId', allow(Role.Admin), async (req, res) => {
     const { projectId } = req.params
     if (!/^\d+$/.test(projectId)) {
       return res.status(404).json({ error: 'Project not found' })
@@ -50,7 +50,7 @@ export function registerProjectRoutes(app: Express) {
     }
   })
 
-  app.put('/api/projects/:projectId', async (req, res) => {
+  app.put('/api/projects/:projectId', allow(Role.Admin), async (req, res) => {
     const { projectId } = req.params
     try {
       const project = await projectsService.updateProjectById(organizationIdOf(req), projectId, req.body)
@@ -62,7 +62,7 @@ export function registerProjectRoutes(app: Express) {
   })
 
   // Permanently removes a project and everything that belongs to it. The client and employees are kept.
-  app.delete('/api/projects/:projectId', async (req, res) => {
+  app.delete('/api/projects/:projectId', allow(Role.Admin), async (req, res) => {
     const { projectId } = req.params
     if (!/^\d+$/.test(projectId)) {
       return res.status(404).json({ error: 'Project not found' })
