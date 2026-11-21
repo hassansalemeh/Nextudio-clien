@@ -1,10 +1,10 @@
 import type { Express } from 'express'
-import { HttpError } from '../../shared'
+import { HttpError, Role } from '../../shared'
 import { createClient, listClients, parseClientInput, updateClient } from './clients.service'
-import { organizationIdOf } from '../../middleware/auth'
+import { allow, organizationIdOf } from '../../middleware/auth'
 
 export function registerClientRoutes(app: Express) {
-  app.get('/api/clients', async (req, res) => {
+  app.get('/api/clients', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await listClients(organizationIdOf(req)))
     } catch {
@@ -12,7 +12,7 @@ export function registerClientRoutes(app: Express) {
     }
   })
 
-  app.post('/api/clients', async (req, res) => {
+  app.post('/api/clients', allow(Role.Admin), async (req, res) => {
     let input
     try {
       input = parseClientInput(req.body)
@@ -31,7 +31,7 @@ export function registerClientRoutes(app: Express) {
   // Editing the client record only affects future estimates/invoices: existing documents already carry
   // their own frozen snapshot (name/email/phone/address, taken when each document was created), so this
   // never rewrites anything that already exists.
-  app.put('/api/clients/:clientId', async (req, res) => {
+  app.put('/api/clients/:clientId', allow(Role.Admin), async (req, res) => {
     const { clientId } = req.params
     if (!/^\d+$/.test(clientId)) {
       return res.status(404).json({ error: 'Client not found' })

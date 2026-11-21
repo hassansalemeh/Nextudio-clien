@@ -1,6 +1,6 @@
 import type { Express, Request } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import * as invoicesService from './invoices.service'
 
 function requireId(req: Request) {
@@ -10,7 +10,7 @@ function requireId(req: Request) {
 }
 
 export function registerInvoiceRoutes(app: Express) {
-  app.get('/api/invoices', async (req, res) => {
+  app.get('/api/invoices', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await invoicesService.listInvoices(organizationIdOf(req)))
     } catch (err) {
@@ -19,7 +19,7 @@ export function registerInvoiceRoutes(app: Express) {
   })
 
   // Must come before /api/invoices/:invoiceId
-  app.get('/api/invoices/next-number', async (req, res) => {
+  app.get('/api/invoices/next-number', allow(Role.Admin), async (req, res) => {
     try {
       if (req.query.type !== 'client_funds') throw new HttpError(400, 'Unsupported invoice type')
       res.json({ invoice_number: await invoicesService.nextClientFundsInvoiceNumber(organizationIdOf(req)) })
@@ -28,7 +28,7 @@ export function registerInvoiceRoutes(app: Express) {
     }
   })
 
-  app.get('/api/invoices/:invoiceId', async (req, res) => {
+  app.get('/api/invoices/:invoiceId', allow(Role.Admin), async (req, res) => {
     try {
       const invoice = await invoicesService.loadInvoice(organizationIdOf(req), requireId(req))
       if (!invoice) throw new HttpError(404, 'Invoice not found')
@@ -40,7 +40,7 @@ export function registerInvoiceRoutes(app: Express) {
 
   // Creates a Client Funds invoice directly. Professional invoices are only ever created by approving an
   // estimate (see the estimates module) - this route refuses that type on purpose.
-  app.post('/api/invoices', async (req, res) => {
+  app.post('/api/invoices', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = await invoicesService.createClientFundsInvoice(organizationId, req.body)
@@ -50,7 +50,7 @@ export function registerInvoiceRoutes(app: Express) {
     }
   })
 
-  app.put('/api/invoices/:invoiceId', async (req, res) => {
+  app.put('/api/invoices/:invoiceId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
@@ -63,7 +63,7 @@ export function registerInvoiceRoutes(app: Express) {
 
   // Narrow, Professional-Services-only route: only the contract/signatures fields can change here.
   // Every financial field, the items, and the dates stay exactly as they were frozen at approval.
-  app.put('/api/invoices/:invoiceId/contract', async (req, res) => {
+  app.put('/api/invoices/:invoiceId/contract', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)

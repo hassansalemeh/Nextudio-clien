@@ -1,6 +1,6 @@
 import type { Express, Request } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import { createDisbursement, deleteDisbursementById, listDisbursements } from './disbursements.service'
 
 function requireInvoiceId(req: Request) {
@@ -10,7 +10,7 @@ function requireInvoiceId(req: Request) {
 }
 
 export function registerDisbursementRoutes(app: Express) {
-  app.get('/api/invoices/:invoiceId/disbursements', async (req, res) => {
+  app.get('/api/invoices/:invoiceId/disbursements', allow(Role.Admin), async (req, res) => {
     try {
       const invoiceId = requireInvoiceId(req)
       res.json(await listDisbursements(organizationIdOf(req), invoiceId))
@@ -19,7 +19,7 @@ export function registerDisbursementRoutes(app: Express) {
     }
   })
 
-  app.post('/api/invoices/:invoiceId/disbursements', async (req, res) => {
+  app.post('/api/invoices/:invoiceId/disbursements', allow(Role.Admin), async (req, res) => {
     try {
       const invoiceId = requireInvoiceId(req)
       const userId = req.user!.id
@@ -30,7 +30,7 @@ export function registerDisbursementRoutes(app: Express) {
     }
   })
 
-  app.delete('/api/invoices/:invoiceId/disbursements/:disbursementId', async (req, res) => {
+  app.delete('/api/invoices/:invoiceId/disbursements/:disbursementId', allow(Role.Admin), async (req, res) => {
     try {
       const invoiceId = requireInvoiceId(req)
       await deleteDisbursementById(organizationIdOf(req), invoiceId, req.params.disbursementId)

@@ -8,13 +8,14 @@
 // login with no organization_members row anywhere is rejected (see auth.routes.ts).
 import { hashPassword } from '../modules/auth/auth.service'
 import { pool } from '../db'
+import { Role } from '../shared'
 
 async function main() {
   const [role, email, password, ...rest] = process.argv.slice(2)
-  const employeeId = role === 'employee' ? rest[0] : undefined
-  const organizationName = role === 'employee' ? rest[1] : rest[0]
+  const employeeId = role === Role.Employee ? rest[0] : undefined
+  const organizationName = role === Role.Employee ? rest[1] : rest[0]
 
-  if ((role !== 'admin' && role !== 'employee') || !email || !password || !organizationName || (role === 'employee' && !employeeId)) {
+  if ((role !== Role.Admin && role !== Role.Employee) || !email || !password || !organizationName || (role === Role.Employee && !employeeId)) {
     console.log('Usage:\n  admin <email> <password> <organization>\n  employee <email> <password> <employee_id> <organization>')
     process.exit(1)
   }
@@ -30,7 +31,7 @@ async function main() {
   }
   const organizationId = org.rows[0].id
 
-  if (role === 'employee') {
+  if (role === Role.Employee) {
     const employee = await pool.query('SELECT id FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
     if (employee.rows.length === 0) {
       console.log(`Employee ${employeeId} does not belong to "${organizationName}"`)
@@ -40,7 +41,7 @@ async function main() {
 
   const user = await pool.query(
     'INSERT INTO app_users (email, password_hash, role, employee_id) VALUES ($1, $2, $3, $4) RETURNING id',
-    [email.trim(), hashPassword(password), role, role === 'employee' ? employeeId : null]
+    [email.trim(), hashPassword(password), role, role === Role.Employee ? employeeId : null]
   )
   await pool.query('INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1, $2, $3)', [
     organizationId,

@@ -1,6 +1,6 @@
 import type { Express, Request } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import { createSigner, listSigners, updateSigner, updateSignerImage } from './document-signers.service'
 
 function requireId(req: Request) {
@@ -9,9 +9,9 @@ function requireId(req: Request) {
   return id
 }
 
-// Admin-only: not in EMPLOYEE_ROUTES, so middleware/auth's enforceRole denies employees by default.
+// Admin-only.
 export function registerDocumentSignerRoutes(app: Express) {
-  app.get('/api/document-signers', async (req, res) => {
+  app.get('/api/document-signers', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await listSigners(organizationIdOf(req)))
     } catch (err) {
@@ -19,7 +19,7 @@ export function registerDocumentSignerRoutes(app: Express) {
     }
   })
 
-  app.post('/api/document-signers', async (req, res) => {
+  app.post('/api/document-signers', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       await createSigner(organizationId, req.body)
@@ -29,7 +29,7 @@ export function registerDocumentSignerRoutes(app: Express) {
     }
   })
 
-  app.put('/api/document-signers/:signerId', async (req, res) => {
+  app.put('/api/document-signers/:signerId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       await updateSigner(organizationId, requireId(req), req.body)
@@ -39,7 +39,7 @@ export function registerDocumentSignerRoutes(app: Express) {
     }
   })
 
-  app.put('/api/document-signers/:signerId/image', async (req, res) => {
+  app.put('/api/document-signers/:signerId/image', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       await updateSignerImage(organizationId, requireId(req), req.body, req.user!.id)

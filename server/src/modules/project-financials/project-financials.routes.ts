@@ -1,10 +1,11 @@
 import type { Express } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { Role } from '../../shared'
 import { projectFinancials } from './project-financials.service'
 
 export function registerProjectFinancialsRoutes(app: Express) {
   // Numbers only, for every project
-  app.get('/api/project-financial-summary', async (req, res) => {
+  app.get('/api/project-financial-summary', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await projectFinancials(organizationIdOf(req)))
     } catch {

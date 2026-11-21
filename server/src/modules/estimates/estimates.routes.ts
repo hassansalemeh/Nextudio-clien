@@ -1,6 +1,6 @@
 import type { Express, Request } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import * as estimatesService from './estimates.service'
 
 function requireId(req: Request) {
@@ -10,7 +10,7 @@ function requireId(req: Request) {
 }
 
 export function registerEstimateRoutes(app: Express) {
-  app.get('/api/estimates', async (req, res) => {
+  app.get('/api/estimates', allow(Role.Admin), async (req, res) => {
     try {
       // Approved estimates have become invoices, so they leave this list (they can still be opened by id)
       res.json(await estimatesService.listOpenEstimates(organizationIdOf(req)))
@@ -20,7 +20,7 @@ export function registerEstimateRoutes(app: Express) {
   })
 
   // Must come before /api/estimates/:estimateId
-  app.get('/api/estimates/next-number', async (req, res) => {
+  app.get('/api/estimates/next-number', allow(Role.Admin), async (req, res) => {
     try {
       res.json({ estimate_number: await estimatesService.nextEstimateNumber(organizationIdOf(req)) })
     } catch (err) {
@@ -30,7 +30,7 @@ export function registerEstimateRoutes(app: Express) {
 
   // Previous text typed into this section across past estimates, for the editor's "Reuse previous text" picker.
   // Must come before /api/estimates/:estimateId. Deduplicated and grouped in SQL so identical wording collapses to one row.
-  app.get('/api/estimates/reuse-text', async (req, res) => {
+  app.get('/api/estimates/reuse-text', allow(Role.Admin), async (req, res) => {
     try {
       const field = typeof req.query.field === 'string' ? req.query.field : ''
       const search = typeof req.query.q === 'string' ? req.query.q.trim() : ''
@@ -40,7 +40,7 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.get('/api/estimates/:estimateId', async (req, res) => {
+  app.get('/api/estimates/:estimateId', allow(Role.Admin), async (req, res) => {
     try {
       const estimate = await estimatesService.loadEstimate(organizationIdOf(req), requireId(req))
       if (!estimate) throw new HttpError(404, 'Estimate not found')
@@ -50,7 +50,7 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.post('/api/estimates', async (req, res) => {
+  app.post('/api/estimates', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const body = { ...req.body }
@@ -71,7 +71,7 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.put('/api/estimates/:estimateId', async (req, res) => {
+  app.put('/api/estimates/:estimateId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
@@ -86,7 +86,7 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.post('/api/estimates/:estimateId/approve', async (req, res) => {
+  app.post('/api/estimates/:estimateId/approve', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
@@ -97,7 +97,7 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.post('/api/estimates/:estimateId/duplicate', async (req, res) => {
+  app.post('/api/estimates/:estimateId/duplicate', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
@@ -108,7 +108,7 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.delete('/api/estimates/:estimateId', async (req, res) => {
+  app.delete('/api/estimates/:estimateId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)

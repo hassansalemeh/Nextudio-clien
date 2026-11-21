@@ -1,6 +1,6 @@
 import type { Express } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import { listEstimateEmailHistory, sendEstimateEmail } from './estimate-emails.service'
 
 function requireEstimateId(id: string) {
@@ -9,7 +9,7 @@ function requireEstimateId(id: string) {
 }
 
 export function registerEstimateEmailRoutes(app: Express) {
-  app.get('/api/estimates/:estimateId/emails', async (req, res) => {
+  app.get('/api/estimates/:estimateId/emails', allow(Role.Admin), async (req, res) => {
     try {
       const id = requireEstimateId(req.params.estimateId)
       res.json(await listEstimateEmailHistory(organizationIdOf(req), id))
@@ -18,7 +18,7 @@ export function registerEstimateEmailRoutes(app: Express) {
     }
   })
 
-  app.post('/api/estimates/:estimateId/send-email', async (req, res) => {
+  app.post('/api/estimates/:estimateId/send-email', allow(Role.Admin), async (req, res) => {
     try {
       const id = requireEstimateId(req.params.estimateId)
       const result = await sendEstimateEmail(organizationIdOf(req), id, req.body, req.user!.id, req.user!.email)

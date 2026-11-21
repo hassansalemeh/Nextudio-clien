@@ -1,6 +1,6 @@
 import type { Express } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import { listInvoiceEmailHistory, sendInvoiceEmail } from './invoice-emails.service'
 
 function requireInvoiceId(id: string) {
@@ -9,7 +9,7 @@ function requireInvoiceId(id: string) {
 }
 
 export function registerInvoiceEmailRoutes(app: Express) {
-  app.get('/api/invoices/:invoiceId/emails', async (req, res) => {
+  app.get('/api/invoices/:invoiceId/emails', allow(Role.Admin), async (req, res) => {
     try {
       const id = requireInvoiceId(req.params.invoiceId)
       res.json(await listInvoiceEmailHistory(organizationIdOf(req), id))
@@ -18,7 +18,7 @@ export function registerInvoiceEmailRoutes(app: Express) {
     }
   })
 
-  app.post('/api/invoices/:invoiceId/send-email', async (req, res) => {
+  app.post('/api/invoices/:invoiceId/send-email', allow(Role.Admin), async (req, res) => {
     try {
       const id = requireInvoiceId(req.params.invoiceId)
       const result = await sendInvoiceEmail(organizationIdOf(req), id, req.body, req.user!.id, req.user!.email)

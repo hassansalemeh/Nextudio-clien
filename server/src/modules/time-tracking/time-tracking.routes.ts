@@ -1,9 +1,10 @@
 import type { Express } from 'express'
-import { organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
+import { allow, organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
+import { Role } from '../../shared'
 import * as timeTrackingService from './time-tracking.service'
 
 export function registerTimeTrackingRoutes(app: Express) {
-  app.get('/api/work-entries', async (req, res) => {
+  app.get('/api/work-entries', allow(Role.Admin), async (req, res) => {
     const projectId = req.query.project_id
 
     if (!projectId) {
@@ -17,7 +18,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.post('/api/work-entries', async (req, res) => {
+  app.post('/api/work-entries', allow(Role.Admin), async (req, res) => {
     const project_id = req.body.project_id
     const employee_id = req.body.employee_id
     const work_date = typeof req.body.work_date === 'string' ? req.body.work_date.trim() : ''
@@ -51,7 +52,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.get('/api/time/status', async (req, res) => {
+  app.get('/api/time/status', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employee_id = resolveEmployeeId(req, req.query.employee_id)
     if (typeof employee_id !== 'string' || !employee_id) {
       return res.status(400).json({ error: 'employee_id is required' })
@@ -65,7 +66,7 @@ export function registerTimeTrackingRoutes(app: Express) {
   })
 
   // Sessions and entries that started within [from, to) - the client sends the local-day boundaries
-  app.get('/api/time/day', async (req, res) => {
+  app.get('/api/time/day', allow(Role.Admin, Role.Employee), async (req, res) => {
     const { from, to } = req.query
     const employee_id = resolveEmployeeId(req, req.query.employee_id)
     if (typeof employee_id !== 'string' || !employee_id || typeof from !== 'string' || typeof to !== 'string') {
@@ -80,7 +81,7 @@ export function registerTimeTrackingRoutes(app: Express) {
   })
 
   // The earliest activity this employee has ever logged - lets the client tell "before they started" apart from "missed"
-  app.get('/api/time/first-activity', async (req, res) => {
+  app.get('/api/time/first-activity', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employee_id = resolveEmployeeId(req, req.query.employee_id)
     if (typeof employee_id !== 'string' || !employee_id) {
       return res.status(400).json({ error: 'employee_id is required' })
@@ -92,7 +93,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.post('/api/time/clock-in', async (req, res) => {
+  app.post('/api/time/clock-in', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employee_id = resolveEmployeeId(req, req.body.employee_id)
     if (!employee_id) {
       return res.status(400).json({ error: 'employee_id is required' })
@@ -106,7 +107,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.post('/api/time/start', async (req, res) => {
+  app.post('/api/time/start', allow(Role.Admin, Role.Employee), async (req, res) => {
     const { project_id, date } = req.body
     const employee_id = resolveEmployeeId(req, req.body.employee_id)
     if (!employee_id || !project_id || typeof date !== 'string' || !date) {
@@ -121,7 +122,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.post('/api/time/manual', async (req, res) => {
+  app.post('/api/time/manual', allow(Role.Admin, Role.Employee), async (req, res) => {
     // an employee can only ever add time for themselves
     const employee_id = resolveEmployeeId(req, req.body.employee_id)
     const { project_id, date, start, end, day_start, day_end } = req.body
@@ -135,7 +136,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.post('/api/time/stop', async (req, res) => {
+  app.post('/api/time/stop', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employee_id = resolveEmployeeId(req, req.body.employee_id)
     if (!employee_id) {
       return res.status(400).json({ error: 'employee_id is required' })
@@ -149,7 +150,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.post('/api/time/clock-out', async (req, res) => {
+  app.post('/api/time/clock-out', allow(Role.Admin, Role.Employee), async (req, res) => {
     const employee_id = resolveEmployeeId(req, req.body.employee_id)
     if (!employee_id) {
       return res.status(400).json({ error: 'employee_id is required' })
@@ -163,7 +164,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.patch('/api/time/entries/:id', async (req, res) => {
+  app.patch('/api/time/entries/:id', allow(Role.Admin), async (req, res) => {
     try {
       await timeTrackingService.correctTimeEntry(organizationIdOf(req), req.params.id, req.body)
       res.json({ ok: true })
@@ -172,7 +173,7 @@ export function registerTimeTrackingRoutes(app: Express) {
     }
   })
 
-  app.patch('/api/time/sessions/:id', async (req, res) => {
+  app.patch('/api/time/sessions/:id', allow(Role.Admin), async (req, res) => {
     try {
       await timeTrackingService.correctAttendanceSession(organizationIdOf(req), req.params.id, req.body)
       res.json({ ok: true })

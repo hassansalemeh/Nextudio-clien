@@ -1,10 +1,10 @@
 import type { Express } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role } from '../../shared'
 import { createEmployee, listEmployees, parseCreateEmployeeInput, parseUpdateEmployeeInput, updateEmployee } from './employees.service'
 
 export function registerEmployeeRoutes(app: Express) {
-  app.get('/api/employees', async (req, res) => {
+  app.get('/api/employees', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await listEmployees(organizationIdOf(req)))
     } catch {
@@ -12,7 +12,7 @@ export function registerEmployeeRoutes(app: Express) {
     }
   })
 
-  app.post('/api/employees', async (req, res) => {
+  app.post('/api/employees', allow(Role.Admin), async (req, res) => {
     let input
     try {
       input = parseCreateEmployeeInput(req.body)
@@ -28,7 +28,7 @@ export function registerEmployeeRoutes(app: Express) {
     }
   })
 
-  app.put('/api/employees/:employeeId', async (req, res) => {
+  app.put('/api/employees/:employeeId', allow(Role.Admin), async (req, res) => {
     const { employeeId } = req.params
     let input
     try {

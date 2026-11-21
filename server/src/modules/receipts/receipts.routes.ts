@@ -1,6 +1,6 @@
 import type { Express, Request } from 'express'
-import { organizationIdOf } from '../../middleware/auth'
-import { HttpError, sendError } from '../../shared'
+import { allow, organizationIdOf } from '../../middleware/auth'
+import { HttpError, Role, sendError } from '../../shared'
 import * as receiptsService from './receipts.service'
 
 function requireId(req: Request) {
@@ -10,7 +10,7 @@ function requireId(req: Request) {
 }
 
 export function registerReceiptRoutes(app: Express) {
-  app.get('/api/receipts', async (req, res) => {
+  app.get('/api/receipts', allow(Role.Admin), async (req, res) => {
     try {
       res.json(await receiptsService.listReceipts(organizationIdOf(req)))
     } catch (err) {
@@ -19,7 +19,7 @@ export function registerReceiptRoutes(app: Express) {
   })
 
   // Must come before /api/receipts/:receiptId
-  app.get('/api/receipts/next-number', async (req, res) => {
+  app.get('/api/receipts/next-number', allow(Role.Admin), async (req, res) => {
     try {
       res.json({ receipt_number: await receiptsService.nextReceiptNumber(organizationIdOf(req)) })
     } catch (err) {
@@ -27,7 +27,7 @@ export function registerReceiptRoutes(app: Express) {
     }
   })
 
-  app.get('/api/receipts/:receiptId', async (req, res) => {
+  app.get('/api/receipts/:receiptId', allow(Role.Admin), async (req, res) => {
     try {
       const receipt = await receiptsService.loadReceipt(organizationIdOf(req), requireId(req))
       if (!receipt) throw new HttpError(404, 'Receipt not found')
@@ -37,7 +37,7 @@ export function registerReceiptRoutes(app: Express) {
     }
   })
 
-  app.post('/api/receipts', async (req, res) => {
+  app.post('/api/receipts', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const body = { ...req.body }
@@ -54,7 +54,7 @@ export function registerReceiptRoutes(app: Express) {
     }
   })
 
-  app.put('/api/receipts/:receiptId', async (req, res) => {
+  app.put('/api/receipts/:receiptId', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
@@ -67,7 +67,7 @@ export function registerReceiptRoutes(app: Express) {
   })
 
   // Cancels the receipt and its linked payment together. Never deletes either.
-  app.post('/api/receipts/:receiptId/cancel', async (req, res) => {
+  app.post('/api/receipts/:receiptId/cancel', allow(Role.Admin), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
       const id = requireId(req)
