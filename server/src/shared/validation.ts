@@ -43,6 +43,7 @@ export function optionalText(label: string, { max = 255 }: { max?: number } = {}
     .trim()
     .max(max, `${label} must be ${max} characters or fewer`)
     .refine((value) => !hasDisallowedControlChars(value, false), { message: `${label} contains characters that are not allowed` })
+    .transform((value) => value || null)
     .nullable()
     .optional()
     .default(null)
@@ -61,8 +62,23 @@ export function multilineText(label: string, { max = 10000, min = 0 }: { max?: n
 export function optionalMultilineText(label: string, { max = 10000 }: { max?: number } = {}) {
   return z
     .string({ error: `${label} must be text` })
+    .trim()
     .max(max, `${label} must be ${max} characters or fewer`)
     .refine((value) => !hasDisallowedControlChars(value, true), { message: `${label} contains characters that are not allowed` })
+    .transform((value) => value || null)
+    .nullable()
+    .optional()
+    .default(null)
+}
+
+// A long free-text section (quotation/invoice notes, terms, timeline...) that keeps its line breaks exactly
+// as typed - unlike optionalText, this never trims the value - only a whitespace-only string becomes null.
+export function optionalLongText(label: string, { max = 20000 }: { max?: number } = {}) {
+  return z
+    .string({ error: `${label} must be text` })
+    .max(max, `${label} must be ${max} characters or fewer`)
+    .refine((value) => !hasDisallowedControlChars(value, true), { message: `${label} contains characters that are not allowed` })
+    .transform((value) => (value.trim() ? value : null))
     .nullable()
     .optional()
     .default(null)

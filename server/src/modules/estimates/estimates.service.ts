@@ -1,31 +1,32 @@
 import type { PoolClient } from 'pg'
+import type { z } from 'zod'
 import { ESTIMATE_PREFIX, INVOICE_PAYMENT_TERM_DAYS, invoiceNumber } from '../../config'
 import { lockForNumbering, pool, retryOnUniqueViolation, withTransaction } from '../../db'
-import { HttpError, isIsoDate, roundMoney } from '../../shared'
-import { DOCUMENT_LANGUAGES, isDocumentLanguage } from '../../shared/i18n/documentLabels'
+import { HttpError, roundMoney } from '../../shared'
 import { loadClientSnapshot } from '../clients/clients.service'
 import type { ClientSnapshot } from '../clients/clients.service'
+import type { createEstimateBody, estimateHeaderBody } from './estimates.schemas'
+import { UNITS } from './estimates.schemas'
 import * as estimatesRepository from './estimates.repository'
 
-export const ESTIMATE_STATUSES = ['draft', 'pending', 'approved', 'rejected']
-export const UNITS = ['sqm', 'lm', 'ls', 'pc', 'm3', 'sheet']
-export const PRICING_METHODS = ['itemized', 'lump_sum']
-const DISCOUNT_TYPES = ['fixed', 'percent']
-const MAX_ITEMS = 200
+export { UNITS, ESTIMATE_STATUSES, PRICING_METHODS } from './estimates.schemas'
 
-// The free-text "sections" that support **bold** formatting and "reuse previous text" (see documents.ts
-// and the Estimate editor). Kept to an explicit allowlist since it is interpolated into SQL as a column name.
 export const REUSE_TEXT_FIELDS = ['introduction', 'notes', 'payment_terms', 'timeline', 'exclusions'] as const
 
 export type { ClientSnapshot }
 
-async function assertProjectReference(db: { query: PoolClient['query'] }, organizationId: string, projectId: unknown) {
+async function assertProjectReference(db: { query: PoolClient['query'] }, organizationId: string, projectId: string | null) {
   if (!projectId) return
   const exists = await estimatesRepository.assertProjectExists(db, organizationId, projectId)
   if (!exists) throw new HttpError(400, 'Project does not exist')
 }
 
 export type ItemInput = { name: string; description: string | null; quantity: number; unit: string; unit_price: number }
+type RawEstimateItem = z.infer<typeof createEstimateBody>['items'][number]
+// estimate_number is optional at the schema level (see estimates.schemas), but by the time a header reaches
+// these functions it is always a concrete string: updateEstimateBody's refine requires it for PUT, and the
+// POST route fills in an auto-generated one before calling createEstimate.
+export type EstimateHeader = Omit<z.infer<typeof estimateHeaderBody>, 'estimate_number'> & { estimate_number: string }
 
 // The single place quotation totals are calculated. The client only displays what this returns.
 // Itemized: subtotal is the sum of the line amounts. Lump Sum: subtotal is only the lump sum fee -
@@ -51,27 +52,16 @@ export function computeTotals(
   return { subtotal, discount, total: roundMoney(subtotal - discount) }
 }
 
-// Long text sections keep their line breaks exactly as typed; only whitespace-only text counts as empty
-function longText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value : null
-}
-
-function optionalText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-// pricingMethod defaults to 'itemized' for callers (e.g. Client Funds invoices) that have no pricing method of their own.
-export function parseItems(raw: unknown, pricingMethod: string = 'itemized'): ItemInput[] {
-  if (!Array.isArray(raw)) return []
-  if (raw.length > MAX_ITEMS) throw new HttpError(400, `An estimate can have at most ${MAX_ITEMS} items`)
-  return raw.map((item, index) => {
+// name's shape is already guaranteed by estimateItemSchema; quantity/unit/unit_price are only meaningfully
+// required for Itemized pricing - Lump Sum tolerates missing/invalid values with harmless internal defaults
+// (a row that already had valid values, e.g. from before switching modes, keeps them untouched instead of
+// being wiped), which is why those three are left as `unknown` by the schema for this to see as originally sent.
+export function finalizeItems(rawItems: RawEstimateItem[], pricingMethod: string = 'itemized'): ItemInput[] {
+  return rawItems.map((item, index) => {
     const row = `Item ${index + 1}`
-    const name = typeof item?.name === 'string' ? item.name.trim() : ''
-    const quantity = item?.quantity
-    const unit_price = item?.unit_price
-    if (!name) throw new HttpError(400, `${row}: service name is required`)
+    const { name, description: rawDescription, quantity, unit, unit_price } = item
     // Descriptions keep their line breaks exactly as typed
-    const description = typeof item?.description === 'string' && item.description.trim() ? item.description : null
+    const description = typeof rawDescription === 'string' && rawDescription.trim() ? rawDescription : null
 
     if (pricingMethod === 'lump_sum') {
       // Quantity/unit/unit price aren't shown or required in Lump Sum mode. A row that already had valid
@@ -83,7 +73,7 @@ export function parseItems(raw: unknown, pricingMethod: string = 'itemized'): It
         name,
         description,
         quantity: validQuantity ? quantity : 1,
-        unit: UNITS.includes(item?.unit) ? item.unit : 'ls',
+        unit: typeof unit === 'string' && (UNITS as readonly string[]).includes(unit) ? unit : 'ls',
         unit_price: validUnitPrice ? unit_price : 0,
       }
     }
@@ -91,77 +81,14 @@ export function parseItems(raw: unknown, pricingMethod: string = 'itemized'): It
     if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) {
       throw new HttpError(400, `${row}: quantity must be greater than 0`)
     }
-    if (!UNITS.includes(item?.unit)) throw new HttpError(400, `${row}: unit must be one of ${UNITS.join(', ')}`)
+    if (typeof unit !== 'string' || !(UNITS as readonly string[]).includes(unit)) {
+      throw new HttpError(400, `${row}: unit must be one of ${UNITS.join(', ')}`)
+    }
     if (typeof unit_price !== 'number' || !Number.isFinite(unit_price) || unit_price < 0) {
       throw new HttpError(400, `${row}: unit price must be 0 or more`)
     }
-    return { name, description, quantity, unit: item.unit, unit_price }
+    return { name, description, quantity, unit, unit_price }
   })
-}
-
-export function parseHeader(body: Record<string, unknown>) {
-  const estimate_number = typeof body.estimate_number === 'string' ? body.estimate_number.trim() : ''
-  const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : 'USD'
-  const status = body.status ?? 'draft'
-  const estimate_date = body.estimate_date
-  const valid_until = body.valid_until ? body.valid_until : null
-  const discount_type = body.discount_type ?? 'fixed'
-  const discount_value = body.discount_value ?? 0
-  const pricing_method = body.pricing_method ?? 'itemized'
-  const lump_sum_fee = body.lump_sum_fee ?? 0
-  const document_language = body.document_language ?? 'en'
-
-  if (!estimate_number) throw new HttpError(400, 'Estimate number is required')
-  if (!isIsoDate(estimate_date)) throw new HttpError(400, 'Estimate date is required')
-  if (valid_until !== null && !isIsoDate(valid_until)) throw new HttpError(400, 'Valid until must be a valid date')
-  if (valid_until !== null && valid_until < estimate_date) throw new HttpError(400, 'Valid until cannot be before the estimate date')
-  if (!/^[A-Z]{3}$/.test(currency)) throw new HttpError(400, 'Currency must be a 3-letter code such as USD')
-  if (typeof status !== 'string' || !ESTIMATE_STATUSES.includes(status)) {
-    throw new HttpError(400, 'Status must be one of: ' + ESTIMATE_STATUSES.join(', '))
-  }
-  if (typeof discount_type !== 'string' || !DISCOUNT_TYPES.includes(discount_type)) {
-    throw new HttpError(400, 'Discount type must be fixed or percent')
-  }
-  if (typeof discount_value !== 'number' || !Number.isFinite(discount_value) || discount_value < 0) {
-    throw new HttpError(400, 'Discount must be 0 or more')
-  }
-  if (typeof pricing_method !== 'string' || !PRICING_METHODS.includes(pricing_method)) {
-    throw new HttpError(400, 'Pricing method must be itemized or lump_sum')
-  }
-  if (typeof lump_sum_fee !== 'number' || !Number.isFinite(lump_sum_fee) || lump_sum_fee < 0) {
-    throw new HttpError(400, 'Lump sum fee must be 0 or more')
-  }
-  if (!isDocumentLanguage(document_language)) {
-    throw new HttpError(400, 'Document language must be one of: ' + DOCUMENT_LANGUAGES.join(', '))
-  }
-
-  return {
-    estimate_number,
-    title: optionalText(body.title) ?? 'Quotation',
-    summary: optionalText(body.summary),
-    client_id: body.client_id ? body.client_id : null,
-    contact_name: optionalText(body.contact_name),
-    customer_ref: optionalText(body.customer_ref),
-    estimate_date,
-    valid_until,
-    currency,
-    status,
-    // Long terms keep their line breaks; only pure whitespace is treated as empty
-    notes: longText(body.notes),
-    payment_terms: longText(body.payment_terms),
-    timeline: longText(body.timeline),
-    exclusions: longText(body.exclusions),
-    discount_type,
-    discount_value,
-    pricing_method,
-    // Stored to the same precision as every other money column
-    lump_sum_fee: roundMoney(lump_sum_fee),
-    document_language,
-    project_id: body.project_id ? body.project_id : null,
-    // Separate from the client's saved address, and from Summary/Notes/Terms
-    project_location: optionalText(body.project_location),
-    introduction: longText(body.introduction),
-  }
 }
 
 export async function loadEstimate(organizationId: string, estimateId: string | number, db: { query: PoolClient['query'] } = pool) {
@@ -243,7 +170,7 @@ async function nextInvoiceNumber(organizationId: string, db: { query: PoolClient
 // number computed earlier outside this transaction, since a second concurrent create could have taken
 // it in between. A number the admin actually typed is used exactly as given; a collision on it is a
 // real conflict and should fail normally, not be silently retried with a different number.
-export async function createEstimate(organizationId: string, header: ReturnType<typeof parseHeader>, items: ItemInput[], autoNumber: boolean) {
+export async function createEstimate(organizationId: string, header: EstimateHeader, items: ItemInput[], autoNumber: boolean) {
   return retryOnUniqueViolation(
     () =>
       withTransaction(async (client) => {
@@ -256,17 +183,14 @@ export async function createEstimate(organizationId: string, header: ReturnType<
           finalHeader = { ...header, estimate_number: await nextEstimateNumber(organizationId, client) }
         }
         const id = await estimatesRepository.insertEstimate(client, organizationId, finalHeader, snapshot)
-        await saveItemsAndTotals(
-          client, id, items, finalHeader.discount_type as string, finalHeader.discount_value as number,
-          finalHeader.pricing_method as string, finalHeader.lump_sum_fee as number
-        )
+        await saveItemsAndTotals(client, id, items, finalHeader.discount_type, finalHeader.discount_value, finalHeader.pricing_method, finalHeader.lump_sum_fee)
         return id
       }),
     autoNumber ? 5 : 1
   )
 }
 
-export async function updateEstimateById(organizationId: string, id: string, header: ReturnType<typeof parseHeader>, items: ItemInput[]) {
+export async function updateEstimateById(organizationId: string, id: string, header: EstimateHeader, items: ItemInput[]) {
   await withTransaction(async (client) => {
     const current = await estimatesRepository.selectCurrentEstimateForUpdate(client, organizationId, id)
     if (!current) throw new HttpError(404, 'Estimate not found')
@@ -289,10 +213,7 @@ export async function updateEstimateById(organizationId: string, id: string, hea
           client_address: current.client_address,
         }
     await estimatesRepository.updateEstimate(client, organizationId, id, header, snapshot)
-    await saveItemsAndTotals(
-      client, id, items, header.discount_type as string, header.discount_value as number,
-      header.pricing_method as string, header.lump_sum_fee as number
-    )
+    await saveItemsAndTotals(client, id, items, header.discount_type, header.discount_value, header.pricing_method, header.lump_sum_fee)
   })
 }
 

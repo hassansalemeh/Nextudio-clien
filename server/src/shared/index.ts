@@ -9,6 +9,7 @@ export {
   optionalText,
   multilineText,
   optionalMultilineText,
+  optionalLongText,
   email,
   optionalEmail,
   emailList,
