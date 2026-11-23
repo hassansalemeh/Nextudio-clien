@@ -1,12 +1,13 @@
 import type { Express } from 'express'
 import { allow, organizationIdOf } from '../../middleware/auth'
-import { HttpError, Role, sendError } from '../../shared'
+import { Role, sendError } from '../../shared'
+import { validate } from '../../middleware/validate'
+import { estimateIdParams, invoiceIdParams, letterIdParams, receiptIdParams } from './documents.schemas'
 import { invoiceDocument, letterDocument, quotationDocument, receiptDocument, renderPdf } from './documents.service'
 
 export function registerDocumentRoutes(app: Express) {
-  app.get('/api/estimates/:estimateId/pdf', allow(Role.Admin), async (req, res) => {
+  app.get('/api/estimates/:estimateId/pdf', allow(Role.Admin), validate({ params: estimateIdParams }), async (req, res) => {
     try {
-      if (!/^\d+$/.test(req.params.estimateId)) throw new HttpError(404, 'Estimate not found')
       const doc = await quotationDocument(organizationIdOf(req), req.params.estimateId)
       const pdf = await renderPdf(doc)
       res.setHeader('Content-Type', 'application/pdf')
@@ -17,9 +18,8 @@ export function registerDocumentRoutes(app: Express) {
     }
   })
 
-  app.get('/api/invoices/:invoiceId/pdf', allow(Role.Admin), async (req, res) => {
+  app.get('/api/invoices/:invoiceId/pdf', allow(Role.Admin), validate({ params: invoiceIdParams }), async (req, res) => {
     try {
-      if (!/^\d+$/.test(req.params.invoiceId)) throw new HttpError(404, 'Invoice not found')
       const doc = await invoiceDocument(organizationIdOf(req), req.params.invoiceId)
       const pdf = await renderPdf(doc)
       const filePrefix = doc.invoiceType === 'client_funds' ? 'ClientFunds' : 'Invoice'
@@ -31,9 +31,8 @@ export function registerDocumentRoutes(app: Express) {
     }
   })
 
-  app.get('/api/receipts/:receiptId/pdf', allow(Role.Admin), async (req, res) => {
+  app.get('/api/receipts/:receiptId/pdf', allow(Role.Admin), validate({ params: receiptIdParams }), async (req, res) => {
     try {
-      if (!/^\d+$/.test(req.params.receiptId)) throw new HttpError(404, 'Receipt not found')
       const doc = await receiptDocument(organizationIdOf(req), req.params.receiptId)
       const pdf = await renderPdf(doc)
       res.setHeader('Content-Type', 'application/pdf')
@@ -44,9 +43,8 @@ export function registerDocumentRoutes(app: Express) {
     }
   })
 
-  app.get('/api/letters/:letterId/pdf', allow(Role.Admin), async (req, res) => {
+  app.get('/api/letters/:letterId/pdf', allow(Role.Admin), validate({ params: letterIdParams }), async (req, res) => {
     try {
-      if (!/^\d+$/.test(req.params.letterId)) throw new HttpError(404, 'Letter not found')
       const doc = await letterDocument(organizationIdOf(req), req.params.letterId)
       const pdf = await renderPdf(doc)
       res.setHeader('Content-Type', 'application/pdf')
