@@ -1,4 +1,5 @@
 import type { Express, NextFunction, Request, Response } from 'express'
+import { apiCsp } from './csp'
 
 export const isProduction = process.env.NODE_ENV === 'production'
 
@@ -62,11 +63,13 @@ function apiRateLimit(req: Request, res: Response, next: NextFunction) {
 
 // ---- security headers, HTTPS, same-origin protection ----
 
-function securityHeaders(_req: Request, res: Response, next: NextFunction) {
+function securityHeaders(req: Request, res: Response, next: NextFunction) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'SAMEORIGIN')
   res.setHeader('Referrer-Policy', 'same-origin')
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  // JSON responses get a strict, non-page policy here; the HTML page sets its own nonce-based CSP when it is served.
+  if (req.path.startsWith('/api')) res.setHeader('Content-Security-Policy', apiCsp)
   if (isProduction) {
     // tell browsers to use HTTPS only for the next year
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')

@@ -3,6 +3,7 @@ import express from 'express'
 import fs from 'fs'
 import path from 'path'
 import { assertEveryApiRouteDeclaresRoles, authenticate } from './middleware/auth'
+import { createIndexHtmlHandler } from './middleware/csp'
 import { errorHandler } from './middleware/errorHandler'
 import { apiNotFound } from './middleware/notFound'
 import { requestLogger } from './middleware/requestLogger'
@@ -96,15 +97,16 @@ assertEveryApiRouteDeclaresRoles(app)
 // ---- the website itself: the built front end is served by this same server ----
 const publicDir = path.resolve(__dirname, '../public')
 if (fs.existsSync(path.join(publicDir, 'index.html'))) {
+  const indexHtmlHandler = createIndexHtmlHandler(publicDir)
+  // A direct request for /index.html must get the same nonce + CSP treatment as every other page address, so it
+  // is handled here, before express.static below ever gets a chance to send the raw file off disk.
+  app.get('/index.html', indexHtmlHandler)
   // hashed files under /assets never change, so they can be cached for a year; index.html must always be re-checked
   app.use(express.static(publicDir, { index: false, maxAge: '1h', setHeaders: (res, file) => {
     if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
   } }))
   // any other page address (/dashboard, /projects/9 ...) opened directly or refreshed gets the app, which then shows that page
-  app.get(/^\/(?!api(\/|$)).*/, (_req, res) => {
-    res.setHeader('Cache-Control', 'no-cache')
-    res.sendFile(path.join(publicDir, 'index.html'))
-  })
+  app.get(/^\/(?!api(\/|$)).*/, indexHtmlHandler)
 }
 
 // unknown API addresses answer with JSON, never with the app's HTML

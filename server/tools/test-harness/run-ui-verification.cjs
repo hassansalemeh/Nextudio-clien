@@ -199,6 +199,43 @@ async function main() {
   const baseUrl = `http://localhost:${port}`
   log(`server listening on ${baseUrl}`)
 
+  // ======================================================================
+  // CSP: the page response carries a Content-Security-Policy header with a nonce, that nonce matches the
+  // one stamped onto the <script> tag, and a second page load gets a different nonce (never reused/cached).
+  // ======================================================================
+  async function fetchPageCsp(urlPath = '') {
+    const response = await fetch(baseUrl + urlPath)
+    const header = response.headers.get('content-security-policy') ?? ''
+    const cacheControl = response.headers.get('cache-control') ?? ''
+    const html = await response.text()
+    const scriptNonce = /<script[^>]*\bnonce="([^"]+)"/.exec(html)?.[1]
+    const headerNonce = /'nonce-([^']+)'/.exec(header)?.[1]
+    return { header, cacheControl, scriptNonce, headerNonce }
+  }
+  const cspFirst = await fetchPageCsp()
+  const cspSecond = await fetchPageCsp()
+  record('page response has a Content-Security-Policy header with a nonce', Boolean(cspFirst.headerNonce), cspFirst.header)
+  record(
+    'the nonce on the <script> tag matches the header nonce',
+    Boolean(cspFirst.scriptNonce) && cspFirst.scriptNonce === cspFirst.headerNonce,
+    `script=${cspFirst.scriptNonce} header=${cspFirst.headerNonce}`
+  )
+  record(
+    'two page loads get two different nonces',
+    Boolean(cspFirst.headerNonce) && Boolean(cspSecond.headerNonce) && cspFirst.headerNonce !== cspSecond.headerNonce,
+    `first=${cspFirst.headerNonce} second=${cspSecond.headerNonce}`
+  )
+
+  // A direct request for /index.html must get the same treatment, not the raw static file.
+  const indexHtmlCsp = await fetchPageCsp('/index.html')
+  record('GET /index.html has a Content-Security-Policy header with a nonce', Boolean(indexHtmlCsp.headerNonce), indexHtmlCsp.header)
+  record(
+    'GET /index.html nonce on the <script> tag matches the header nonce',
+    Boolean(indexHtmlCsp.scriptNonce) && indexHtmlCsp.scriptNonce === indexHtmlCsp.headerNonce,
+    `script=${indexHtmlCsp.scriptNonce} header=${indexHtmlCsp.headerNonce}`
+  )
+  record('GET /index.html response has Cache-Control: no-store', indexHtmlCsp.cacheControl === 'no-store', indexHtmlCsp.cacheControl)
+
   const executablePath = fs.existsSync(EDGE_PATH) ? EDGE_PATH : fs.existsSync(CHROME_PATH) ? CHROME_PATH : null
   if (!executablePath) throw new Error('No local Chromium-based browser found (checked Edge and Chrome default paths).')
 
