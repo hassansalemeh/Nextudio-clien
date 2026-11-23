@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { Role } from '../shared/lib/role'
 
 // Same address as the page (empty by default): the API lives next to the website, so no host name is hard-coded.
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -8,7 +9,7 @@ const EXPIRED_EVENT = 'auth:expired'
 export type AuthUser = {
   id: string
   email: string
-  role: 'admin' | 'employee'
+  role: Role
   employeeId: string | null
   employeeName: string | null
 }
