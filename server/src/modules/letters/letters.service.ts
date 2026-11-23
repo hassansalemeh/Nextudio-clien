@@ -1,54 +1,16 @@
 import type { PoolClient } from 'pg'
-import { ADMIN_SIGNERS, LETTER_PREFIX } from '../../config'
+import type { z } from 'zod'
+import { LETTER_PREFIX } from '../../config'
 import { lockForNumbering, pool, retryOnUniqueViolation, withTransaction } from '../../db'
-import { HttpError, isIsoDate } from '../../shared'
-import { DOCUMENT_LANGUAGES, isDocumentLanguage } from '../../shared/i18n/documentLabels'
+import { HttpError } from '../../shared'
+import type { letterHeaderShape } from './letters.schemas'
 import * as lettersRepository from './letters.repository'
 
-function optionalText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-// Letters keep their body's own line breaks exactly as typed - blank lines separate paragraphs, lines
-// starting with "- "/"* " become a bullet list (see documents.layout.ts's formatBody) - only
-// whitespace-only text counts as empty.
-function longText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value : null
-}
-
-export function parseHeader(body: Record<string, unknown>) {
-  const letter_number = typeof body.letter_number === 'string' ? body.letter_number.trim() : ''
-  const letter_date = body.letter_date
-  const recipient_name = optionalText(body.recipient_name)
-  const subject = optionalText(body.subject)
-  const letterBody = longText(body.body)
-  const issued_by_admin = typeof body.issued_by_admin === 'string' ? body.issued_by_admin.trim() : ''
-  const document_language = body.document_language ?? 'en'
-
-  if (!letter_number) throw new HttpError(400, 'Letter number is required')
-  if (!isIsoDate(letter_date)) throw new HttpError(400, 'Letter date is required')
-  if (!recipient_name) throw new HttpError(400, 'Recipient is required')
-  if (!subject) throw new HttpError(400, 'Subject is required')
-  if (!letterBody) throw new HttpError(400, 'Body is required')
-  if (!ADMIN_SIGNERS.includes(issued_by_admin)) {
-    throw new HttpError(400, 'Issuing admin must be one of: ' + ADMIN_SIGNERS.join(', '))
-  }
-  if (!isDocumentLanguage(document_language)) {
-    throw new HttpError(400, 'Document language must be one of: ' + DOCUMENT_LANGUAGES.join(', '))
-  }
-
-  return {
-    letter_number,
-    letter_date,
-    client_id: body.client_id ? body.client_id : null,
-    project_id: body.project_id ? body.project_id : null,
-    recipient_name,
-    subject,
-    body: letterBody,
-    issued_by_admin,
-    document_language,
-  }
-}
+// letter_number and body are optional at the schema level (see letters.schemas), but by the time a header
+// reaches these functions both are always concrete strings: updateLetterBody's refine requires letter_number
+// for PUT and the POST route fills in an auto-generated one, and the shared shape already requires body to
+// be non-null for either verb.
+export type LetterHeader = Omit<z.infer<typeof letterHeaderShape>, 'letter_number' | 'body'> & { letter_number: string; body: string }
 
 export async function listLetters(organizationId: string) {
   return lettersRepository.selectLetters(organizationId)
@@ -76,7 +38,7 @@ export async function nextLetterNumber(organizationId: string, db: { query: Pool
   }
 }
 
-export async function createLetter(organizationId: string, header: ReturnType<typeof parseHeader>, autoNumber: boolean) {
+export async function createLetter(organizationId: string, header: LetterHeader, autoNumber: boolean) {
   return retryOnUniqueViolation(
     () =>
       withTransaction(async (client) => {
@@ -97,7 +59,7 @@ export async function createLetter(organizationId: string, header: ReturnType<ty
   )
 }
 
-export async function updateLetterById(organizationId: string, id: string, header: ReturnType<typeof parseHeader>) {
+export async function updateLetterById(organizationId: string, id: string, header: LetterHeader) {
   await withTransaction(async (client) => {
     const locked = await lettersRepository.lockLetterForUpdate(client, organizationId, id)
     if (!locked) throw new HttpError(404, 'Letter not found')

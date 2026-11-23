@@ -1,13 +1,10 @@
-import type { Express, Request } from 'express'
+import type { Express } from 'express'
 import { allow, organizationIdOf } from '../../middleware/auth'
 import { HttpError, Role, sendError } from '../../shared'
+import { validate } from '../../middleware/validate'
+import { createLetterBody, letterIdParams, updateLetterBody } from './letters.schemas'
 import * as lettersService from './letters.service'
-
-function requireId(req: Request) {
-  const id = req.params.letterId
-  if (!/^\d+$/.test(id)) throw new HttpError(404, 'Letter not found')
-  return id
-}
+import type { LetterHeader } from './letters.service'
 
 export function registerLetterRoutes(app: Express) {
   app.get('/api/letters', allow(Role.Admin), async (req, res) => {
@@ -27,9 +24,9 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.get('/api/letters/:letterId', allow(Role.Admin), async (req, res) => {
+  app.get('/api/letters/:letterId', allow(Role.Admin), validate({ params: letterIdParams }), async (req, res) => {
     try {
-      const letter = await lettersService.loadLetter(organizationIdOf(req), requireId(req))
+      const letter = await lettersService.loadLetter(organizationIdOf(req), req.params.letterId)
       if (!letter) throw new HttpError(404, 'Letter not found')
       res.json(letter)
     } catch (err) {
@@ -37,16 +34,16 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.post('/api/letters', allow(Role.Admin), async (req, res) => {
+  app.post('/api/letters', allow(Role.Admin), validate({ body: createLetterBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const body = { ...req.body }
-      const autoNumber = typeof body.letter_number !== 'string' || !body.letter_number.trim()
-      // Only a placeholder for parseHeader's "letter_number is required" check below - when autoNumber
-      // is true, createLetter throws this away and computes the real number itself, under a lock, right
-      // before the insert.
-      if (autoNumber) body.letter_number = await lettersService.nextLetterNumber(organizationId)
-      const header = lettersService.parseHeader(body)
+      // No letter_number typed in: the create form pre-fills a suggestion and the admin just accepts it,
+      // but the real number is only finalized inside createLetter, under a lock, right before the insert.
+      const autoNumber = req.body.letter_number === null
+      const header: LetterHeader = {
+        ...req.body,
+        letter_number: autoNumber ? await lettersService.nextLetterNumber(organizationId) : (req.body.letter_number as string),
+      }
 
       const id = await lettersService.createLetter(organizationId, header, autoNumber)
       res.status(201).json(await lettersService.loadLetter(organizationId, id))
@@ -55,11 +52,11 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.put('/api/letters/:letterId', allow(Role.Admin), async (req, res) => {
+  app.put('/api/letters/:letterId', allow(Role.Admin), validate({ params: letterIdParams, body: updateLetterBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const id = requireId(req)
-      const header = lettersService.parseHeader(req.body)
+      const id = req.params.letterId
+      const header: LetterHeader = { ...req.body, letter_number: req.body.letter_number as string }
 
       await lettersService.updateLetterById(organizationId, id, header)
       res.json(await lettersService.loadLetter(organizationId, id))
@@ -68,10 +65,10 @@ export function registerLetterRoutes(app: Express) {
     }
   })
 
-  app.delete('/api/letters/:letterId', allow(Role.Admin), async (req, res) => {
+  app.delete('/api/letters/:letterId', allow(Role.Admin), validate({ params: letterIdParams }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const id = requireId(req)
+      const id = req.params.letterId
       await lettersService.deleteLetter(organizationId, id)
       res.json({ ok: true })
     } catch (err) {
