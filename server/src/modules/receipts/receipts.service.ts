@@ -1,71 +1,15 @@
 import type { PoolClient } from 'pg'
+import type { z } from 'zod'
 import { RECEIPT_PREFIX } from '../../config'
 import { lockForNumbering, pool, retryOnUniqueViolation, withTransaction } from '../../db'
-import { HttpError, isIsoDate, roundMoney } from '../../shared'
-import { DOCUMENT_LANGUAGES, isDocumentLanguage } from '../../shared/i18n/documentLabels'
+import { HttpError, roundMoney } from '../../shared'
 import { createPaymentWithinTransaction } from '../payments/payments.service'
 import * as paymentsRepository from '../payments/payments.repository'
 import * as signersRepository from '../signatures-and-stamps/document-signers.repository'
+import type { createReceiptBody } from './receipts.schemas'
 import * as receiptsRepository from './receipts.repository'
 
-function optionalText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function parsePaymentIdInput(value: unknown): string | null {
-  if (value === undefined || value === null || value === '') return null
-  const text = String(value)
-  if (!/^\d+$/.test(text)) throw new HttpError(400, 'Invalid payment')
-  return text
-}
-
-function parseSignerIdInput(value: unknown, label: string): string {
-  if (value === undefined || value === null || value === '' || !/^\d+$/.test(String(value))) {
-    throw new HttpError(400, `Choose ${label}`)
-  }
-  return String(value)
-}
-
-// The fields every receipt has regardless of whether it links to an existing payment or creates a new
-// one. Money fields (amount/receipt_date/project_id/client_id) are handled separately by the caller,
-// since where they come from depends on that choice. issued_by_signer_id/received_by_signer_id are
-// resolved to an active signer's name by the caller, inside its own transaction (see createReceipt /
-// updateReceiptById) - this function only checks that something that looks like an id was sent.
-function parseReceiptFields(body: Record<string, unknown>) {
-  const receipt_number = typeof body.receipt_number === 'string' ? body.receipt_number.trim() : ''
-  const receiver_name = optionalText(body.receiver_name)
-  const reason = optionalText(body.reason)
-  const issued_by_signer_id = parseSignerIdInput(body.issued_by_signer_id, 'the issuing signer')
-  const received_by_signer_id = parseSignerIdInput(body.received_by_signer_id, 'the receiving signer')
-  // Checked by default: the client only has to opt out, not in
-  const show_paid_stamp = body.show_paid_stamp !== false
-  const show_company_stamp = body.show_company_stamp !== false
-  const document_language = body.document_language ?? 'en'
-  const payment_id = parsePaymentIdInput(body.payment_id)
-
-  if (!receipt_number) throw new HttpError(400, 'Receipt number is required')
-  if (!receiver_name) throw new HttpError(400, 'Who the payment was received from is required')
-  if (!reason) throw new HttpError(400, 'Reason for the payment is required')
-  // Every new receipt's reason also becomes its payment's reason (see createReceipt), which caps at 200 -
-  // enforced here too so a long reason fails clearly instead of surfacing as a payment validation error.
-  if (reason.length > 200) throw new HttpError(400, 'The reason is too long (200 characters at most)')
-  if (!isDocumentLanguage(document_language)) {
-    throw new HttpError(400, 'Document language must be one of: ' + DOCUMENT_LANGUAGES.join(', '))
-  }
-
-  return {
-    receipt_number,
-    receiver_name,
-    receiver_email: optionalText(body.receiver_email),
-    reason,
-    issued_by_signer_id,
-    received_by_signer_id,
-    show_paid_stamp,
-    show_company_stamp,
-    document_language,
-    payment_id,
-  }
-}
+type ReceiptInput = Omit<z.infer<typeof createReceiptBody>, 'receipt_number'> & { receipt_number: string }
 
 // Resolves a signer id to its current display_name, and fails unless that signer is active and belongs
 // to this organization (the DB's composite FK also guarantees "same organization" at insert/update time,
@@ -74,39 +18,6 @@ async function resolveActiveSignerName(client: PoolClient, organizationId: strin
   const name = await signersRepository.selectSignerNameIfActive(client, organizationId, signerId)
   if (!name) throw new HttpError(400, `Choose an active ${label}`)
   return name
-}
-
-// Only for a brand-new receipt that is NOT linking to an existing payment: a project is required,
-// because these fields become the new payment's own project_id/payment_date/amount.
-function parseNewReceiptPaymentFields(body: Record<string, unknown>) {
-  const project_id = body.project_id
-  const receipt_date = body.receipt_date
-  const amount = body.amount
-
-  if (project_id === undefined || project_id === null || project_id === '' || !/^\d+$/.test(String(project_id))) {
-    throw new HttpError(400, 'Choose a project')
-  }
-  if (!isIsoDate(receipt_date)) throw new HttpError(400, 'Receipt date is required')
-  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) throw new HttpError(400, 'Amount must be greater than 0')
-
-  return { project_id: String(project_id), receipt_date: receipt_date as string, amount: roundMoney(amount) }
-}
-
-// Only for updating the one receipt that predates payment-linking (payment_id is null): keeps the
-// original, fully optional-project validation so that grandfathered row isn't forced to gain one.
-function parseUnlinkedReceiptMoneyFields(body: Record<string, unknown>) {
-  const receipt_date = body.receipt_date
-  const amount = body.amount
-
-  if (!isIsoDate(receipt_date)) throw new HttpError(400, 'Receipt date is required')
-  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) throw new HttpError(400, 'Amount must be greater than 0')
-
-  return {
-    receipt_date: receipt_date as string,
-    amount: roundMoney(amount),
-    client_id: body.client_id ? String(body.client_id) : null,
-    project_id: body.project_id ? String(body.project_id) : null,
-  }
 }
 
 export async function listReceipts(organizationId: string) {
@@ -135,12 +46,11 @@ export async function nextReceiptNumber(organizationId: string, db: { query: Poo
   }
 }
 
-// Every new receipt links to exactly one payment: either an existing, receipt-less one (header.payment_id
+// Every new receipt links to exactly one payment: either an existing, receipt-less one (fields.payment_id
 // set - the "Create receipt" action on the Payments page), or a brand-new one created in this same
 // transaction (the Receipts page's "New Receipt", which requires a project). Either way, amount/
 // receipt_date/project_id/client_id come from that payment - never from the request body directly.
-export async function createReceipt(organizationId: string, body: Record<string, unknown>, autoNumber: boolean) {
-  const fields = parseReceiptFields(body)
+export async function createReceipt(organizationId: string, fields: ReceiptInput, autoNumber: boolean) {
   return retryOnUniqueViolation(
     () =>
       withTransaction(async (client) => {
@@ -161,19 +71,22 @@ export async function createReceipt(organizationId: string, body: Record<string,
           }
           payment_id = fields.payment_id
         } else {
-          const newPaymentFields = parseNewReceiptPaymentFields(body)
-          const client_id = await receiptsRepository.selectClientIdForProject(client, organizationId, newPaymentFields.project_id)
+          // Only for a brand-new receipt that is NOT linking to an existing payment: a project is required,
+          // because these fields become the new payment's own project_id/payment_date/amount.
+          if (!fields.project_id) throw new HttpError(400, 'Choose a project')
+          const client_id = await receiptsRepository.selectClientIdForProject(client, organizationId, fields.project_id)
           if (client_id === null) throw new HttpError(400, 'Project does not exist')
+          const amount = roundMoney(fields.amount)
           payment_id = await createPaymentWithinTransaction(client, organizationId, {
-            project_id: newPaymentFields.project_id,
+            project_id: fields.project_id,
             invoice_id: null,
-            payment_date: newPaymentFields.receipt_date,
-            amount: newPaymentFields.amount,
+            payment_date: fields.receipt_date,
+            amount,
             reason: fields.reason,
             method: null,
             reference: null,
           })
-          moneyFields = { receipt_date: newPaymentFields.receipt_date, amount: newPaymentFields.amount, project_id: newPaymentFields.project_id, client_id }
+          moneyFields = { receipt_date: fields.receipt_date, amount, project_id: fields.project_id, client_id }
         }
 
         const issuedByName = await resolveActiveSignerName(client, organizationId, fields.issued_by_signer_id, 'issuing signer')
@@ -212,9 +125,7 @@ export async function createReceipt(organizationId: string, body: Record<string,
 // A linked receipt's amount/date/project can't be changed here - they come from the payment, and the
 // payment itself can't be corrected while this receipt exists (see payments.service.correctPayment).
 // Every other field (receiver name/email, reason, issuing admin, language) stays freely editable.
-export async function updateReceiptById(organizationId: string, id: string, body: Record<string, unknown>) {
-  const fields = parseReceiptFields(body)
-
+export async function updateReceiptById(organizationId: string, id: string, fields: ReceiptInput) {
   await withTransaction(async (client) => {
     const existing = await receiptsRepository.lockReceiptForUpdate(client, organizationId, id)
     if (!existing) throw new HttpError(404, 'Receipt not found')
@@ -227,22 +138,23 @@ export async function updateReceiptById(organizationId: string, id: string, body
 
     if (existing.payment_id) {
       const existingAmount = Number(existing.amount)
-      const amountChanged = 'amount' in body && (typeof body.amount !== 'number' || roundMoney(body.amount) !== existingAmount)
-      const dateChanged = 'receipt_date' in body && body.receipt_date !== existing.receipt_date
-      const projectChanged = 'project_id' in body && String(body.project_id ?? '') !== String(existing.project_id ?? '')
+      const amountChanged = roundMoney(fields.amount) !== existingAmount
+      const dateChanged = fields.receipt_date !== existing.receipt_date
+      const projectChanged = String(fields.project_id ?? '') !== String(existing.project_id ?? '')
       if (amountChanged || dateChanged || projectChanged) {
         throw new HttpError(400, 'Amount, date and project come from the linked payment. Correct the payment to change them.')
       }
       moneyFields = { receipt_date: existing.receipt_date, amount: existingAmount, project_id: existing.project_id, client_id: existing.client_id }
     } else {
-      const legacy = parseUnlinkedReceiptMoneyFields(body)
-      if (!(await receiptsRepository.assertClientExists(client, organizationId, legacy.client_id))) {
+      // Only for updating the one receipt that predates payment-linking (payment_id is null): keeps the
+      // original, fully optional-project validation so that grandfathered row isn't forced to gain one.
+      if (!(await receiptsRepository.assertClientExists(client, organizationId, fields.client_id))) {
         throw new HttpError(400, 'Client does not exist')
       }
-      if (!(await receiptsRepository.assertProjectExists(client, organizationId, legacy.project_id))) {
+      if (!(await receiptsRepository.assertProjectExists(client, organizationId, fields.project_id))) {
         throw new HttpError(400, 'Project does not exist')
       }
-      moneyFields = legacy
+      moneyFields = { receipt_date: fields.receipt_date, amount: roundMoney(fields.amount), client_id: fields.client_id, project_id: fields.project_id }
     }
 
     const issuedByName = await resolveActiveSignerName(client, organizationId, fields.issued_by_signer_id, 'issuing signer')
@@ -274,18 +186,14 @@ export async function updateReceiptById(organizationId: string, id: string, body
 // the only way to cancel a payment that has an active receipt (payments.service.cancelPayment refuses
 // that; it's only for a payment without one).
 export async function cancelReceipt(organizationId: string, id: string, reason: string, cancelledBy: string) {
-  const trimmedReason = reason.trim()
-  if (!trimmedReason) throw new HttpError(400, 'A reason is required to cancel a receipt')
-  if (trimmedReason.length > 500) throw new HttpError(400, 'The reason is too long (500 characters at most)')
-
   await withTransaction(async (client) => {
     const receipt = await receiptsRepository.lockReceiptForCancel(client, organizationId, id)
     if (!receipt) throw new HttpError(404, 'Receipt not found')
     if (receipt.cancelled_at) throw new HttpError(400, 'This receipt is already cancelled')
 
-    await receiptsRepository.updateReceiptCancelled(client, id, cancelledBy, trimmedReason)
+    await receiptsRepository.updateReceiptCancelled(client, id, cancelledBy, reason)
     if (receipt.payment_id) {
-      await paymentsRepository.updatePaymentCancelled(client, receipt.payment_id, cancelledBy, trimmedReason)
+      await paymentsRepository.updatePaymentCancelled(client, receipt.payment_id, cancelledBy, reason)
     }
   })
 }

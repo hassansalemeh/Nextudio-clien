@@ -1,13 +1,9 @@
-import type { Express, Request } from 'express'
+import type { Express } from 'express'
 import { allow, organizationIdOf } from '../../middleware/auth'
 import { HttpError, Role, sendError } from '../../shared'
+import { validate } from '../../middleware/validate'
+import { cancelReceiptBody, createReceiptBody, receiptIdParams, updateReceiptBody } from './receipts.schemas'
 import * as receiptsService from './receipts.service'
-
-function requireId(req: Request) {
-  const id = req.params.receiptId
-  if (!/^\d+$/.test(id)) throw new HttpError(404, 'Receipt not found')
-  return id
-}
 
 export function registerReceiptRoutes(app: Express) {
   app.get('/api/receipts', allow(Role.Admin), async (req, res) => {
@@ -27,9 +23,9 @@ export function registerReceiptRoutes(app: Express) {
     }
   })
 
-  app.get('/api/receipts/:receiptId', allow(Role.Admin), async (req, res) => {
+  app.get('/api/receipts/:receiptId', allow(Role.Admin), validate({ params: receiptIdParams }), async (req, res) => {
     try {
-      const receipt = await receiptsService.loadReceipt(organizationIdOf(req), requireId(req))
+      const receipt = await receiptsService.loadReceipt(organizationIdOf(req), req.params.receiptId)
       if (!receipt) throw new HttpError(404, 'Receipt not found')
       res.json(receipt)
     } catch (err) {
@@ -37,29 +33,27 @@ export function registerReceiptRoutes(app: Express) {
     }
   })
 
-  app.post('/api/receipts', allow(Role.Admin), async (req, res) => {
+  app.post('/api/receipts', allow(Role.Admin), validate({ body: createReceiptBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const body = { ...req.body }
-      const autoNumber = typeof body.receipt_number !== 'string' || !body.receipt_number.trim()
-      // Only a placeholder for parseReceiptFields' "receipt_number is required" check below - when
-      // autoNumber is true, createReceipt throws this away and computes the real number itself, under a
-      // lock, right before the insert.
-      if (autoNumber) body.receipt_number = await receiptsService.nextReceiptNumber(organizationId)
+      // No receipt_number typed in: the create form pre-fills a suggestion and the admin just accepts it,
+      // but the real number is only finalized inside createReceipt, under a lock, right before the insert.
+      const autoNumber = req.body.receipt_number === null
+      const fields = { ...req.body, receipt_number: autoNumber ? await receiptsService.nextReceiptNumber(organizationId) : req.body.receipt_number }
 
-      const id = await receiptsService.createReceipt(organizationId, body, autoNumber)
+      const id = await receiptsService.createReceipt(organizationId, fields, autoNumber)
       res.status(201).json(await receiptsService.loadReceipt(organizationId, id))
     } catch (err) {
       sendError(res, err, 'Failed to create receipt', 'That receipt number is already used')
     }
   })
 
-  app.put('/api/receipts/:receiptId', allow(Role.Admin), async (req, res) => {
+  app.put('/api/receipts/:receiptId', allow(Role.Admin), validate({ params: receiptIdParams, body: updateReceiptBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const id = requireId(req)
+      const id = req.params.receiptId
 
-      await receiptsService.updateReceiptById(organizationId, id, req.body)
+      await receiptsService.updateReceiptById(organizationId, id, { ...req.body, receipt_number: req.body.receipt_number as string })
       res.json(await receiptsService.loadReceipt(organizationId, id))
     } catch (err) {
       sendError(res, err, 'Failed to update receipt', 'That receipt number is already used')
@@ -67,15 +61,19 @@ export function registerReceiptRoutes(app: Express) {
   })
 
   // Cancels the receipt and its linked payment together. Never deletes either.
-  app.post('/api/receipts/:receiptId/cancel', allow(Role.Admin), async (req, res) => {
-    try {
-      const organizationId = organizationIdOf(req)
-      const id = requireId(req)
-      const reason = typeof req.body.reason === 'string' ? req.body.reason : ''
-      await receiptsService.cancelReceipt(organizationId, id, reason, req.user!.id)
-      res.json(await receiptsService.loadReceipt(organizationId, id))
-    } catch (err) {
-      sendError(res, err, 'Failed to cancel the receipt')
+  app.post(
+    '/api/receipts/:receiptId/cancel',
+    allow(Role.Admin),
+    validate({ params: receiptIdParams, body: cancelReceiptBody }),
+    async (req, res) => {
+      try {
+        const organizationId = organizationIdOf(req)
+        const id = req.params.receiptId
+        await receiptsService.cancelReceipt(organizationId, id, req.body.reason, req.user!.id)
+        res.json(await receiptsService.loadReceipt(organizationId, id))
+      } catch (err) {
+        sendError(res, err, 'Failed to cancel the receipt')
+      }
     }
-  })
+  )
 }
