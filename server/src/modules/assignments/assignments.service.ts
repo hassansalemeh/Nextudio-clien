@@ -1,13 +1,11 @@
-import { HttpError, isIsoDate } from '../../shared'
+import { HttpError } from '../../shared'
 import * as assignmentsRepository from './assignments.repository'
 
 export async function listProjectAssignments(organizationId: string, projectId: string) {
   return assignmentsRepository.selectActiveProjectAssignments(organizationId, projectId)
 }
 
-export async function addProjectAssignment(organizationId: string, projectId: string, employeeId: unknown) {
-  if (!employeeId) throw new HttpError(400, 'employee_id is required')
-
+export async function addProjectAssignment(organizationId: string, projectId: string, employeeId: string) {
   const projectExists = await assignmentsRepository.selectProjectExists(organizationId, projectId)
   if (!projectExists) throw new HttpError(400, 'Project does not exist')
 
@@ -29,21 +27,21 @@ export async function addProjectAssignment(organizationId: string, projectId: st
   return assignmentsRepository.selectProjectAssignmentById(assignmentId)
 }
 
-export async function listWorkAssignments(organizationId: string, projectId: unknown, employeeId: unknown, date: unknown) {
+export async function listWorkAssignments(organizationId: string, projectId: string | null, employeeId: string | null, date: string | null) {
   const conditions: string[] = []
   const params: string[] = []
 
-  if (typeof projectId === 'string' && projectId) {
+  if (projectId) {
     params.push(projectId)
     conditions.push(`work_assignments.project_id = $${params.length + 1}`)
   }
 
-  if (typeof employeeId === 'string' && employeeId) {
+  if (employeeId) {
     params.push(employeeId)
     conditions.push(`work_assignments.employee_id = $${params.length + 1}`)
   }
 
-  if (typeof date === 'string' && date) {
+  if (date) {
     params.push(date)
     conditions.push(`work_assignments.start_date <= $${params.length + 1} AND work_assignments.end_date >= $${params.length + 1}`)
   }
@@ -57,21 +55,13 @@ export async function listWorkAssignments(organizationId: string, projectId: unk
 
 export async function createWorkAssignment(
   organizationId: string,
-  project_id: unknown,
-  employee_id: unknown,
+  project_id: string,
+  employee_id: string,
   start_date: string,
   end_date: string,
   description: string
 ) {
-  if (!project_id) throw new HttpError(400, 'project_id is required')
-  if (!employee_id) throw new HttpError(400, 'employee_id is required')
-  if (!start_date) throw new HttpError(400, 'start_date is required')
-  if (!end_date) throw new HttpError(400, 'end_date is required')
-  // ISO YYYY-MM-DD strings compare correctly as text
-  if (end_date < start_date) throw new HttpError(400, 'end_date cannot be before start_date')
-  if (!description) throw new HttpError(400, 'description is required')
-
-  const projectExists = await assignmentsRepository.selectProjectExists(organizationId, String(project_id))
+  const projectExists = await assignmentsRepository.selectProjectExists(organizationId, project_id)
   if (!projectExists) throw new HttpError(400, 'Project does not exist')
 
   const membership = await assignmentsRepository.selectActiveAssignmentWithEmployeeName(organizationId, project_id, employee_id)
@@ -84,20 +74,13 @@ export async function createWorkAssignment(
 export async function updateWorkAssignment(
   organizationId: string,
   assignmentId: string,
-  project_id: unknown,
-  employee_id: unknown,
+  project_id: string,
+  employee_id: string,
   start_date: string,
   end_date: string,
   description: string
 ) {
-  if (!project_id) throw new HttpError(400, 'project_id is required')
-  if (!employee_id) throw new HttpError(400, 'employee_id is required')
-  if (!isIsoDate(start_date)) throw new HttpError(400, 'start_date is required')
-  if (!isIsoDate(end_date)) throw new HttpError(400, 'end_date is required')
-  if (end_date < start_date) throw new HttpError(400, 'end_date cannot be before start_date')
-  if (!description) throw new HttpError(400, 'description is required')
-
-  const projectExists = await assignmentsRepository.selectProjectExists(organizationId, String(project_id))
+  const projectExists = await assignmentsRepository.selectProjectExists(organizationId, project_id)
   if (!projectExists) throw new HttpError(400, 'Project does not exist')
 
   const membership = await assignmentsRepository.selectActiveAssignmentWithEmployeeName(organizationId, project_id, employee_id)

@@ -2,7 +2,7 @@ import type express from 'express'
 import type { PoolClient } from 'pg'
 import { hourlyRateFromSalary } from '../../config'
 import { withTransaction } from '../../db'
-import { HttpError, isIsoDate } from '../../shared'
+import { HttpError } from '../../shared'
 import * as timeTrackingRepository from './time-tracking.repository'
 
 export function timeToMinutes(time: string): number {
@@ -31,7 +31,7 @@ export function sendTimeError(res: express.Response, err: unknown, fallback: str
 }
 
 // Locks the employee's open clock-in row (serialises double clicks) and returns it plus one consistent "now"
-async function lockOpenSession(client: PoolClient, organizationId: string, employeeId: unknown) {
+async function lockOpenSession(client: PoolClient, organizationId: string, employeeId: string) {
   const session = await timeTrackingRepository.lockOpenAttendanceSession(client, organizationId, employeeId)
   if (!session) {
     throw new HttpError(400, 'Clock in first')
@@ -57,13 +57,15 @@ export async function getFirstActivityDate(organizationId: string, employeeId: s
   return { date }
 }
 
-export async function clockIn(organizationId: string, employeeId: unknown) {
-  const employee = await timeTrackingRepository.selectActiveEmployee(organizationId, employeeId as string)
+export async function clockIn(organizationId: string, employeeId: string | null) {
+  if (!employeeId) throw new HttpError(400, 'employee_id is required')
+  const employee = await timeTrackingRepository.selectActiveEmployee(organizationId, employeeId)
   if (!employee) throw new HttpError(400, 'Employee does not exist or is inactive')
-  await timeTrackingRepository.insertAttendanceClockIn(employeeId as string)
+  await timeTrackingRepository.insertAttendanceClockIn(employeeId)
 }
 
-export async function startWork(organizationId: string, employeeId: unknown, projectId: unknown, date: string) {
+export async function startWork(organizationId: string, employeeId: string | null, projectId: string, date: string) {
+  if (!employeeId) throw new HttpError(400, 'employee_id is required')
   await withTransaction(async (client) => {
     const { now } = await lockOpenSession(client, organizationId, employeeId)
 
@@ -103,27 +105,20 @@ export async function startWork(organizationId: string, employeeId: unknown, pro
 // review and excluded from every hours/cost total until approved (see recordedTimeByProjectEmployee).
 export async function addManualWork(
   organizationId: string,
-  employeeId: unknown,
-  projectId: unknown,
-  date: unknown,
-  start: unknown,
-  end: unknown,
-  dayStart: unknown,
-  dayEnd: unknown,
+  employeeId: string | null,
+  projectId: string,
+  date: string,
+  start: string,
+  end: string,
+  dayStart: string,
+  dayEnd: string,
   description: string
 ) {
   if (!employeeId) throw new HttpError(400, 'employee_id is required')
-  if (!projectId) throw new HttpError(400, 'Choose a project')
-  if (!isIsoDate(date)) throw new HttpError(400, 'Choose a date')
-  const startAt = new Date(start as string)
-  const endAt = new Date(end as string)
-  const dayStartAt = new Date(dayStart as string)
-  const dayEndAt = new Date(dayEnd as string)
-  if ([startAt, endAt, dayStartAt, dayEndAt].some((value) => Number.isNaN(value.getTime()))) {
-    throw new HttpError(400, 'Enter a start time and an end time')
-  }
-  if (!description) throw new HttpError(400, 'Describe what you worked on')
-  if (description.length > 2000) throw new HttpError(400, 'The description is too long (2000 characters at most)')
+  const startAt = new Date(start)
+  const endAt = new Date(end)
+  const dayStartAt = new Date(dayStart)
+  const dayEndAt = new Date(dayEnd)
   if (endAt <= startAt) throw new HttpError(400, 'End time must be after start time')
 
   // The chosen day is a 23-25 hour window (daylight saving) and the whole entry must sit inside it
@@ -138,7 +133,7 @@ export async function addManualWork(
     // Projects assigned to this employee on the selected date save normally. A project they are not
     // assigned to is still allowed, as long as it exists and is open for work, but is held as 'pending'
     // until an admin approves it (see the pending-work module) - it bypasses only this check.
-    const assigned = await timeTrackingRepository.selectWorkAssignmentCoversDate(client, employeeId, projectId, date as string)
+    const assigned = await timeTrackingRepository.selectWorkAssignmentCoversDate(client, employeeId, projectId, date)
     let status: 'approved' | 'pending' = 'approved'
     if (!assigned) {
       const project = await timeTrackingRepository.selectProjectStatus(client, organizationId, projectId)
@@ -175,7 +170,8 @@ export async function addManualWork(
   })
 }
 
-export async function stopWork(organizationId: string, employeeId: unknown) {
+export async function stopWork(organizationId: string, employeeId: string | null) {
+  if (!employeeId) throw new HttpError(400, 'employee_id is required')
   await withTransaction(async (client) => {
     const { now } = await lockOpenSession(client, organizationId, employeeId)
     const stoppedCount = await timeTrackingRepository.stopActiveTimeEntry(client, organizationId, employeeId, now)
@@ -185,7 +181,8 @@ export async function stopWork(organizationId: string, employeeId: unknown) {
   })
 }
 
-export async function clockOut(organizationId: string, employeeId: unknown) {
+export async function clockOut(organizationId: string, employeeId: string | null) {
+  if (!employeeId) throw new HttpError(400, 'employee_id is required')
   await withTransaction(async (client) => {
     const { sessionId, now } = await lockOpenSession(client, organizationId, employeeId)
     await timeTrackingRepository.updateActiveTimeEntryEndedAtTx(client, organizationId, employeeId, now)
@@ -194,31 +191,26 @@ export async function clockOut(organizationId: string, employeeId: unknown) {
 }
 
 // Admin corrections. Times are ISO timestamps; end may be null to leave the item running/clocked in.
-function parseCorrection(body: { start?: unknown; end?: unknown }) {
-  const start = typeof body.start === 'string' ? new Date(body.start) : null
-  const end = typeof body.end === 'string' && body.end ? new Date(body.end) : null
-  if (!start || Number.isNaN(start.getTime())) {
-    throw new HttpError(400, 'A valid start time is required')
-  }
-  if (end && Number.isNaN(end.getTime())) {
-    throw new HttpError(400, 'End time is invalid')
-  }
-  if (end && end <= start) {
+// Format is already guaranteed valid by timeCorrectionBody - only the cross-field "after start" rule is checked here.
+function checkCorrection(start: string, end: string | null) {
+  const startAt = new Date(start)
+  const endAt = end ? new Date(end) : null
+  if (endAt && endAt <= startAt) {
     throw new HttpError(400, 'End time must be after start time')
   }
-  return { start, end }
+  return { start: startAt, end: endAt }
 }
 
-export async function correctTimeEntry(organizationId: string, id: string, body: { start?: unknown; end?: unknown }) {
-  const { start, end } = parseCorrection(body)
+export async function correctTimeEntry(organizationId: string, id: string, body: { start: string; end: string | null }) {
+  const { start, end } = checkCorrection(body.start, body.end)
   const rowCount = await timeTrackingRepository.updateTimeEntryTimes(organizationId, id, start, end)
   if (rowCount === 0) {
     throw new HttpError(404, 'Time entry not found')
   }
 }
 
-export async function correctAttendanceSession(organizationId: string, id: string, body: { start?: unknown; end?: unknown }) {
-  const { start, end } = parseCorrection(body)
+export async function correctAttendanceSession(organizationId: string, id: string, body: { start: string; end: string | null }) {
+  const { start, end } = checkCorrection(body.start, body.end)
   const rowCount = await timeTrackingRepository.updateAttendanceTimes(organizationId, id, start, end)
   if (rowCount === 0) {
     throw new HttpError(404, 'Clock-in record not found')
@@ -227,7 +219,7 @@ export async function correctAttendanceSession(organizationId: string, id: strin
 
 // ---- legacy work_entries (v1 time tracking, left in place but unreachable from the UI) ----
 
-export async function listWorkEntries(organizationId: string, projectId: unknown) {
+export async function listWorkEntries(organizationId: string, projectId: string) {
   const projectExists = await timeTrackingRepository.selectProjectExistsForWorkEntry(organizationId, projectId)
   if (!projectExists) throw new HttpError(400, 'Project does not exist')
   const rows = await timeTrackingRepository.selectWorkEntries(projectId)
@@ -244,8 +236,8 @@ export async function listWorkEntries(organizationId: string, projectId: unknown
 
 export async function createWorkEntry(
   organizationId: string,
-  projectId: unknown,
-  employeeId: unknown,
+  projectId: string,
+  employeeId: string,
   workDate: string,
   startTime: string,
   endTime: string

@@ -1,22 +1,24 @@
 import type { Express } from 'express'
 import { allow, organizationIdOf, resolveEmployeeId } from '../../middleware/auth'
 import { Role, sendError } from '../../shared'
+import { validate } from '../../middleware/validate'
+import { cancelDayOffRequestBody, createDayOffRequestBody, dayOffListQuery, dayOffRequestIdParams } from './day-off-requests.schemas'
 import * as dayOffRequestsService from './day-off-requests.service'
 
 export function registerDayOffRoutes(app: Express) {
   // An employee gets only their own requests; an admin with no employee_id gets the whole organization's
-  app.get('/api/day-off-requests', allow(Role.Admin, Role.Employee), async (req, res) => {
-    const employeeId = resolveEmployeeId(req, req.query.employee_id)
+  app.get('/api/day-off-requests', allow(Role.Admin, Role.Employee), validate({ query: dayOffListQuery }), async (req, res) => {
+    const employeeId = resolveEmployeeId(req, req.query.employee_id) as string | null
     try {
-      res.json(await dayOffRequestsService.listDayOffRequests(organizationIdOf(req), typeof employeeId === 'string' ? employeeId : null))
+      res.json(await dayOffRequestsService.listDayOffRequests(organizationIdOf(req), employeeId))
     } catch {
       res.status(500).json({ error: 'Failed to fetch day-off requests' })
     }
   })
 
-  app.post('/api/day-off-requests', allow(Role.Admin, Role.Employee), async (req, res) => {
-    const employeeId = resolveEmployeeId(req, req.body.employee_id)
-    if (typeof employeeId !== 'string' || !employeeId) {
+  app.post('/api/day-off-requests', allow(Role.Admin, Role.Employee), validate({ body: createDayOffRequestBody }), async (req, res) => {
+    const employeeId = resolveEmployeeId(req, req.body.employee_id) as string | null
+    if (!employeeId) {
       return res.status(400).json({ error: 'employee_id is required' })
     }
     try {
@@ -33,20 +35,25 @@ export function registerDayOffRoutes(app: Express) {
     }
   })
 
-  app.post('/api/day-off-requests/cancel', allow(Role.Admin, Role.Employee), async (req, res) => {
-    const employeeId = resolveEmployeeId(req, req.body.employee_id)
-    if (typeof employeeId !== 'string' || !employeeId) {
-      return res.status(400).json({ error: 'employee_id is required' })
+  app.post(
+    '/api/day-off-requests/cancel',
+    allow(Role.Admin, Role.Employee),
+    validate({ body: cancelDayOffRequestBody }),
+    async (req, res) => {
+      const employeeId = resolveEmployeeId(req, req.body.employee_id) as string | null
+      if (!employeeId) {
+        return res.status(400).json({ error: 'employee_id is required' })
+      }
+      try {
+        await dayOffRequestsService.cancelDayOffRequest(organizationIdOf(req), employeeId, req.body.id)
+        res.json({ ok: true })
+      } catch (err) {
+        sendError(res, err, 'Failed to cancel the request')
+      }
     }
-    try {
-      await dayOffRequestsService.cancelDayOffRequest(organizationIdOf(req), employeeId, req.body.id)
-      res.json({ ok: true })
-    } catch (err) {
-      sendError(res, err, 'Failed to cancel the request')
-    }
-  })
+  )
 
-  app.post('/api/day-off-requests/:id/approve', allow(Role.Admin), async (req, res) => {
+  app.post('/api/day-off-requests/:id/approve', allow(Role.Admin), validate({ params: dayOffRequestIdParams }), async (req, res) => {
     try {
       await dayOffRequestsService.reviewDayOffRequest(organizationIdOf(req), req.params.id, 'approved', req.user!.id)
       res.json({ ok: true })
@@ -55,7 +62,7 @@ export function registerDayOffRoutes(app: Express) {
     }
   })
 
-  app.post('/api/day-off-requests/:id/reject', allow(Role.Admin), async (req, res) => {
+  app.post('/api/day-off-requests/:id/reject', allow(Role.Admin), validate({ params: dayOffRequestIdParams }), async (req, res) => {
     try {
       await dayOffRequestsService.reviewDayOffRequest(organizationIdOf(req), req.params.id, 'rejected', req.user!.id)
       res.json({ ok: true })

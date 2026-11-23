@@ -1,13 +1,9 @@
-import type { Express, Request } from 'express'
+import type { Express } from 'express'
 import { allow, organizationIdOf } from '../../middleware/auth'
 import { HttpError, Role, sendError } from '../../shared'
+import { validate } from '../../middleware/validate'
+import { createEstimateBody, estimateIdParams, reuseTextQuery, updateEstimateBody } from './estimates.schemas'
 import * as estimatesService from './estimates.service'
-
-function requireId(req: Request) {
-  const id = req.params.estimateId
-  if (!/^\d+$/.test(id)) throw new HttpError(404, 'Estimate not found')
-  return id
-}
 
 export function registerEstimateRoutes(app: Express) {
   app.get('/api/estimates', allow(Role.Admin), async (req, res) => {
@@ -30,19 +26,18 @@ export function registerEstimateRoutes(app: Express) {
 
   // Previous text typed into this section across past estimates, for the editor's "Reuse previous text" picker.
   // Must come before /api/estimates/:estimateId. Deduplicated and grouped in SQL so identical wording collapses to one row.
-  app.get('/api/estimates/reuse-text', allow(Role.Admin), async (req, res) => {
+  app.get('/api/estimates/reuse-text', allow(Role.Admin), validate({ query: reuseTextQuery }), async (req, res) => {
     try {
-      const field = typeof req.query.field === 'string' ? req.query.field : ''
-      const search = typeof req.query.q === 'string' ? req.query.q.trim() : ''
-      res.json(await estimatesService.listReuseText(organizationIdOf(req), field, search))
+      const { field, q } = req.query as unknown as { field: string | null; q: string | null }
+      res.json(await estimatesService.listReuseText(organizationIdOf(req), field ?? '', q ?? ''))
     } catch (err) {
       sendError(res, err, 'Failed to load previous text')
     }
   })
 
-  app.get('/api/estimates/:estimateId', allow(Role.Admin), async (req, res) => {
+  app.get('/api/estimates/:estimateId', allow(Role.Admin), validate({ params: estimateIdParams }), async (req, res) => {
     try {
-      const estimate = await estimatesService.loadEstimate(organizationIdOf(req), requireId(req))
+      const estimate = await estimatesService.loadEstimate(organizationIdOf(req), req.params.estimateId)
       if (!estimate) throw new HttpError(404, 'Estimate not found')
       res.json(estimate)
     } catch (err) {
@@ -50,19 +45,17 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.post('/api/estimates', allow(Role.Admin), async (req, res) => {
+  app.post('/api/estimates', allow(Role.Admin), validate({ body: createEstimateBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const body = { ...req.body }
-      const autoNumber = typeof body.estimate_number !== 'string' || !body.estimate_number.trim()
-      // Only a placeholder for parseHeader's "estimate_number is required" check below - when autoNumber
-      // is true, createEstimate throws this away and computes the real number itself, under a lock, right
-      // before the insert (a number computed here, outside that lock, could be taken by the time we get there).
-      if (autoNumber) body.estimate_number = await estimatesService.nextEstimateNumber(organizationId)
-      const header = estimatesService.parseHeader(body)
-      const items = estimatesService.parseItems(req.body.items, header.pricing_method as string)
+      // No estimate_number typed in: the create form pre-fills a suggestion and the admin just accepts it,
+      // but the real number is only finalized inside createEstimate, under a lock, right before the insert.
+      const autoNumber = req.body.estimate_number === null
+      const estimate_number = autoNumber ? await estimatesService.nextEstimateNumber(organizationId) : (req.body.estimate_number as string)
+      const header = { ...req.body, estimate_number }
+      const items = estimatesService.finalizeItems(req.body.items, header.pricing_method)
       if (header.status === 'approved') throw new HttpError(400, 'Use the approve action to approve an estimate')
-      estimatesService.computeTotals(items, header.discount_type as string, header.discount_value as number, header.pricing_method as string, header.lump_sum_fee as number)
+      estimatesService.computeTotals(items, header.discount_type, header.discount_value, header.pricing_method, header.lump_sum_fee)
 
       const id = await estimatesService.createEstimate(organizationId, header, items, autoNumber)
       res.status(201).json(await estimatesService.loadEstimate(organizationId, id))
@@ -71,13 +64,13 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.put('/api/estimates/:estimateId', allow(Role.Admin), async (req, res) => {
+  app.put('/api/estimates/:estimateId', allow(Role.Admin), validate({ params: estimateIdParams, body: updateEstimateBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const id = requireId(req)
-      const header = estimatesService.parseHeader(req.body)
-      const items = estimatesService.parseItems(req.body.items, header.pricing_method as string)
-      estimatesService.computeTotals(items, header.discount_type as string, header.discount_value as number, header.pricing_method as string, header.lump_sum_fee as number)
+      const id = req.params.estimateId
+      const header = { ...req.body, estimate_number: req.body.estimate_number as string }
+      const items = estimatesService.finalizeItems(header.items, header.pricing_method)
+      estimatesService.computeTotals(items, header.discount_type, header.discount_value, header.pricing_method, header.lump_sum_fee)
 
       await estimatesService.updateEstimateById(organizationId, id, header, items)
       res.json(await estimatesService.loadEstimate(organizationId, id))
@@ -86,10 +79,10 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.post('/api/estimates/:estimateId/approve', allow(Role.Admin), async (req, res) => {
+  app.post('/api/estimates/:estimateId/approve', allow(Role.Admin), validate({ params: estimateIdParams }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const id = requireId(req)
+      const id = req.params.estimateId
       const result = await estimatesService.approveEstimate(organizationId, id)
       res.status(result.created ? 201 : 200).json({ ...(await estimatesService.loadEstimate(organizationId, id)), already_approved: !result.created })
     } catch (err) {
@@ -97,10 +90,10 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.post('/api/estimates/:estimateId/duplicate', allow(Role.Admin), async (req, res) => {
+  app.post('/api/estimates/:estimateId/duplicate', allow(Role.Admin), validate({ params: estimateIdParams }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const id = requireId(req)
+      const id = req.params.estimateId
       const newId = await estimatesService.duplicateEstimate(organizationId, id)
       res.status(201).json(await estimatesService.loadEstimate(organizationId, newId))
     } catch (err) {
@@ -108,10 +101,10 @@ export function registerEstimateRoutes(app: Express) {
     }
   })
 
-  app.delete('/api/estimates/:estimateId', allow(Role.Admin), async (req, res) => {
+  app.delete('/api/estimates/:estimateId', allow(Role.Admin), validate({ params: estimateIdParams }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      const id = requireId(req)
+      const id = req.params.estimateId
       await estimatesService.deleteEstimate(organizationId, id)
       res.json({ ok: true })
     } catch (err) {

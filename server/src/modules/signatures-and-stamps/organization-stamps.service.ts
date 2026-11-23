@@ -1,14 +1,10 @@
+import type { z } from 'zod'
 import { lockForNumbering, withTransaction } from '../../db'
-import { HttpError } from '../../shared'
-import { parseImageUpload } from './image-upload'
+import type { imageUploadBody } from './image-upload.schemas'
 import * as stampsRepository from './organization-stamps.repository'
 import type { StampKind } from './organization-stamps.repository'
 
 const KINDS: StampKind[] = ['paid_stamp', 'company_stamp']
-
-function isStampKind(value: string): value is StampKind {
-  return KINDS.includes(value as StampKind)
-}
 
 export async function listStamps(organizationId: string) {
   const rows = await stampsRepository.selectStamps(organizationId)
@@ -22,10 +18,8 @@ export async function listStamps(organizationId: string) {
   })
 }
 
-export async function saveStamp(organizationId: string, kind: string, body: Record<string, unknown>, updatedBy: string) {
-  if (!isStampKind(kind)) throw new HttpError(400, 'kind must be "paid_stamp" or "company_stamp"')
-  const { mimeType, image } = parseImageUpload(body)
-
+export async function saveStamp(organizationId: string, kind: StampKind, upload: z.infer<typeof imageUploadBody>, updatedBy: string) {
+  const { mimeType, image } = upload
   await withTransaction(async (client) => {
     // Serializes "check if a row exists, then update or insert" per (org, kind) - closes the race two
     // concurrent uploads of the same stamp could otherwise hit. Same pattern as receipt numbering.

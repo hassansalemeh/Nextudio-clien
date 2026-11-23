@@ -29,6 +29,20 @@ export async function rejectPendingWorkEntry(organizationId: string, id: string)
   return result.rowCount ?? 0
 }
 
+// A quick, non-locking existence + status check, for callers that need to answer 404/400 before they've
+// even looked at anything else (e.g. a request body) - selectWorkEntryForApproval's FOR UPDATE lock is for
+// the real approval transaction only.
+export async function selectWorkEntryStatus(organizationId: string, id: string) {
+  const result = await pool.query(
+    `SELECT time_entries.status
+     FROM time_entries
+     JOIN employees ON employees.id = time_entries.employee_id AND employees.organization_id = $2
+     WHERE time_entries.id = $1`,
+    [id, organizationId]
+  )
+  return result.rows[0] ?? null
+}
+
 export async function selectWorkEntryForApproval(client: PoolClient, organizationId: string, id: string) {
   const result = await client.query(
     `SELECT time_entries.id, time_entries.employee_id, time_entries.project_id, time_entries.started_at,

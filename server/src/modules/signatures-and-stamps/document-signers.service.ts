@@ -1,5 +1,6 @@
+import type { z } from 'zod'
 import { HttpError } from '../../shared'
-import { parseImageUpload } from './image-upload'
+import type { imageUploadBody } from './image-upload.schemas'
 import * as signersRepository from './document-signers.repository'
 
 function toSignerDto(row: signersRepository.DocumentSignerRow) {
@@ -17,15 +18,7 @@ export async function listSigners(organizationId: string) {
   return rows.map(toSignerDto)
 }
 
-function parseDisplayName(body: Record<string, unknown>): string {
-  const name = typeof body.display_name === 'string' ? body.display_name.trim() : ''
-  if (!name) throw new HttpError(400, "The signer's name is required")
-  if (name.length > 100) throw new HttpError(400, 'The name is too long (100 characters at most)')
-  return name
-}
-
-export async function createSigner(organizationId: string, body: Record<string, unknown>) {
-  const displayName = parseDisplayName(body)
+export async function createSigner(organizationId: string, displayName: string) {
   if (await signersRepository.selectNameTaken(organizationId, displayName, null)) {
     throw new HttpError(400, 'A signer with that name already exists')
   }
@@ -34,9 +27,7 @@ export async function createSigner(organizationId: string, body: Record<string, 
 
 // Renaming or deactivating a signer never touches any receipt already issued under their name - that
 // name was snapshotted onto the receipt at the time (receipts.issued_by_admin / received_by_admin).
-export async function updateSigner(organizationId: string, id: string, body: Record<string, unknown>) {
-  const displayName = parseDisplayName(body)
-  const isActive = body.is_active !== false
+export async function updateSigner(organizationId: string, id: string, displayName: string, isActive: boolean) {
   if (await signersRepository.selectNameTaken(organizationId, displayName, id)) {
     throw new HttpError(400, 'A signer with that name already exists')
   }
@@ -44,9 +35,8 @@ export async function updateSigner(organizationId: string, id: string, body: Rec
   if (!updated) throw new HttpError(404, 'Signer not found')
 }
 
-export async function updateSignerImage(organizationId: string, id: string, body: Record<string, unknown>, updatedBy: string) {
-  const { mimeType, image } = parseImageUpload(body)
-  const updated = await signersRepository.updateSignerImage(organizationId, id, mimeType, image, updatedBy)
+export async function updateSignerImage(organizationId: string, id: string, upload: z.infer<typeof imageUploadBody>, updatedBy: string) {
+  const updated = await signersRepository.updateSignerImage(organizationId, id, upload.mimeType, upload.image, updatedBy)
   if (!updated) throw new HttpError(404, 'Signer not found')
 }
 

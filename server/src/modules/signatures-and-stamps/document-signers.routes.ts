@@ -1,13 +1,10 @@
-import type { Express, Request } from 'express'
+import type { Express } from 'express'
 import { allow, organizationIdOf } from '../../middleware/auth'
-import { HttpError, Role, sendError } from '../../shared'
+import { Role, sendError } from '../../shared'
+import { validate } from '../../middleware/validate'
+import { createSignerBody, signerIdParams, updateSignerBody } from './document-signers.schemas'
+import { imageUploadBody } from './image-upload.schemas'
 import { createSigner, listSigners, updateSigner, updateSignerImage } from './document-signers.service'
-
-function requireId(req: Request) {
-  const id = req.params.signerId
-  if (!/^\d+$/.test(id)) throw new HttpError(404, 'Signer not found')
-  return id
-}
 
 // Admin-only.
 export function registerDocumentSignerRoutes(app: Express) {
@@ -19,33 +16,38 @@ export function registerDocumentSignerRoutes(app: Express) {
     }
   })
 
-  app.post('/api/document-signers', allow(Role.Admin), async (req, res) => {
+  app.post('/api/document-signers', allow(Role.Admin), validate({ body: createSignerBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      await createSigner(organizationId, req.body)
+      await createSigner(organizationId, req.body.display_name)
       res.status(201).json(await listSigners(organizationId))
     } catch (err) {
       sendError(res, err, 'Failed to add the signer', 'A signer with that name already exists')
     }
   })
 
-  app.put('/api/document-signers/:signerId', allow(Role.Admin), async (req, res) => {
+  app.put('/api/document-signers/:signerId', allow(Role.Admin), validate({ params: signerIdParams, body: updateSignerBody }), async (req, res) => {
     try {
       const organizationId = organizationIdOf(req)
-      await updateSigner(organizationId, requireId(req), req.body)
+      await updateSigner(organizationId, req.params.signerId, req.body.display_name, req.body.is_active)
       res.json(await listSigners(organizationId))
     } catch (err) {
       sendError(res, err, 'Failed to update the signer', 'A signer with that name already exists')
     }
   })
 
-  app.put('/api/document-signers/:signerId/image', allow(Role.Admin), async (req, res) => {
-    try {
-      const organizationId = organizationIdOf(req)
-      await updateSignerImage(organizationId, requireId(req), req.body, req.user!.id)
-      res.json(await listSigners(organizationId))
-    } catch (err) {
-      sendError(res, err, 'Failed to save the signature image')
+  app.put(
+    '/api/document-signers/:signerId/image',
+    allow(Role.Admin),
+    validate({ params: signerIdParams, body: imageUploadBody }),
+    async (req, res) => {
+      try {
+        const organizationId = organizationIdOf(req)
+        await updateSignerImage(organizationId, req.params.signerId, req.body, req.user!.id)
+        res.json(await listSigners(organizationId))
+      } catch (err) {
+        sendError(res, err, 'Failed to save the signature image')
+      }
     }
-  })
+  )
 }
