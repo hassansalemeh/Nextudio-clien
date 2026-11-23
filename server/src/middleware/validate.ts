@@ -5,8 +5,14 @@ type Schemas = { body?: ZodType; params?: ZodType; query?: ZodType }
 
 // Reports the first problem found, as one clear sentence - not an exhaustive list, since the client only
 // acts on one message at a time and every field's schema below already carries its own specific wording.
-function firstMessage(error: { issues: Array<{ message: string }> }): string {
-  return error.issues[0]?.message ?? 'Invalid request'
+// When the problem is inside an array of objects (e.g. an estimate's line items), the message is prefixed
+// with which row it is - "Item 3: ..." - since the field's own message has no way to say that by itself.
+function firstMessage(error: { issues: Array<{ message: string; path: PropertyKey[] }> }): string {
+  const issue = error.issues[0]
+  if (!issue) return 'Invalid request'
+  const arrayIndex = issue.path.findIndex((segment) => typeof segment === 'number')
+  if (arrayIndex !== -1) return `Item ${(issue.path[arrayIndex] as number) + 1}: ${issue.message}`
+  return issue.message
 }
 
 // Validates req.body / req.params / req.query against the given schemas and REPLACES each with the parsed,
