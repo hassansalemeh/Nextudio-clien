@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth'
+import { Role } from '../shared/lib/role'
 import { LogoutIcon, MenuIcon, CloseIcon } from '../shared/components/icons'
 import ClientFundsInvoiceEditorPage from '../features/invoices/pages/ClientFundsInvoiceEditorPage'
 import ClientsPage from '../features/clients/pages/ClientsPage'
@@ -77,7 +78,7 @@ function App() {
     )
   }
 
-  const isEmployee = user.role === 'employee'
+  const isEmployee = user.role === Role.Employee
   const navCounts: Record<string, number | null> = { '/pending-work': pendingCount, '/day-off-requests': dayOffPendingCount }
   const sections = isEmployee
     ? [{ title: 'My work', links: [
