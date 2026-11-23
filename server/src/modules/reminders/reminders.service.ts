@@ -1,8 +1,6 @@
-import { describeError, HttpError, isWeekend, nowTimeInCompanyTimezone, sendMail, todayInCompanyTimezone } from '../../shared'
+import { describeError, isWeekend, nowTimeInCompanyTimezone, sendMail, todayInCompanyTimezone } from '../../shared'
 import { reminderEmailHtml, reminderEmailText } from './reminders.email'
 import * as remindersRepository from './reminders.repository'
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 // HH:MM, 24h, Asia/Beirut time - the window the reminder is allowed to send in. If the server is down for
 // the whole window, that day is marked "missed" instead of sending a late reminder once it comes back.
@@ -133,13 +131,9 @@ export async function previewReminders(organizationId: string): Promise<ManualRe
 // Sends exactly one real reminder email, to the given test address only - never to an employee's
 // contact_email. Still returns the same breakdown as a preview, so the admin can see who the real send
 // would have reached.
-export async function sendTestReminder(organizationId: string, testEmail: unknown): Promise<ManualReminderResult> {
-  if (typeof testEmail !== 'string' || !EMAIL_RE.test(testEmail.trim())) {
-    throw new HttpError(400, 'Enter a valid test email address')
-  }
-  const address = testEmail.trim()
+export async function sendTestReminder(organizationId: string, testEmail: string): Promise<ManualReminderResult> {
   const date = todayInCompanyTimezone()
   const outcome = await computeReminderOutcome(organizationId, date)
-  await sendReminderEmail('there', address)
-  return { date, ...outcome, sentTo: address }
+  await sendReminderEmail('there', testEmail)
+  return { date, ...outcome, sentTo: testEmail }
 }

@@ -1,7 +1,9 @@
 import type { Express } from 'express'
 import { allow, authenticate } from '../../middleware/auth'
 import { tooMany } from '../../middleware/security'
+import { validate } from '../../middleware/validate'
 import { describeError, Role } from '../../shared'
+import { loginBody } from './auth.schemas'
 import * as authRepository from './auth.repository'
 import {
   cookieOptions,
@@ -20,12 +22,8 @@ import {
 // Registers /api/auth/* only. The global authenticate + enforceRole gate for every other /api route is
 // applied directly in app.ts, right after this call, so the registration order stays exactly as before.
 export function registerAuthRoutes(app: Express) {
-  app.post('/api/auth/login', async (req, res) => {
-    const email = typeof req.body.email === 'string' ? req.body.email.trim() : ''
-    const password = typeof req.body.password === 'string' ? req.body.password : ''
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' })
-    }
+  app.post('/api/auth/login', validate({ body: loginBody }), async (req, res) => {
+    const { email, password } = req.body
 
     // throttle guessing: per address, and per email address after repeated failures
     const emailKey = email.toLowerCase()
