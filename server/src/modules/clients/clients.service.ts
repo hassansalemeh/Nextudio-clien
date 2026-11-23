@@ -1,26 +1,10 @@
 import type { PoolClient } from 'pg'
 import { HttpError } from '../../shared'
+import type { z } from 'zod'
+import type { clientBody } from './clients.schemas'
 import * as clientsRepository from './clients.repository'
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-export type ClientInput = { name: string; contact_name: string | null; email: string | null; phone: string | null; address: string | null }
-
-export function parseClientInput(body: Record<string, unknown>): ClientInput {
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
-  const contact_name = typeof body.contact_name === 'string' ? body.contact_name.trim() : null
-  const email = typeof body.email === 'string' ? body.email.trim() : null
-  const phone = typeof body.phone === 'string' ? body.phone.trim() : null
-  const address = typeof body.address === 'string' ? body.address.trim() : null
-
-  if (!name) {
-    throw new HttpError(400, 'Client name is required')
-  }
-  if (email && !EMAIL_RE.test(email)) {
-    throw new HttpError(400, 'Enter a valid email address')
-  }
-  return { name, contact_name, email, phone, address }
-}
+export type ClientInput = z.infer<typeof clientBody>
 
 export async function listClients(organizationId: string) {
   return clientsRepository.selectClients(organizationId)

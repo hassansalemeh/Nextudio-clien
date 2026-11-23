@@ -1,7 +1,9 @@
 import type { Express } from 'express'
 import { allow, organizationIdOf } from '../../middleware/auth'
-import { HttpError, Role } from '../../shared'
-import { createEmployee, listEmployees, parseCreateEmployeeInput, parseUpdateEmployeeInput, updateEmployee } from './employees.service'
+import { Role } from '../../shared'
+import { createEmployee, listEmployees, updateEmployee } from './employees.service'
+import { createEmployeeBody, employeeIdParams, updateEmployeeBody } from './employees.schemas'
+import { validate } from '../../middleware/validate'
 
 export function registerEmployeeRoutes(app: Express) {
   app.get('/api/employees', allow(Role.Admin), async (req, res) => {
@@ -12,40 +14,28 @@ export function registerEmployeeRoutes(app: Express) {
     }
   })
 
-  app.post('/api/employees', allow(Role.Admin), async (req, res) => {
-    let input
+  app.post('/api/employees', allow(Role.Admin), validate({ body: createEmployeeBody }), async (req, res) => {
     try {
-      input = parseCreateEmployeeInput(req.body)
-    } catch (err) {
-      if (err instanceof HttpError) return res.status(err.status).json({ error: err.message })
-      throw err
-    }
-
-    try {
-      res.status(201).json(await createEmployee(organizationIdOf(req), input))
+      res.status(201).json(await createEmployee(organizationIdOf(req), req.body))
     } catch {
       res.status(500).json({ error: 'Failed to create employee' })
     }
   })
 
-  app.put('/api/employees/:employeeId', allow(Role.Admin), async (req, res) => {
-    const { employeeId } = req.params
-    let input
-    try {
-      input = parseUpdateEmployeeInput(req.body)
-    } catch (err) {
-      if (err instanceof HttpError) return res.status(err.status).json({ error: err.message })
-      throw err
-    }
-
-    try {
-      const employee = await updateEmployee(organizationIdOf(req), employeeId, input)
-      if (!employee) {
-        return res.status(404).json({ error: 'Employee not found' })
+  app.put(
+    '/api/employees/:employeeId',
+    allow(Role.Admin),
+    validate({ params: employeeIdParams, body: updateEmployeeBody }),
+    async (req, res) => {
+      try {
+        const employee = await updateEmployee(organizationIdOf(req), req.params.employeeId, req.body)
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' })
+        }
+        res.json(employee)
+      } catch {
+        res.status(500).json({ error: 'Failed to update employee' })
       }
-      res.json(employee)
-    } catch {
-      res.status(500).json({ error: 'Failed to update employee' })
     }
-  })
+  )
 }

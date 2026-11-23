@@ -22,7 +22,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "pg": "^8.23.0",
-    "playwright-core": "^1.63.0"
+    "playwright-core": "^1.63.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
