@@ -13,6 +13,14 @@ export async function rejectPendingWorkEntry(organizationId: string, id: string)
   }
 }
 
+// A quick pre-check so a route can answer 404/400 before it even looks at the request body - the real,
+// authoritative check (with its row lock) still happens again inside approvePendingWorkEntry's transaction.
+export async function requirePendingWorkEntry(organizationId: string, id: string) {
+  const entry = await pendingWorkRepository.selectWorkEntryStatus(organizationId, id)
+  if (!entry) throw new HttpError(404, 'Work entry not found')
+  if (entry.status !== 'pending') throw new HttpError(400, 'This request was already reviewed')
+}
+
 // Approves a pending entry and, unless the employee is already assigned to the project on that date,
 // creates the matching work assignment in the same transaction - never an approved entry with no assignment.
 export async function approvePendingWorkEntry(

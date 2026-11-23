@@ -99,6 +99,11 @@ const NO_BODY_ROUTES = new Set([
 // on these like everywhere else.
 const EMPTY_BODY_MAY_BE_VALID_ROUTES = new Set(['PUT /api/invoices/:invoiceId/contract', 'POST /api/pending-work-entries/:id/approve'])
 
+// This route checks "is this entry still pending" before the body is even looked at (see
+// pending-work.routes.ts), and seeding a real pending entry needs a whole employee + clock-in + manual-entry
+// flow that is out of scope for this sweep - so it always 404s here, on both bodies, same as on an empty one.
+const KITCHEN_SINK_MAY_404_ROUTES = new Set(['POST /api/pending-work-entries/:id/approve'])
+
 // Every common field name across every module's schema, each given a value that should fail that field's
 // validation no matter which module reads it: a wrong type, a bogus id, a bad date, or a very long string.
 // Any field name a given route's schema doesn't declare is simply dropped by validate() ("unknown fields
@@ -288,21 +293,92 @@ async function main() {
     const login = await client.login(ADMIN_EMAIL, ADMIN_PASSWORD)
     record('admin logs in', login.status === 200, `status=${login.status}`)
 
+    // ---- seed one real record of each kind, through the real (now-validated) API, so the routes that check
+    // "does this id belong to this company" BEFORE looking at the body (send-email, disbursements - see their
+    // *.routes.ts) can actually be reached far enough to exercise their body validation, instead of always
+    // 404ing on a made-up id first. A plain "1" is still used for every other :id-shaped path segment.
+    const today = new Date().toISOString().slice(0, 10)
+    const clientRes = await client.call('POST', '/api/clients', { name: 'Validation Test Client' })
+    const seededClientId = clientRes.json?.id
+    const projectRes = await client.call('POST', '/api/projects', {
+      client_id: seededClientId,
+      name: 'Validation Test Project',
+      status: 'in_progress',
+      fee_status: 'pending',
+    })
+    const seededProjectId = projectRes.json?.id
+    const estimateRes = await client.call('POST', '/api/estimates', {
+      client_id: seededClientId,
+      estimate_date: today,
+      items: [{ name: 'Design', quantity: 1, unit: 'ls', unit_price: 100 }],
+    })
+    const seededEstimateId = estimateRes.json?.id
+    await client.call('POST', `/api/estimates/${seededEstimateId}/approve`, {})
+    const invoicesList = (await client.call('GET', '/api/invoices')).json ?? []
+    const seededProfessionalInvoiceId = invoicesList.find((i) => i.invoice_type === 'professional_services')?.id
+    const clientFundsInvoiceRes = await client.call('POST', '/api/invoices', {
+      invoice_type: 'client_funds',
+      client_id: seededClientId,
+      project_id: seededProjectId,
+      invoice_date: today,
+      items: [{ name: 'Materials', quantity: 1, unit: 'ls', unit_price: 50 }],
+    })
+    const seededClientFundsInvoiceId = clientFundsInvoiceRes.json?.id
+    const { ADMIN_SIGNERS } = require(path.join(SERVER_DIR, 'dist', 'config', 'config.js'))
+    const letterRes = await client.call('POST', '/api/letters', {
+      letter_date: today,
+      recipient_name: 'Validation Test Recipient',
+      subject: 'Validation Test Subject',
+      body: 'Validation test letter body.',
+      issued_by_admin: ADMIN_SIGNERS[0],
+    })
+    const seededLetterId = letterRes.json?.id
+    const signerRes = await client.call('POST', '/api/document-signers', { display_name: 'Validation Test Signer' })
+    const seededSignerId = signerRes.json?.find?.((s) => s.display_name === 'Validation Test Signer')?.id
+    const receiptRes = await client.call('POST', '/api/receipts', {
+      receipt_date: today,
+      project_id: seededProjectId,
+      receiver_name: 'Validation Test Payer',
+      amount: 25,
+      reason: 'Validation test receipt',
+      issued_by_signer_id: seededSignerId,
+      received_by_signer_id: seededSignerId,
+    })
+    const seededReceiptId = receiptRes.json?.id
+    record(
+      'seeded one real client/project/estimate(+approval)/invoice/letter/receipt through the API for the body-validation sweep below',
+      Boolean(seededClientId && seededProjectId && seededEstimateId && seededProfessionalInvoiceId && seededClientFundsInvoiceId && seededLetterId && seededReceiptId),
+      `client=${seededClientId} project=${seededProjectId} estimate=${seededEstimateId} proInvoice=${seededProfessionalInvoiceId} cfInvoice=${seededClientFundsInvoiceId} letter=${seededLetterId} receipt=${seededReceiptId}`
+    )
+
+    // A real id for the id-shaped path segments these specific routes need to get past their own
+    // "does this belong to this company" check before the body under test is even looked at.
+    const REAL_ID_BY_PARAM_FOR_ROUTE = {
+      'POST /api/estimates/:estimateId/send-email': { estimateId: seededEstimateId },
+      'POST /api/invoices/:invoiceId/send-email': { invoiceId: seededProfessionalInvoiceId },
+      'POST /api/letters/:letterId/send-email': { letterId: seededLetterId },
+      'POST /api/receipts/:receiptId/send-email': { receiptId: seededReceiptId },
+      'POST /api/invoices/:invoiceId/disbursements': { invoiceId: seededClientFundsInvoiceId },
+      'PUT /api/invoices/:invoiceId/contract': { invoiceId: seededProfessionalInvoiceId },
+    }
+
     const allRoutes = listApiRoutes(app)
     const routes = allRoutes
       .filter((r) => ['POST', 'PUT', 'PATCH'].includes(r.method))
       .filter((r) => !SKIP_ROUTES.has(`${r.method} ${r.path}`))
     record('every POST/PUT/PATCH /api route was discovered automatically from the running app', routes.length > 0, `found ${routes.length} routes`)
 
-    // Concrete, syntactically-plausible value for every path param ("1" for every :id-shaped segment) - the
-    // body is what's under test here, not the URL, so the exact value never matters.
-    function concretePath(routePath) {
-      return routePath.replace(/:[^/]+/g, '1')
+    // Concrete, syntactically-plausible value for every path param - a real seeded id where this route needs
+    // one to get past its own ownership check (see REAL_ID_BY_PARAM_FOR_ROUTE above), "1" everywhere else,
+    // since the body is what's under test and the exact value of any other param never matters.
+    function concretePath(routePath, key) {
+      const overrides = REAL_ID_BY_PARAM_FOR_ROUTE[key] ?? {}
+      return routePath.replace(/:([^/]+)/g, (_match, name) => String(overrides[name] ?? '1'))
     }
 
     for (const route of routes) {
       const key = `${route.method} ${route.path}`
-      const url = concretePath(route.path)
+      const url = concretePath(route.path, key)
       const noBody = NO_BODY_ROUTES.has(key)
       const emptyMayBeValid = EMPTY_BODY_MAY_BE_VALID_ROUTES.has(key)
 
@@ -318,6 +394,8 @@ async function main() {
       const sinkRes = await client.call(route.method, url, KITCHEN_SINK_BODY)
       if (noBody) {
         record(`${key} never answers a body with 500 (it reads no body at all), take 2`, sinkRes.status !== 500, `status=${sinkRes.status}`)
+      } else if (KITCHEN_SINK_MAY_404_ROUTES.has(key)) {
+        record(`${key} never 500s on a garbage body (no seeded resource to validate it against)`, sinkRes.status !== 500, `status=${sinkRes.status}`)
       } else {
         record(
           `${key} rejects wrong types/bogus ids/bad dates/overlong strings with 400, never 500`,

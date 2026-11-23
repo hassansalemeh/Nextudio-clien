@@ -23,14 +23,13 @@ const invoiceItemSchema = z.object({
 
 const invoiceItemsField = z.array(invoiceItemSchema).max(MAX_ITEMS, `An invoice can have at most ${MAX_ITEMS} items`).optional().default([])
 
-// invoice_number is optional here: a POST with none asks the caller for an auto-generated one (see
-// invoices.routes), so "required" for that case is enforced where the auto-number decision is made.
-// PUT (update) requires one explicitly - see updateClientFundsInvoiceBody.
-const clientFundsHeaderShape = z
+// invoice_number is optional here on purpose for both create AND update - unlike estimate_number/letter_number/
+// receipt_number elsewhere, the original parseClientFundsHeader never required it on update either (a PUT that
+// omits it just keeps the invoice's own stored number via the route, see updateClientFundsInvoiceBody below).
+// A POST with none asks the caller for an auto-generated one (see invoices.routes). invoice_type is likewise
+// only required on create (see createClientFundsInvoiceBody) - the original code never checked it on update.
+export const clientFundsHeaderShape = z
   .object({
-    invoice_type: z.literal('client_funds', {
-      error: 'Only a Client Funds invoice can be created directly; approve an estimate for a Professional Services invoice',
-    }),
     invoice_number: optionalText('Invoice number', { max: 100 }),
     client_id: idString('client_id'),
     project_id: idString('project_id'),
@@ -59,12 +58,13 @@ const clientFundsHeaderShape = z
     items: invoiceItemsField,
   })
 
-export const createClientFundsInvoiceBody = clientFundsHeaderShape
-
-export const updateClientFundsInvoiceBody = clientFundsHeaderShape.refine((data) => data.invoice_number !== null, {
-  message: 'Invoice number is required',
-  path: ['invoice_number'],
+export const createClientFundsInvoiceBody = clientFundsHeaderShape.extend({
+  invoice_type: z.literal('client_funds', {
+    error: 'Only a Client Funds invoice can be created directly; approve an estimate for a Professional Services invoice',
+  }),
 })
+
+export const updateClientFundsInvoiceBody = clientFundsHeaderShape
 
 export const updateInvoiceContractBody = z.object({
   contract_terms: optionalLongText('Contract terms'),

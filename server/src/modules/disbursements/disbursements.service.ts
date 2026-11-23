@@ -5,7 +5,7 @@ import * as disbursementsRepository from './disbursements.repository'
 
 type DisbursementInput = z.infer<typeof disbursementBody>
 
-async function requireClientFundsInvoice(organizationId: string, invoiceId: string) {
+export async function requireClientFundsInvoice(organizationId: string, invoiceId: string) {
   const row = await disbursementsRepository.selectInvoiceTypeById(organizationId, invoiceId)
   if (!row) throw new HttpError(404, 'Invoice not found')
   if (row.invoice_type !== 'client_funds') {

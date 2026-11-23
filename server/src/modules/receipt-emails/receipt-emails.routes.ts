@@ -4,6 +4,7 @@ import { Role, sendError } from '../../shared'
 import { validate } from '../../middleware/validate'
 import { receiptIdParams, sendReceiptEmailBody } from './receipt-emails.schemas'
 import { listReceiptEmailHistory, sendReceiptEmail } from './receipt-emails.service'
+import { loadReceipt } from '../receipts/receipts.service'
 
 export function registerReceiptEmailRoutes(app: Express) {
   app.get('/api/receipts/:receiptId/emails', allow(Role.Admin), validate({ params: receiptIdParams }), async (req, res) => {
@@ -17,7 +18,15 @@ export function registerReceiptEmailRoutes(app: Express) {
   app.post(
     '/api/receipts/:receiptId/send-email',
     allow(Role.Admin),
-    validate({ params: receiptIdParams, body: sendReceiptEmailBody }),
+    validate({ params: receiptIdParams }),
+    // The receipt must belong to this company before the body is even looked at - an id that doesn't
+    // (wrong company, or just made up) always answers 404, whatever the body contains.
+    async (req, res, next) => {
+      const receipt = await loadReceipt(organizationIdOf(req), req.params.receiptId)
+      if (!receipt) return res.status(404).json({ error: 'Receipt not found' })
+      next()
+    },
+    validate({ body: sendReceiptEmailBody }),
     async (req, res) => {
       try {
         const result = await sendReceiptEmail(organizationIdOf(req), req.params.receiptId, req.body, req.user!.id, req.user!.email)

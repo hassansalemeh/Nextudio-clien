@@ -3,7 +3,7 @@ import { allow, organizationIdOf } from '../../middleware/auth'
 import { Role, sendError } from '../../shared'
 import { validate } from '../../middleware/validate'
 import { disbursementBody, disbursementInvoiceIdParams, disbursementParams } from './disbursements.schemas'
-import { createDisbursement, deleteDisbursementById, listDisbursements } from './disbursements.service'
+import { createDisbursement, deleteDisbursementById, listDisbursements, requireClientFundsInvoice } from './disbursements.service'
 
 export function registerDisbursementRoutes(app: Express) {
   app.get(
@@ -22,7 +22,18 @@ export function registerDisbursementRoutes(app: Express) {
   app.post(
     '/api/invoices/:invoiceId/disbursements',
     allow(Role.Admin),
-    validate({ params: disbursementInvoiceIdParams, body: disbursementBody }),
+    validate({ params: disbursementInvoiceIdParams }),
+    // The invoice must belong to this company (and be a Client Funds invoice) before the body is even
+    // looked at - an id that doesn't always answers 404/400, whatever the body contains.
+    async (req, res, next) => {
+      try {
+        await requireClientFundsInvoice(organizationIdOf(req), req.params.invoiceId)
+        next()
+      } catch (err) {
+        sendError(res, err, 'Failed to record the disbursement')
+      }
+    },
+    validate({ body: disbursementBody }),
     async (req, res) => {
       try {
         const userId = req.user!.id

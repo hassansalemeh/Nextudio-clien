@@ -7,7 +7,7 @@ import { loadClientSnapshot } from '../clients/clients.service'
 import type { ClientSnapshot } from '../clients/clients.service'
 import { computeTotals } from '../estimates/estimates.service'
 import type { ItemInput } from '../estimates/estimates.service'
-import type { createClientFundsInvoiceBody, updateInvoiceContractBody } from './invoices.schemas'
+import type { clientFundsHeaderShape, updateInvoiceContractBody } from './invoices.schemas'
 import * as invoicesRepository from './invoices.repository'
 
 export function invoiceStatus(total: number, paid: number): 'unpaid' | 'partially_paid' | 'paid' {
@@ -37,7 +37,7 @@ export async function loadInvoice(organizationId: string, invoiceId: string | nu
 
 // ---- Client Funds invoices: created directly (no estimate behind them), unlike professional invoices ----
 
-type ClientFundsHeader = Omit<z.infer<typeof createClientFundsInvoiceBody>, 'invoice_number'> & { invoice_number: string }
+type ClientFundsHeader = Omit<z.infer<typeof clientFundsHeaderShape>, 'invoice_number'> & { invoice_number: string }
 
 // The project must exist and belong to the chosen client (and to this company); its own location is used when none was typed in
 async function loadClientFundsProject(db: { query: PoolClient['query'] }, organizationId: string, clientId: string, projectId: string) {
@@ -90,7 +90,7 @@ async function requireClientFundsInvoice(client: PoolClient, organizationId: str
 
 // Creates a Client Funds invoice directly. Professional invoices are only ever created by approving an
 // estimate (see the estimates module) - this refuses that type on purpose (see createClientFundsInvoiceBody).
-export async function createClientFundsInvoice(organizationId: string, body: z.infer<typeof createClientFundsInvoiceBody>) {
+export async function createClientFundsInvoice(organizationId: string, body: z.infer<typeof clientFundsHeaderShape>) {
   // true when the caller didn't type their own invoice_number (the create form pre-fills a suggestion
   // from nextClientFundsInvoiceNumber() and the admin usually just accepts it).
   const autoNumber = body.invoice_number === null

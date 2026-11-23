@@ -53,7 +53,10 @@ export function registerInvoiceRoutes(app: Express) {
       try {
         const organizationId = organizationIdOf(req)
         const id = req.params.invoiceId
-        await invoicesService.updateClientFundsInvoiceById(organizationId, id, { ...req.body, invoice_number: req.body.invoice_number as string })
+        // invoice_number is optional at the schema level (see invoices.schemas) - a PUT that omits it keeps
+        // the invoice unnumbered the same way the original code's parseClientFundsHeader did (it never
+        // required one on update either).
+        await invoicesService.updateClientFundsInvoiceById(organizationId, id, { ...req.body, invoice_number: req.body.invoice_number ?? '' })
         res.json(await invoicesService.loadInvoice(organizationId, id))
       } catch (err) {
         sendError(res, err, 'Failed to update the invoice', 'That invoice number is already used')
