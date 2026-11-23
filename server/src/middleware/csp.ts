@@ -37,7 +37,8 @@ export function createIndexHtmlHandler(publicDir: string) {
     const nonce = crypto.randomBytes(16).toString('base64') // 128 bits of randomness
     const html = template.replace(/<script\b/g, `<script nonce="${nonce}"`)
     res.setHeader('Content-Security-Policy', pageCsp(nonce))
-    res.setHeader('Cache-Control', 'no-cache')
+    // A page with a per-request nonce must never be cached and replayed with a stale nonce - no-store, not no-cache.
+    res.setHeader('Cache-Control', 'no-store')
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.send(html)
   }
