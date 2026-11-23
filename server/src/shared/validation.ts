@@ -131,6 +131,20 @@ export function optionalIsoDate(label = 'date') {
   return z.union([z.null(), isoDate(label)]).optional().default(null)
 }
 
+// A full timestamp (e.g. new Date().toISOString(), or anything else Date can parse) - distinct from isoDate's
+// plain YYYY-MM-DD, for the few places (time tracking) that work with a precise moment, not just a calendar day.
+export function isoDateTime(label = 'date/time') {
+  return z
+    .string({ error: `${label} is required` })
+    .trim()
+    .min(1, `${label} is required`)
+    .refine((value) => !Number.isNaN(Date.parse(value)), { message: `${label} is not a valid date/time` })
+}
+
+export function optionalIsoDateTime(label = 'date/time') {
+  return z.union([z.null(), isoDateTime(label)]).optional().default(null)
+}
+
 // Money: never negative, always finite - matches roundMoney's own expectations downstream.
 export function money(label = 'amount', { min = 0 }: { min?: number } = {}) {
   return z

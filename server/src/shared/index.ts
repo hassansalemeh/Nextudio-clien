@@ -16,6 +16,8 @@ export {
   optionalIdString,
   isoDate,
   optionalIsoDate,
+  isoDateTime,
+  optionalIsoDateTime,
   money,
   optionalMoney,
   positiveInt,

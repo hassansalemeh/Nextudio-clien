@@ -1,5 +1,5 @@
 import { ADMIN_SIGNERS, ADMIN_WHATSAPP_NUMBERS } from '../../config'
-import { HttpError, isIsoDate, isWeekend, todayInCompanyTimezone } from '../../shared'
+import { HttpError, isWeekend, todayInCompanyTimezone } from '../../shared'
 import * as dayOffRequestsRepository from './day-off-requests.repository'
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -32,24 +32,20 @@ export async function createDayOffRequest(
   organizationId: string,
   employeeId: string,
   employeeName: string,
-  date: unknown,
-  reason: unknown
+  requestDate: string,
+  reason: string | null
 ) {
-  if (!isIsoDate(date)) throw new HttpError(400, 'Choose a date')
-  const requestDate = date
   if (requestDate < todayInCompanyTimezone()) throw new HttpError(400, 'Choose a date that is not in the past')
   if (isWeekend(requestDate)) throw new HttpError(400, 'Weekends cannot be requested off')
-  const reasonText = typeof reason === 'string' && reason.trim() ? reason.trim().slice(0, 1000) : null
 
   const existing = await dayOffRequestsRepository.selectActiveRequestForDate(organizationId, employeeId, requestDate)
   if (existing) throw new HttpError(400, 'A request already exists for this date')
 
-  const created = await dayOffRequestsRepository.insertDayOffRequest(employeeId, requestDate, reasonText)
+  const created = await dayOffRequestsRepository.insertDayOffRequest(employeeId, requestDate, reason)
   return { ...created, whatsappLinks: buildWhatsAppLinks(employeeName, requestDate, created.id) }
 }
 
-export async function cancelDayOffRequest(organizationId: string, employeeId: string, id: unknown) {
-  if (typeof id !== 'string' || !id) throw new HttpError(400, 'id is required')
+export async function cancelDayOffRequest(organizationId: string, employeeId: string, id: string) {
   const rowCount = await dayOffRequestsRepository.deletePendingDayOffRequest(organizationId, employeeId, id)
   if (rowCount === 0) throw new HttpError(400, 'This request can no longer be cancelled')
 }

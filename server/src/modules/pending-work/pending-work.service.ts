@@ -1,5 +1,5 @@
 import { withTransaction } from '../../db'
-import { HttpError, isIsoDate } from '../../shared'
+import { HttpError } from '../../shared'
 import * as pendingWorkRepository from './pending-work.repository'
 
 export async function listPendingWorkEntries(organizationId: string) {
@@ -15,7 +15,13 @@ export async function rejectPendingWorkEntry(organizationId: string, id: string)
 
 // Approves a pending entry and, unless the employee is already assigned to the project on that date,
 // creates the matching work assignment in the same transaction - never an approved entry with no assignment.
-export async function approvePendingWorkEntry(organizationId: string, id: string, start_date: string, end_date: string, description: string) {
+export async function approvePendingWorkEntry(
+  organizationId: string,
+  id: string,
+  start_date: string | null,
+  end_date: string | null,
+  description: string | null
+) {
   await withTransaction(async (client) => {
     const entry = await pendingWorkRepository.selectWorkEntryForApproval(client, organizationId, id)
     if (!entry) throw new HttpError(404, 'Work entry not found')
@@ -24,9 +30,10 @@ export async function approvePendingWorkEntry(organizationId: string, id: string
     const covered = await pendingWorkRepository.selectAssignmentCoversDate(client, entry.employee_id, entry.project_id, entry.entry_date)
 
     if (!covered) {
-      // Not covered yet: create the assignment now, exactly as "Assign Work" would
-      if (!isIsoDate(start_date)) throw new HttpError(400, 'Assignment start date is required')
-      if (!isIsoDate(end_date)) throw new HttpError(400, 'Assignment end date is required')
+      // Not covered yet: create the assignment now, exactly as "Assign Work" would. Format is already
+      // guaranteed valid when present (see approvePendingWorkEntryBody) - only presence is checked here.
+      if (!start_date) throw new HttpError(400, 'Assignment start date is required')
+      if (!end_date) throw new HttpError(400, 'Assignment end date is required')
       if (end_date < start_date) throw new HttpError(400, 'End date cannot be before start date')
       if (!description) throw new HttpError(400, 'Task description is required')
       if (start_date > entry.entry_date || end_date < entry.entry_date) {
