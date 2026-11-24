@@ -12,9 +12,10 @@ type Props = {
   date: string
   onClose: () => void
   onSaved: () => void
+  onDeleteDayOff: (id: string) => void
 }
 
-function DayDetailsModal({ employeeId, employeeName, day, date, onClose, onSaved }: Props) {
+function DayDetailsModal({ employeeId, employeeName, day, date, onClose, onSaved, onDeleteDayOff }: Props) {
   // Bumped whenever hours are added, to force TimeReview to refetch the day's records below (its own
   // effect only re-runs on employeeId/date changing, neither of which happens when hours are just added).
   const [addedCount, setAddedCount] = useState(0)
@@ -35,7 +36,7 @@ function DayDetailsModal({ employeeId, employeeName, day, date, onClose, onSaved
           </button>
         </div>
 
-        <DayDetailPanel day={day} />
+        <DayDetailPanel day={day} onDeleteDayOff={onDeleteDayOff} />
         <AddHoursForEmployeeForm
           employeeId={employeeId}
           date={date}
