@@ -4,9 +4,12 @@ import type { MonthSummary } from '../lib/calendar'
 
 type Props = {
   summary: MonthSummary
+  // True on the admin's review screen, false on an employee's own calendar - employees must never see
+  // whether a day off is paid or unpaid.
+  showPaidUnpaid: boolean
 }
 
-function MonthSummaryCard({ summary }: Props) {
+function MonthSummaryCard({ summary, showPaidUnpaid }: Props) {
   const projectRows = Object.entries(summary.hoursByProject).sort((a, b) => b[1] - a[1])
 
   return (
@@ -24,14 +27,23 @@ function MonthSummaryCard({ summary }: Props) {
           <div className="stat-label">Days worked</div>
           <div className="stat-value small">{summary.daysSubmitted}</div>
         </div>
-        <div>
-          <div className="stat-label">Paid days off</div>
-          <div className="stat-value small">{summary.daysOffPaid}</div>
-        </div>
-        <div>
-          <div className="stat-label">Unpaid days off</div>
-          <div className="stat-value small">{summary.daysOffUnpaid}</div>
-        </div>
+        {showPaidUnpaid ? (
+          <>
+            <div>
+              <div className="stat-label">Paid days off</div>
+              <div className="stat-value small">{summary.daysOffPaid}</div>
+            </div>
+            <div>
+              <div className="stat-label">Unpaid days off</div>
+              <div className="stat-value small">{summary.daysOffUnpaid}</div>
+            </div>
+          </>
+        ) : (
+          <div>
+            <div className="stat-label">Days off</div>
+            <div className="stat-value small">{summary.daysOff}</div>
+          </div>
+        )}
         <div>
           <div className="stat-label">Days missed</div>
           <div className="stat-value small">{summary.daysMissed}</div>

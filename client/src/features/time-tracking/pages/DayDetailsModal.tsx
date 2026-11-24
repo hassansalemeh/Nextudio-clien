@@ -36,7 +36,7 @@ function DayDetailsModal({ employeeId, employeeName, day, date, onClose, onSaved
           </button>
         </div>
 
-        <DayDetailPanel day={day} onDeleteDayOff={onDeleteDayOff} />
+        <DayDetailPanel day={day} onDeleteDayOff={onDeleteDayOff} showPaidUnpaid />
         <AddHoursForEmployeeForm
           employeeId={employeeId}
           date={date}

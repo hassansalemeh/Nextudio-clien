@@ -7,7 +7,8 @@ export type DayOffRequest = {
   request_date: string
   reason: string | null
   status: DayOffStatus
-  is_paid: boolean
+  // Omitted by the server for an employee viewing their own days off - never present in that case.
+  is_paid?: boolean
   reviewed_at: string | null
   created_at: string
 }

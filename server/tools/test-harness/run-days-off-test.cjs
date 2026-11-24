@@ -293,6 +293,47 @@ async function main() {
     record('F: admin can delete a recorded day off', deleteRes.status === 200, `status=${deleteRes.status}`)
     const afterDelete = await db.query('select 1 from day_off_requests where id = $1', [toDelete])
     record('F: the deleted row is actually gone', afterDelete.rows.length === 0)
+
+    // ======================================================================
+    // G: an employee must never see is_paid on their own days off; the admin still does
+    // ======================================================================
+    const EMPLOYEE_EMAIL = 'days-off-employee@nextudio.local'
+    const EMPLOYEE_PASSWORD = 'days-off-employee-pw-12345'
+    const employeeUser = await db.query('insert into app_users (email, password_hash, role, employee_id) values ($1, $2, $3, $4) returning id', [
+      EMPLOYEE_EMAIL,
+      hashPassword(EMPLOYEE_PASSWORD),
+      'employee',
+      staffId,
+    ])
+    const employeeMember = await db.query('insert into organization_members (organization_id, user_id, role) values ($1, $2, $3) returning id', [
+      orgId,
+      employeeUser.rows[0].id,
+      'employee',
+    ])
+    // Mirrors the backfill in supabase/migrations/20261025000000_organizations_and_members.sql: the session
+    // query joins employees to the session through this column, so it must be set for the employee to log in.
+    await db.query('update employees set organization_member_id = $1 where id = $2', [employeeMember.rows[0].id, staffId])
+
+    const employeeClient = makeClient(baseUrl)
+    const loginEmployee = await employeeClient.login(EMPLOYEE_EMAIL, EMPLOYEE_PASSWORD)
+    record('G: employee logs in', loginEmployee.status === 200, `status=${loginEmployee.status}`)
+
+    const employeeList = await employeeClient.get('/api/day-off-requests')
+    record('G: employee can list their own days off (200)', employeeList.status === 200, `status=${employeeList.status}`)
+    record('G: the employee actually has days off to check (sanity check on the test\'s own setup)', (employeeList.json?.length ?? 0) > 0, `count=${employeeList.json?.length}`)
+    record(
+      'G: no item returned to the employee carries is_paid',
+      Array.isArray(employeeList.json) && employeeList.json.every((row) => !Object.prototype.hasOwnProperty.call(row, 'is_paid')),
+      JSON.stringify(employeeList.json)
+    )
+
+    const adminList = await admin.get(`/api/day-off-requests?employee_id=${staffId}`)
+    record('G: admin can list the same employee\'s days off (200)', adminList.status === 200, `status=${adminList.status}`)
+    record(
+      'G: every item returned to the admin carries is_paid',
+      Array.isArray(adminList.json) && adminList.json.length > 0 && adminList.json.every((row) => typeof row.is_paid === 'boolean'),
+      JSON.stringify(adminList.json)
+    )
   } finally {
     await new Promise((resolve) => httpServer.close(resolve))
   }

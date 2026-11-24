@@ -20,9 +20,13 @@ const STATE_LABELS: Record<CalendarDay['state'], string> = {
 }
 
 // A day off's label depends on whether it was paid, which STATE_LABELS (keyed only by day state) can't
-// express - so a day-off day looks this up instead of the static map above.
-function dayStateLabel(day: CalendarDay): string {
-  if (day.state === 'day-off') return day.dayOff?.is_paid ? 'Off (paid)' : 'Off (unpaid)'
+// express - so a day-off day looks this up instead of the static map above. Employees never get is_paid
+// from the server, so showPaidUnpaid is false for their own calendar and the day just reads "Off".
+function dayStateLabel(day: CalendarDay, showPaidUnpaid: boolean): string {
+  if (day.state === 'day-off') {
+    if (!showPaidUnpaid) return 'Off'
+    return day.dayOff?.is_paid ? 'Off (paid)' : 'Off (unpaid)'
+  }
   return STATE_LABELS[day.state]
 }
 
@@ -47,9 +51,12 @@ type Props = {
   selectedDate: string | null
   onSelectDate: (date: string) => void
   onNavigate: (direction: -1 | 1) => void
+  // True on the admin's review screen, false on an employee's own calendar - employees must never see
+  // whether a day off is paid or unpaid.
+  showPaidUnpaid: boolean
 }
 
-function MonthCalendar({ year, month, weeks, selectedDate, onSelectDate, onNavigate }: Props) {
+function MonthCalendar({ year, month, weeks, selectedDate, onSelectDate, onNavigate, showPaidUnpaid }: Props) {
   return (
     <div className={`card ${styles.calendarCard}`}>
       <div className={styles.calendarHeader}>
@@ -93,8 +100,8 @@ function MonthCalendar({ year, month, weeks, selectedDate, onSelectDate, onNavig
             ].filter(Boolean).join(' ')}
           >
             <span className={styles.dayNumber}>{Number(day.date.slice(-2))}</span>
-            {day.inMonth && dayStateLabel(day) && (
-              <span className={styles.dayStateLabel}>{dayStateLabel(day)}</span>
+            {day.inMonth && dayStateLabel(day, showPaidUnpaid) && (
+              <span className={styles.dayStateLabel}>{dayStateLabel(day, showPaidUnpaid)}</span>
             )}
             {day.inMonth && day.state === 'submitted' && (
               <span className={styles.dayHint}>{dayHours(day)} · {dayProjectHint(day)}</span>

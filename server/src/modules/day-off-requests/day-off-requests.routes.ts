@@ -17,7 +17,8 @@ export function registerDayOffRoutes(app: Express) {
   app.get('/api/day-off-requests', allow(Role.Admin, Role.Employee), validate({ query: dayOffListQuery }), async (req, res) => {
     const employeeId = resolveEmployeeId(req, req.query.employee_id) as string | null
     try {
-      res.json(await dayOffRequestsService.listDayOffRequests(organizationIdOf(req), employeeId))
+      const dayOffRequests = await dayOffRequestsService.listDayOffRequests(organizationIdOf(req), employeeId)
+      res.json(req.user!.role === Role.Employee ? dayOffRequests.map(dayOffRequestsService.omitIsPaid) : dayOffRequests)
     } catch {
       res.status(500).json({ error: 'Failed to fetch day-off requests' })
     }
@@ -36,7 +37,7 @@ export function registerDayOffRoutes(app: Express) {
         req.body.date,
         req.body.reason
       )
-      res.json(created)
+      res.json(req.user!.role === Role.Employee ? dayOffRequestsService.omitIsPaid(created) : created)
     } catch (err) {
       sendError(res, err, 'Failed to submit the request')
     }

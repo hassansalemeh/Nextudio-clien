@@ -160,8 +160,9 @@ function EmployeeCalendarReview() {
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
               onNavigate={navigate}
+              showPaidUnpaid
             />
-            <MonthSummaryCard summary={summary} />
+            <MonthSummaryCard summary={summary} showPaidUnpaid />
             {selectedDate && (
               <DayDetailsModal
                 employeeId={employeeId}

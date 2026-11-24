@@ -1,6 +1,14 @@
 import { ADMIN_SIGNERS, ADMIN_WHATSAPP_NUMBERS } from '../../config'
+import { withTransaction } from '../../db'
 import { HttpError, isWeekend, todayInCompanyTimezone } from '../../shared'
 import * as dayOffRequestsRepository from './day-off-requests.repository'
+
+// Employees must never see whether a day off is paid or unpaid - stripped here, in the service, so
+// every route that can hand an employee a day-off object goes through the same omission.
+export function omitIsPaid<T extends Record<string, unknown>>(dayOff: T): Omit<T, 'is_paid'> {
+  const { is_paid: _is_paid, ...rest } = dayOff
+  return rest
+}
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -42,22 +50,24 @@ export async function listDayOffRequests(organizationId: string, employeeId: str
 // back, rather than failing the whole range. Site workers aren't tracked this way - they're casual,
 // per-hour workers with no fixed schedule (see hourlyRateOf/EmployeeCalendarReview).
 export async function recordDaysOff(organizationId: string, employeeId: string, from: string, to: string, isPaid: boolean, reviewedBy: string) {
-  const employee = await dayOffRequestsRepository.selectStaffEmployee(organizationId, employeeId)
-  if (!employee) throw new HttpError(400, 'Employee does not exist')
-  if (employee.kind === 'site_worker') throw new HttpError(400, 'Site workers are not tracked for days off')
+  return withTransaction(async (client) => {
+    const employee = await dayOffRequestsRepository.selectStaffEmployee(organizationId, employeeId, client)
+    if (!employee) throw new HttpError(400, 'Employee does not exist')
+    if (employee.kind === 'site_worker') throw new HttpError(400, 'Site workers are not tracked for days off')
 
-  const created: Awaited<ReturnType<typeof dayOffRequestsRepository.insertRecordedDayOff>>[] = []
-  const skipped: string[] = []
-  for (let date = from; date <= to; date = addDaysToDateString(date, 1)) {
-    if (isWeekend(date)) continue
-    const existing = await dayOffRequestsRepository.selectActiveRequestForDate(organizationId, employeeId, date)
-    if (existing) {
-      skipped.push(date)
-      continue
+    const created: Awaited<ReturnType<typeof dayOffRequestsRepository.insertRecordedDayOff>>[] = []
+    const skipped: string[] = []
+    for (let date = from; date <= to; date = addDaysToDateString(date, 1)) {
+      if (isWeekend(date)) continue
+      const existing = await dayOffRequestsRepository.selectActiveRequestForDate(organizationId, employeeId, date, client)
+      if (existing) {
+        skipped.push(date)
+        continue
+      }
+      created.push(await dayOffRequestsRepository.insertRecordedDayOff(employeeId, date, isPaid, reviewedBy, client))
     }
-    created.push(await dayOffRequestsRepository.insertRecordedDayOff(employeeId, date, isPaid, reviewedBy))
-  }
-  return { created, skipped }
+    return { created, skipped }
+  })
 }
 
 export async function createDayOffRequest(

@@ -1,4 +1,7 @@
+import type { PoolClient } from 'pg'
 import { pool } from '../../db'
+
+type Queryable = { query: PoolClient['query'] }
 
 // day_off_requests has no organization_id of its own, so every query here reaches it through employees, which does.
 
@@ -32,14 +35,14 @@ export async function selectAllDayOffRequests(organizationId: string) {
 }
 
 // Used by "record days off" to refuse a site worker and to name the employee in each created row.
-export async function selectStaffEmployee(organizationId: string, employeeId: string) {
-  const result = await pool.query('SELECT id, full_name, kind FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
+export async function selectStaffEmployee(organizationId: string, employeeId: string, db: Queryable = pool) {
+  const result = await db.query('SELECT id, full_name, kind FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
   return result.rows[0] ?? null
 }
 
 // An active (non-rejected) request already covering this date, if any - used to block a duplicate
-export async function selectActiveRequestForDate(organizationId: string, employeeId: string, date: string) {
-  const result = await pool.query(
+export async function selectActiveRequestForDate(organizationId: string, employeeId: string, date: string, db: Queryable = pool) {
+  const result = await db.query(
     `SELECT day_off_requests.id FROM day_off_requests
      JOIN employees ON employees.id = day_off_requests.employee_id AND employees.organization_id = $3
      WHERE day_off_requests.employee_id = $1 AND day_off_requests.request_date = $2 AND day_off_requests.status <> 'rejected'`,
@@ -59,8 +62,8 @@ export async function insertDayOffRequest(employeeId: string, date: string, reas
 }
 
 // The admin recording a day off directly: already approved, no request/review step.
-export async function insertRecordedDayOff(employeeId: string, date: string, isPaid: boolean, reviewedBy: string) {
-  const result = await pool.query(
+export async function insertRecordedDayOff(employeeId: string, date: string, isPaid: boolean, reviewedBy: string, db: Queryable = pool) {
+  const result = await db.query(
     `INSERT INTO day_off_requests (employee_id, request_date, status, is_paid, reviewed_by, reviewed_at)
      VALUES ($1, $2, 'approved', $3, $4, now())
      RETURNING id, employee_id, to_char(request_date, 'YYYY-MM-DD') AS request_date, reason, status, is_paid, reviewed_at, created_at`,
