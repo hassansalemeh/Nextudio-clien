@@ -25,6 +25,8 @@ function DayOffRequestsPage({ onPendingCountChange }: { onPendingCountChange?: (
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Paid/unpaid choice for an approval, per pending request - defaults to paid
+  const [paidChoice, setPaidChoice] = useState<Record<string, boolean>>({})
   const highlightedRow = useRef<HTMLTableRowElement | null>(null)
   const hasScrolled = useRef(false)
 
@@ -55,7 +57,7 @@ function DayOffRequestsPage({ onPendingCountChange }: { onPendingCountChange?: (
     setError('')
     setBusyId(request.id)
     try {
-      await (action === 'approve' ? approveDayOffRequest(request.id) : rejectDayOffRequest(request.id))
+      await (action === 'approve' ? approveDayOffRequest(request.id, paidChoice[request.id] ?? true) : rejectDayOffRequest(request.id))
       await load()
       toast.success(action === 'approve' ? 'Request approved.' : 'Request rejected.')
     } catch (err) {
@@ -83,6 +85,14 @@ function DayOffRequestsPage({ onPendingCountChange }: { onPendingCountChange?: (
         <td data-label="Actions">
           {request.status === 'pending' && (
             <div className="edit-actions">
+              <select
+                value={(paidChoice[request.id] ?? true) ? 'paid' : 'unpaid'}
+                disabled={busyId === request.id}
+                onChange={(e) => setPaidChoice((previous) => ({ ...previous, [request.id]: e.target.value === 'paid' }))}
+              >
+                <option value="paid">Paid</option>
+                <option value="unpaid">Unpaid</option>
+              </select>
               <button type="button" className="btn-sm btn-solid" disabled={busyId === request.id} onClick={() => review(request, 'approve')}>
                 {busyId === request.id ? <Spinner /> : <CheckIcon />} Approve
               </button>
