@@ -1,6 +1,6 @@
 import type express from 'express'
 import type { PoolClient } from 'pg'
-import { hourlyRateFromSalary } from '../../config'
+import { hourlyRateOf } from '../../config'
 import { withTransaction } from '../../db'
 import { HttpError } from '../../shared'
 import * as timeTrackingRepository from './time-tracking.repository'
@@ -92,7 +92,7 @@ export async function startWork(organizationId: string, employeeId: string | nul
     // Freeze the hourly labor rate on the entry so later salary edits don't change past costs
     const salary = await timeTrackingRepository.selectEmployeeSalary(client, organizationId, employeeId)
     if (!salary) throw new HttpError(400, 'Employee does not exist')
-    const rate = hourlyRateFromSalary(Number(salary.monthly_salary))
+    const rate = hourlyRateOf(salary)
 
     await timeTrackingRepository.insertTimeEntryStart(client, employeeId, projectId, now, rate)
   })
@@ -163,7 +163,7 @@ export async function addManualWork(
     // same frozen hourly rate as a timer entry
     const salary = await timeTrackingRepository.selectEmployeeSalary(client, organizationId, employeeId)
     if (!salary) throw new HttpError(400, 'Employee does not exist')
-    const rate = hourlyRateFromSalary(Number(salary.monthly_salary))
+    const rate = hourlyRateOf(salary)
 
     await timeTrackingRepository.insertManualTimeEntry(client, employeeId, projectId, startAt, endAt, rate, description, status)
     return status
@@ -254,8 +254,7 @@ export async function createWorkEntry(
   const overlap = await timeTrackingRepository.selectOverlappingWorkEntry(employeeId, workDate, startTime, endTime)
   if (overlap) throw new HttpError(400, 'This employee already has an overlapping work entry on this date')
 
-  const monthlySalary = Number(employee.monthly_salary)
-  const hourlyRate = Math.round((monthlySalary / 176) * 100) / 100
+  const hourlyRate = hourlyRateOf(employee)
 
   const entry = await timeTrackingRepository.insertWorkEntry(projectId, employeeId, workDate, startTime, endTime, hourlyRate)
   const hours = computeHours(entry.start_time, entry.end_time)

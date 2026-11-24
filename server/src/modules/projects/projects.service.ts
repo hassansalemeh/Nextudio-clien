@@ -1,6 +1,6 @@
 import type { z } from 'zod'
 import { withTransaction } from '../../db'
-import { hourlyRateFromSalary } from '../../config'
+import { hourlyRateOf } from '../../config'
 import { HttpError, roundMoney } from '../../shared'
 import { confirmedRevenue, recordedTimeByProjectEmployee, totalLaborCost } from '../project-financials/project-financials.service'
 import { listInvoices } from '../invoices/invoices.service'
@@ -50,7 +50,7 @@ export async function getProjectDetail(organizationId: string, projectId: string
       assignments: taskRows.filter((task) => String(task.employee_id) === String(employee.id)),
       hours_worked: hours,
       // Effective rate of the work actually done; the current rate if nothing has been recorded yet
-      hourly_cost: time && hours > 0 ? Number(time.cost) / hours : hourlyRateFromSalary(Number(employee.monthly_salary)),
+      hourly_cost: time && hours > 0 ? Number(time.cost) / hours : hourlyRateOf(employee),
       labor_cost: laborCost,
     }
   })

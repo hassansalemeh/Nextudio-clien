@@ -124,7 +124,10 @@ export async function updateTimeEntryEndedAtById(client: PoolClient, entryId: st
 }
 
 export async function selectEmployeeSalary(client: PoolClient, organizationId: string, employeeId: unknown) {
-  const result = await client.query('SELECT monthly_salary FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
+  const result = await client.query('SELECT kind, monthly_salary, hourly_rate FROM employees WHERE id = $1 AND organization_id = $2', [
+    employeeId,
+    organizationId,
+  ])
   return result.rows[0] ?? null
 }
 
@@ -237,7 +240,10 @@ export async function selectProjectExistsForWorkEntry(organizationId: string, pr
 }
 
 export async function selectEmployeeForWorkEntry(organizationId: string, employeeId: unknown) {
-  const result = await pool.query('SELECT id, full_name, monthly_salary FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
+  const result = await pool.query('SELECT id, full_name, kind, monthly_salary, hourly_rate FROM employees WHERE id = $1 AND organization_id = $2', [
+    employeeId,
+    organizationId,
+  ])
   return result.rows[0] ?? null
 }
 
