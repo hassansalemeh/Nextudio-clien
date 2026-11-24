@@ -39,7 +39,8 @@ function classifyDay(
   dayEntries: TimeEntry[],
   today: string,
   firstActivityDate: string | null,
-  approvedDayOff: boolean
+  approvedDayOff: boolean,
+  trackMissedDays: boolean
 ): CalendarDayState {
   if (approvedDayOff) return 'day-off'
   if (date > today) return 'future'
@@ -47,7 +48,8 @@ function classifyDay(
   if (weekday === 0 || weekday === 6) return 'weekend'
   if (date === today) return dayEntries.length > 0 ? 'submitted' : 'today-pending'
   if (!firstActivityDate || date < firstActivityDate) return 'before-history'
-  return dayEntries.length > 0 ? 'submitted' : 'missed'
+  if (dayEntries.length > 0) return 'submitted'
+  return trackMissedDays ? 'missed' : 'before-history'
 }
 
 // Monday-start grid, always 6 weeks (42 days) so every month's layout fits; days from neighboring
@@ -58,7 +60,10 @@ export function buildMonthGrid(
   entries: TimeEntry[],
   today: string,
   firstActivityDate: string | null,
-  dayOffRequests: DayOffRequest[] = []
+  dayOffRequests: DayOffRequest[] = [],
+  // Site workers are casual, per-hour workers with no fixed schedule - a day they didn't work is normal,
+  // not "missed", so this is false for them (see EmployeeCalendarReview).
+  trackMissedDays = true
 ): CalendarDay[][] {
   const entriesByDay = groupEntriesByDay(entries)
   const dayOffByDate = new Map(dayOffRequests.map((request) => [request.request_date, request]))
@@ -76,7 +81,7 @@ export function buildMonthGrid(
       week.push({
         date: cursor,
         inMonth: cursorYear === year && cursorMonth === month,
-        state: classifyDay(cursor, dayEntries, today, firstActivityDate, dayOff?.status === 'approved'),
+        state: classifyDay(cursor, dayEntries, today, firstActivityDate, dayOff?.status === 'approved', trackMissedDays),
         entries: dayEntries,
         dayOff,
       })

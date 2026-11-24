@@ -32,9 +32,13 @@ async function main() {
   const organizationId = org.rows[0].id
 
   if (role === Role.Employee) {
-    const employee = await pool.query('SELECT id FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
+    const employee = await pool.query('SELECT id, kind FROM employees WHERE id = $1 AND organization_id = $2', [employeeId, organizationId])
     if (employee.rows.length === 0) {
       console.log(`Employee ${employeeId} does not belong to "${organizationName}"`)
+      process.exit(1)
+    }
+    if (employee.rows[0].kind === 'site_worker') {
+      console.log(`Employee ${employeeId} is a site worker and never gets a login`)
       process.exit(1)
     }
   }

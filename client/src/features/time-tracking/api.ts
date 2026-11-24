@@ -36,6 +36,11 @@ export function fetchWorkAssignmentsForDate(date: string) {
   return apiGet(`/api/work-assignments?date=${date}`)
 }
 
+// Admin reviewing a specific employee's calendar: assignments for THAT employee, not the admin's own.
+export function fetchWorkAssignmentsForEmployeeDate(employeeId: string, date: string) {
+  return apiGet(`/api/work-assignments?date=${date}&employee_id=${employeeId}`)
+}
+
 export function fetchActiveProjectNames() {
   return apiGet('/api/projects/active-names')
 }
@@ -44,7 +49,7 @@ export function postTimeAction(path: string, body: Record<string, string> = {}) 
   return apiPost(`/api/time/${path}`, body)
 }
 
-export async function addManualTimeEntry(input: {
+type ManualTimeEntryInput = {
   project_id: string
   date: string
   start: string
@@ -52,8 +57,21 @@ export async function addManualTimeEntry(input: {
   day_start: string
   day_end: string
   description: string
-}): Promise<{ status?: string }> {
+}
+
+export async function addManualTimeEntry(input: ManualTimeEntryInput): Promise<{ status?: string }> {
   const response = await apiPost('/api/time/manual', input)
+  const data = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(data?.error || 'Could not add the work entry.')
+  }
+  return data
+}
+
+// Admin entering hours for an employee (e.g. a site worker, who never logs in to do this themselves) -
+// same route as addManualTimeEntry, just with an explicit employee_id instead of the caller's own.
+export async function addManualTimeEntryForEmployee(employeeId: string, input: ManualTimeEntryInput): Promise<{ status?: string }> {
+  const response = await apiPost('/api/time/manual', { ...input, employee_id: employeeId })
   const data = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(data?.error || 'Could not add the work entry.')

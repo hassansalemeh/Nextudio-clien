@@ -3,7 +3,7 @@
 // Safe to run again: clients, projects, assignments and entries are only created if they don't exist yet.
 // Each entry is 09:00-17:00 (company local time) on every Monday-Friday in the range, using the
 // employee's current salary / STANDARD_MONTHLY_HOURS as the frozen hourly rate.
-import { hourlyRateFromSalary } from '../../src/config'
+import { hourlyRateOf } from '../../src/config'
 import { pool } from '../../src/db'
 
 const TIMEZONE = 'Asia/Beirut'
@@ -89,10 +89,10 @@ async function main() {
 
     for (const work of seed.work) {
       const employee = (
-        await pool.query('SELECT id, monthly_salary FROM employees WHERE lower(full_name) = lower($1)', [work.employee])
+        await pool.query('SELECT id, kind, monthly_salary, hourly_rate FROM employees WHERE lower(full_name) = lower($1)', [work.employee])
       ).rows[0]
       if (!employee) throw new Error(`Employee "${work.employee}" not found`)
-      const rate = hourlyRateFromSalary(Number(employee.monthly_salary))
+      const rate = hourlyRateOf(employee)
 
       // Assigned to the project, with a task covering the same dates
       await pool.query(

@@ -8,6 +8,17 @@ export function hourlyRateFromSalary(monthlySalary: number): number {
   return Math.round((monthlySalary / STANDARD_MONTHLY_HOURS) * 10000) / 10000
 }
 
+// The one place that decides an employee's hourly labor rate, whichever kind they are: a site worker's rate
+// is whatever was entered for them directly; a staff member's is still derived from their monthly salary.
+// Every caller that used to compute a rate from monthly_salary directly must go through this instead, so a
+// site worker's hours cost correctly without special-casing them at every call site.
+export function hourlyRateOf(employee: { kind: string; hourly_rate: number | string | null; monthly_salary: number | string | null }): number {
+  if (employee.kind === 'site_worker') {
+    return Number(employee.hourly_rate)
+  }
+  return hourlyRateFromSalary(Number(employee.monthly_salary))
+}
+
 // Invoices created from approved estimates are numbered NEX-INV-0001, NEX-INV-0002, ...
 // (a different format from the older Wave invoices, NEX_INV_153, so the two never clash)
 export const INVOICE_PREFIX = 'NEX-INV-'

@@ -165,6 +165,7 @@ const KITCHEN_SINK_BODY = {
   unit_price: 'not-a-number',
   quantity: 'not-a-number',
   monthly_salary: 'not-a-number',
+  hourly_rate: 'not-a-number',
   total_fee: 'not-a-number',
   discount_value: 'not-a-number',
   lump_sum_fee: 'not-a-number',
@@ -345,10 +346,18 @@ async function main() {
       received_by_signer_id: seededSignerId,
     })
     const seededReceiptId = receiptRes.json?.id
+    const employeeRes = await client.call('POST', '/api/employees', {
+      full_name: 'Validation Test Employee',
+      position: 'Architect',
+      monthly_salary: 1000,
+    })
+    const seededEmployeeId = employeeRes.json?.id
     record(
-      'seeded one real client/project/estimate(+approval)/invoice/letter/receipt through the API for the body-validation sweep below',
-      Boolean(seededClientId && seededProjectId && seededEstimateId && seededProfessionalInvoiceId && seededClientFundsInvoiceId && seededLetterId && seededReceiptId),
-      `client=${seededClientId} project=${seededProjectId} estimate=${seededEstimateId} proInvoice=${seededProfessionalInvoiceId} cfInvoice=${seededClientFundsInvoiceId} letter=${seededLetterId} receipt=${seededReceiptId}`
+      'seeded one real client/project/estimate(+approval)/invoice/letter/receipt/employee through the API for the body-validation sweep below',
+      Boolean(
+        seededClientId && seededProjectId && seededEstimateId && seededProfessionalInvoiceId && seededClientFundsInvoiceId && seededLetterId && seededReceiptId && seededEmployeeId
+      ),
+      `client=${seededClientId} project=${seededProjectId} estimate=${seededEstimateId} proInvoice=${seededProfessionalInvoiceId} cfInvoice=${seededClientFundsInvoiceId} letter=${seededLetterId} receipt=${seededReceiptId} employee=${seededEmployeeId}`
     )
 
     // A real id for the id-shaped path segments these specific routes need to get past their own
@@ -404,6 +413,20 @@ async function main() {
         )
       }
     }
+
+    // ---- updating an employee without saying which kind they already are must 400, not silently default
+    // to 'staff' (unlike creating one, where defaulting to 'staff' is fine - see employees.schemas.ts) ----
+    const updateMissingKind = await client.call('PUT', `/api/employees/${seededEmployeeId}`, {
+      full_name: 'Validation Test Employee',
+      position: 'Architect',
+      monthly_salary: 1000,
+      is_active: true,
+    })
+    record(
+      'PUT /api/employees/:employeeId without kind is rejected with 400 (kind is required on update)',
+      updateMissingKind.status === 400,
+      `status=${updateMissingKind.status}`
+    )
 
     // ---- the opposite check: a perfectly valid request with <script> in a text field is accepted, and the
     // text comes back completely unchanged - validation rejects bad shapes, it does not rewrite content ----

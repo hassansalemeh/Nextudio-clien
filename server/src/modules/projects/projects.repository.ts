@@ -69,7 +69,7 @@ export async function selectProjectDetail(organizationId: string, projectId: str
 // already org-checked by the caller (selectProjectDetail), so these child tables are reached safely through it.
 export async function selectProjectEmployees(projectId: string) {
   const result = await pool.query(
-    `SELECT id, full_name, position, monthly_salary FROM employees
+    `SELECT id, full_name, position, kind, monthly_salary, hourly_rate FROM employees
      WHERE id IN (
        SELECT employee_id FROM project_assignments WHERE project_id = $1 AND is_active = true
        UNION SELECT employee_id FROM work_assignments WHERE project_id = $1

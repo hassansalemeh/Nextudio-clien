@@ -8,12 +8,14 @@ import { useToast } from '../../../shared/components/Toast'
 import { useAsyncAction } from '../../../shared/hooks/useAsyncAction'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { createEmployee, fetchEmployees, updateEmployee } from '../api'
-import type { Employee } from '../types'
+import type { Employee, EmployeeKind } from '../types'
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
 })
+
+const KIND_LABELS: Record<EmployeeKind, string> = { staff: 'Staff', site_worker: 'Site worker' }
 
 function EmployeesPage() {
   const toast = useToast()
@@ -23,12 +25,22 @@ function EmployeesPage() {
 
   const [fullName, setFullName] = useState('')
   const [position, setPosition] = useState('')
+  const [kind, setKind] = useState<EmployeeKind>('staff')
   const [monthlySalary, setMonthlySalary] = useState('')
+  const [hourlyRate, setHourlyRate] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [formOpen, setFormOpen] = useState(false)
 
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [edit, setEdit] = useState({ full_name: '', position: '', monthly_salary: '', contact_email: '', is_active: true })
+  const [edit, setEdit] = useState({
+    full_name: '',
+    position: '',
+    kind: 'staff' as EmployeeKind,
+    monthly_salary: '',
+    hourly_rate: '',
+    contact_email: '',
+    is_active: true,
+  })
   const [editError, setEditError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -51,18 +63,35 @@ function EmployeesPage() {
     event.preventDefault()
     setEmployeesError('')
 
+    if (kind === 'staff' && (monthlySalary === '' || Number.isNaN(Number(monthlySalary)) || Number(monthlySalary) < 0)) {
+      const message = 'Monthly salary must be a non-negative number.'
+      setEmployeesError(message)
+      toast.error(message)
+      return
+    }
+    if (kind === 'site_worker' && (hourlyRate === '' || Number.isNaN(Number(hourlyRate)) || Number(hourlyRate) < 0)) {
+      const message = 'Hourly rate must be a non-negative number.'
+      setEmployeesError(message)
+      toast.error(message)
+      return
+    }
+
     try {
       const newEmployee = await createEmployee({
         full_name: fullName,
         position,
-        monthly_salary: Number(monthlySalary),
+        kind,
+        monthly_salary: kind === 'staff' ? Number(monthlySalary) : 0,
+        hourly_rate: kind === 'site_worker' ? Number(hourlyRate) : null,
         contact_email: contactEmail.trim() || null,
       })
       setEmployees((previousEmployees) => [newEmployee, ...previousEmployees])
 
       setFullName('')
       setPosition('')
+      setKind('staff')
       setMonthlySalary('')
+      setHourlyRate('')
       setContactEmail('')
       setFormOpen(false)
       toast.success('Employee added.')
@@ -79,7 +108,9 @@ function EmployeesPage() {
     setEdit({
       full_name: employee.full_name,
       position: employee.position,
+      kind: employee.kind,
       monthly_salary: String(employee.monthly_salary),
+      hourly_rate: employee.hourly_rate ?? '',
       contact_email: employee.contact_email ?? '',
       is_active: employee.is_active,
     })
@@ -89,14 +120,26 @@ function EmployeesPage() {
     setEditError('')
     if (!edit.full_name.trim()) return setEditError('Full name is required.')
     if (!edit.position.trim()) return setEditError('Position is required.')
-    const salary = Number(edit.monthly_salary)
-    if (edit.monthly_salary === '' || Number.isNaN(salary) || salary < 0) {
+    const salary = edit.kind === 'staff' ? Number(edit.monthly_salary) : 0
+    if (edit.kind === 'staff' && (edit.monthly_salary === '' || Number.isNaN(salary) || salary < 0)) {
       return setEditError('Monthly salary must be a non-negative number.')
+    }
+    const rate = Number(edit.hourly_rate)
+    if (edit.kind === 'site_worker' && (edit.hourly_rate === '' || Number.isNaN(rate) || rate < 0)) {
+      return setEditError('Hourly rate must be a non-negative number.')
     }
 
     setSaving(true)
     try {
-      const updated = await updateEmployee(editingId!, { ...edit, monthly_salary: salary, contact_email: edit.contact_email.trim() || null })
+      const updated = await updateEmployee(editingId!, {
+        full_name: edit.full_name,
+        position: edit.position,
+        kind: edit.kind,
+        monthly_salary: salary,
+        hourly_rate: edit.kind === 'site_worker' ? rate : null,
+        contact_email: edit.contact_email.trim() || null,
+        is_active: edit.is_active,
+      })
       setEmployees((previous) => previous.map((employee) => (employee.id === updated.id ? updated : employee)))
       setEditingId(null)
       toast.success('Employee updated.')
@@ -132,16 +175,37 @@ function EmployeesPage() {
               <input value={position} onChange={(e) => setPosition(e.target.value)} required />
             </label>
             <label className="form-field">
-              Monthly Salary
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={monthlySalary}
-                onChange={(e) => setMonthlySalary(e.target.value)}
-                required
-              />
+              Type
+              <select value={kind} onChange={(e) => setKind(e.target.value as EmployeeKind)}>
+                <option value="staff">Staff</option>
+                <option value="site_worker">Site worker</option>
+              </select>
             </label>
+            {kind === 'staff' ? (
+              <label className="form-field">
+                Monthly Salary
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={monthlySalary}
+                  onChange={(e) => setMonthlySalary(e.target.value)}
+                  required
+                />
+              </label>
+            ) : (
+              <label className="form-field">
+                Hourly Rate
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  required
+                />
+              </label>
+            )}
             <label className="form-field">
               Contact Email (optional)
               <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Used for reminder emails" />
@@ -167,7 +231,8 @@ function EmployeesPage() {
               <tr>
                 <th>Full Name</th>
                 <th>Position</th>
-                <th className="num">Monthly Salary</th>
+                <th>Type</th>
+                <th className="num">Pay</th>
                 <th>Contact Email</th>
                 <th>Status</th>
                 <th></th>
@@ -178,7 +243,12 @@ function EmployeesPage() {
                 <tr key={employee.id} className="clickable-row" onClick={() => startEdit(employee)}>
                   <td data-label="Full Name"><button type="button" className="row-main-button" onClick={(event) => { event.stopPropagation(); startEdit(employee) }}>{employee.full_name}</button></td>
                   <td data-label="Position">{employee.position}</td>
-                  <td data-label="Monthly Salary" className="num">{currencyFormatter.format(Number(employee.monthly_salary))}</td>
+                  <td data-label="Type">{KIND_LABELS[employee.kind]}</td>
+                  <td data-label="Pay" className="num">
+                    {employee.kind === 'site_worker'
+                      ? `${currencyFormatter.format(Number(employee.hourly_rate))}/hr`
+                      : currencyFormatter.format(Number(employee.monthly_salary))}
+                  </td>
                   <td data-label="Contact Email">{employee.contact_email || '—'}</td>
                   <td data-label="Status">
                     <span className={`status-badge ${employee.is_active ? 'status-active' : 'status-inactive'}`}>
@@ -193,7 +263,7 @@ function EmployeesPage() {
                 </tr>,
                 editingId === employee.id && (
                   <tr key={`${employee.id}-edit`}>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="form-grid">
                         <label className="form-field">
                           Full Name
@@ -204,15 +274,35 @@ function EmployeesPage() {
                           <input value={edit.position} onChange={(e) => setEdit({ ...edit, position: e.target.value })} />
                         </label>
                         <label className="form-field">
-                          Monthly Salary
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={edit.monthly_salary}
-                            onChange={(e) => setEdit({ ...edit, monthly_salary: e.target.value })}
-                          />
+                          Type
+                          <select value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value as EmployeeKind })}>
+                            <option value="staff">Staff</option>
+                            <option value="site_worker">Site worker</option>
+                          </select>
                         </label>
+                        {edit.kind === 'staff' ? (
+                          <label className="form-field">
+                            Monthly Salary
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={edit.monthly_salary}
+                              onChange={(e) => setEdit({ ...edit, monthly_salary: e.target.value })}
+                            />
+                          </label>
+                        ) : (
+                          <label className="form-field">
+                            Hourly Rate
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={edit.hourly_rate}
+                              onChange={(e) => setEdit({ ...edit, hourly_rate: e.target.value })}
+                            />
+                          </label>
+                        )}
                         <label className="form-field">
                           Contact Email (optional)
                           <input
@@ -233,7 +323,7 @@ function EmployeesPage() {
                           </select>
                         </label>
                       </div>
-                      <p className="empty-state">A new salary applies to future work only. Past project costs are not changed.</p>
+                      <p className="empty-state">A new salary or rate applies to future work only. Past project costs are not changed.</p>
                       <button type="button" className="btn-sm btn-solid" disabled={saving} onClick={saveEdit}>
 {saving ? <Spinner /> : <CheckIcon />} Save
 </button>
