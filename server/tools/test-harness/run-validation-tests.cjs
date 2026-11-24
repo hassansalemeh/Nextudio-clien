@@ -165,6 +165,7 @@ const KITCHEN_SINK_BODY = {
   unit_price: 'not-a-number',
   quantity: 'not-a-number',
   monthly_salary: 'not-a-number',
+  hourly_rate: 'not-a-number',
   total_fee: 'not-a-number',
   discount_value: 'not-a-number',
   lump_sum_fee: 'not-a-number',
