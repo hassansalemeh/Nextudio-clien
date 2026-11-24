@@ -372,6 +372,100 @@ async function main() {
     record("company A can still record a new payment on its own project", newPaymentA.status === 201, `status=${newPaymentA.status}`)
 
     // ======================================================================
+    // The other direction: company A's admin cannot touch company B's employees or projects for days
+    // off or manual hours, using B's own ids.
+    // ======================================================================
+    function weekdayOffset(daysFromNow) {
+      let d = new Date(Date.now() + daysFromNow * 86400000)
+      while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d = new Date(d.getTime() + (daysFromNow < 0 ? -86400000 : 86400000))
+      return d.toISOString().slice(0, 10)
+    }
+    const crossRecordDate = weekdayOffset(-10)
+    const crossFutureDate = weekdayOffset(7)
+
+    const recordOntoB = await a.post('/api/day-off-requests/record', { employee_id: employeeIdB, from: crossRecordDate, to: crossRecordDate, is_paid: true })
+    record("company A using B's employee id - POST day-off record - refused", recordOntoB.status >= 400 && recordOntoB.status < 500, `status=${recordOntoB.status}`)
+    const bDayOffCountAfterRecord = await db.query('select count(*) from day_off_requests where employee_id = $1', [employeeIdB])
+    record("nothing was created for company B after A's record attempt", Number(bDayOffCountAfterRecord.rows[0].count) === 0, `count=${bDayOffCountAfterRecord.rows[0].count}`)
+
+    // B creates its own pending request, for A to try approving/rejecting
+    const pendingB = await b.post('/api/day-off-requests', { employee_id: employeeIdB, date: crossFutureDate, reason: null })
+    record('company B creates its own pending day-off request', pendingB.status === 200, `status=${pendingB.status}`)
+    const pendingIdB = pendingB.json?.id
+
+    const approveOntoB = await a.post(`/api/day-off-requests/${pendingIdB}/approve`, {})
+    record("company A using B's day-off id - POST approve - refused", approveOntoB.status >= 400 && approveOntoB.status < 500, `status=${approveOntoB.status}`)
+    const rejectOntoB = await a.post(`/api/day-off-requests/${pendingIdB}/reject`, {})
+    record("company A using B's day-off id - POST reject - refused", rejectOntoB.status >= 400 && rejectOntoB.status < 500, `status=${rejectOntoB.status}`)
+    const pendingBAfter = await db.query('select status from day_off_requests where id = $1', [pendingIdB])
+    record(
+      "company B's pending request is unchanged after A's approve/reject attempts",
+      pendingBAfter.rows[0]?.status === 'pending',
+      `status=${pendingBAfter.rows[0]?.status}`
+    )
+
+    // B records (already-approved) a day off of its own, for A to try deleting
+    const recordedB = await b.post('/api/day-off-requests/record', { employee_id: employeeIdB, from: crossRecordDate, to: crossRecordDate, is_paid: false })
+    record('company B records its own day off', recordedB.status === 201 && recordedB.json?.created?.length === 1, JSON.stringify(recordedB.json))
+    const recordedIdB = recordedB.json?.created?.[0]?.id
+
+    const deleteOntoB = await a.del(`/api/day-off-requests/${recordedIdB}`)
+    record("company A using B's day-off id - DELETE - refused", deleteOntoB.status === 404, `status=${deleteOntoB.status}`)
+    const recordedBAfter = await db.query('select 1 from day_off_requests where id = $1', [recordedIdB])
+    record("company B's recorded day off still exists after A's delete attempt", recordedBAfter.rows.length === 1)
+
+    const listBFromA = await a.get(`/api/day-off-requests?employee_id=${employeeIdB}`)
+    record(
+      "company A using B's employee id - GET day-off list - sees none",
+      listBFromA.status === 200 && Array.isArray(listBFromA.json) && listBFromA.json.length === 0,
+      `status=${listBFromA.status} count=${Array.isArray(listBFromA.json) ? listBFromA.json.length : 'n/a'}`
+    )
+
+    // Manual hours: B's employee onto A's own project, and A's own employee onto B's project
+    const manualDate = weekdayOffset(-1)
+    const manualDayStart = `${manualDate}T00:00:00.000Z`
+    const manualDayEnd = `${manualDate}T23:59:59.999Z`
+
+    const manualOntoBEmployee = await a.post('/api/time/manual', {
+      employee_id: employeeIdB,
+      project_id: projectIdA,
+      date: manualDate,
+      start: `${manualDate}T09:00:00.000Z`,
+      end: `${manualDate}T10:00:00.000Z`,
+      day_start: manualDayStart,
+      day_end: manualDayEnd,
+      description: 'Cross-tenant attempt',
+    })
+    record(
+      "company A using B's employee id - POST time/manual - refused",
+      manualOntoBEmployee.status >= 400 && manualOntoBEmployee.status < 500,
+      `status=${manualOntoBEmployee.status} body=${JSON.stringify(manualOntoBEmployee.json)}`
+    )
+
+    const manualOntoBProject = await a.post('/api/time/manual', {
+      employee_id: employeeIdA,
+      project_id: projectIdB,
+      date: manualDate,
+      start: `${manualDate}T11:00:00.000Z`,
+      end: `${manualDate}T12:00:00.000Z`,
+      day_start: manualDayStart,
+      day_end: manualDayEnd,
+      description: 'Cross-tenant attempt',
+    })
+    record(
+      "company A using B's project id - POST time/manual - refused",
+      manualOntoBProject.status >= 400 && manualOntoBProject.status < 500,
+      `status=${manualOntoBProject.status} body=${JSON.stringify(manualOntoBProject.json)}`
+    )
+
+    const bTimeEntriesAfter = await db.query('select count(*) from time_entries where employee_id = $1 or project_id = $2', [employeeIdB, projectIdB])
+    record(
+      "no time entry was created for company B after A's manual-hours attempts",
+      Number(bTimeEntriesAfter.rows[0].count) === 0,
+      `count=${bTimeEntriesAfter.rows[0].count}`
+    )
+
+    // ======================================================================
     // Concurrency: several admins of the SAME company creating estimates / Client Funds invoices at the
     // same moment must never collide on a number, and none of them should error. Uses a third, fresh
     // company so this doesn't interact with A's or B's existing numbers.
