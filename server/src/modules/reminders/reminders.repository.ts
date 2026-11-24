@@ -20,7 +20,8 @@ export type ReminderSignal = {
 // the classification itself (and the run log) happens in the service, not here, so every skip reason
 // (already submitted, day off, inactive, missing email) can be reported, not just the ones left after a
 // SQL filter. "Logged today" counts any time entry regardless of status - even a rejected one still means
-// they logged something.
+// they logged something. Site workers never log in and never submit their own hours, so they are excluded
+// here entirely - they are never reminded and never appear in a skipped list either.
 export async function selectEmployeesForReminderCheck(organizationId: string, dateString: string): Promise<ReminderSignal[]> {
   const result = await pool.query(
     // Beirut, matching shared/companyTime.ts's COMPANY_TIMEZONE - Postgres's AT TIME ZONE with an IANA zone
@@ -38,7 +39,7 @@ export async function selectEmployeesForReminderCheck(organizationId: string, da
                 AND day_off_requests.status = 'approved'
             ) AS has_approved_day_off
      FROM employees
-     WHERE employees.organization_id = $1
+     WHERE employees.organization_id = $1 AND employees.kind <> 'site_worker'
      ORDER BY employees.full_name`,
     [organizationId, dateString]
   )

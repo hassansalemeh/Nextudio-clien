@@ -15,6 +15,7 @@
     "check": "node dist/scripts/check.js",
     "create-user": "node dist/scripts/create-user.js",
     "reset-password": "node dist/scripts/reset-password.js",
+    "remove-login": "node dist/scripts/remove-login.js",
     "lint": "eslint ."
   },
   "dependencies": {
