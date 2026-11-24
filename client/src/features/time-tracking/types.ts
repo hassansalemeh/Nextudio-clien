@@ -3,6 +3,7 @@ import type { TimeSession } from '../../shared/lib/timeUtils'
 export type Employee = {
   id: string
   full_name: string
+  kind: 'staff' | 'site_worker'
 }
 
 export type Editing = {

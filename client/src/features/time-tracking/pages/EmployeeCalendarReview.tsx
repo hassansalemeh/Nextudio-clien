@@ -87,7 +87,8 @@ function EmployeeCalendarReview() {
     })
   }
 
-  const weeks = buildMonthGrid(year, month, entries, today, firstActivityDate, dayOffRequests)
+  const selectedEmployee = employees.find((employee) => employee.id === employeeId)
+  const weeks = buildMonthGrid(year, month, entries, today, firstActivityDate, dayOffRequests, selectedEmployee?.kind !== 'site_worker')
   const summary = summarizeMonth(weeks)
   const selectedDay = selectedDate ? weeks.flat().find((day) => day.date === selectedDate) ?? null : null
 
