@@ -6,6 +6,11 @@ type Props = {
   day: CalendarDay | null
   // Opens a confirmation dialog; the dialog itself shows the busy state while cancelling
   onCancelDayOff?: (id: string) => void
+  // Admin-only: removes a recorded or approved day off (in case of a mistake)
+  onDeleteDayOff?: (id: string) => void
+  // True on the admin's review screen, false on an employee's own calendar - employees must never see
+  // whether a day off is paid or unpaid.
+  showPaidUnpaid: boolean
 }
 
 function emptyMessage(day: CalendarDay) {
@@ -25,7 +30,7 @@ function emptyMessage(day: CalendarDay) {
   }
 }
 
-function DayDetailPanel({ day, onCancelDayOff }: Props) {
+function DayDetailPanel({ day, onCancelDayOff, onDeleteDayOff, showPaidUnpaid }: Props) {
   if (!day) {
     return (
       <div className="card">
@@ -42,7 +47,13 @@ function DayDetailPanel({ day, onCancelDayOff }: Props) {
       {day.dayOff && (
         <p className="doc-hint" style={{ marginBottom: '1rem' }}>
           <span className={`status-badge status-${day.dayOff.status}`}>
-            {day.dayOff.status === 'pending' ? 'Day off requested' : day.dayOff.status === 'approved' ? 'Day off approved' : 'Day off declined'}
+            {day.dayOff.status === 'pending'
+              ? 'Day off requested'
+              : day.dayOff.status === 'approved'
+                ? showPaidUnpaid
+                  ? `Day off approved (${day.dayOff.is_paid ? 'paid' : 'unpaid'})`
+                  : 'Day off approved'
+                : 'Day off declined'}
           </span>
           {day.dayOff.reason && <> — {day.dayOff.reason}</>}
                     {day.dayOff.status === 'pending' && onCancelDayOff && (
@@ -50,6 +61,14 @@ function DayDetailPanel({ day, onCancelDayOff }: Props) {
               {' '}
               <button type="button" className="btn-sm btn-ghost" onClick={() => onCancelDayOff(day.dayOff!.id)}>
                 Cancel request
+              </button>
+            </>
+          )}
+          {day.dayOff.status !== 'pending' && onDeleteDayOff && (
+            <>
+              {' '}
+              <button type="button" className="btn-sm btn-ghost" onClick={() => onDeleteDayOff(day.dayOff!.id)}>
+                Remove day off
               </button>
             </>
           )}

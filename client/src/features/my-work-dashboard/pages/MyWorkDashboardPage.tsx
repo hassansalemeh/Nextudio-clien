@@ -118,9 +118,10 @@ function MyWorkDashboardPage() {
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onNavigate={navigate}
+            showPaidUnpaid={false}
           />
-          <MonthSummaryCard summary={summary} />
-          <DayDetailPanel day={selectedDay} onCancelDayOff={handleCancelDayOff} />
+          <MonthSummaryCard summary={summary} showPaidUnpaid={false} />
+          <DayDetailPanel day={selectedDay} onCancelDayOff={handleCancelDayOff} showPaidUnpaid={false} />
         </>
       )}
 

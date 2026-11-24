@@ -204,6 +204,7 @@ const KITCHEN_SINK_BODY = {
   mime_type: 'image/not-a-real-type',
   image_base64: 12345,
   is_active: 'not-a-boolean',
+  is_paid: 'not-a-boolean',
   show_paid_stamp: 'not-a-boolean',
   show_company_stamp: 'not-a-boolean',
   attach_pdf: 'not-a-boolean',
