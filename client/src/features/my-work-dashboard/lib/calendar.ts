@@ -17,7 +17,8 @@ export type MonthSummary = {
   pendingHours: number
   daysSubmitted: number
   daysMissed: number
-  daysOff: number
+  daysOffPaid: number
+  daysOffUnpaid: number
   hoursByProject: Record<string, number>
 }
 
@@ -99,14 +100,18 @@ export function summarizeMonth(weeks: CalendarDay[][]): MonthSummary {
   let pendingHours = 0
   let daysSubmitted = 0
   let daysMissed = 0
-  let daysOff = 0
+  let daysOffPaid = 0
+  let daysOffUnpaid = 0
   const hoursByProject: Record<string, number> = {}
 
   for (const day of weeks.flat()) {
     if (!day.inMonth) continue
     if (day.state === 'submitted') daysSubmitted += 1
     if (day.state === 'missed') daysMissed += 1
-    if (day.state === 'day-off') daysOff += 1
+    if (day.state === 'day-off') {
+      if (day.dayOff?.is_paid) daysOffPaid += 1
+      else daysOffUnpaid += 1
+    }
     for (const entry of day.entries) {
       if (entry.status === 'rejected') continue
       const hours = durationMs(entry.started_at, entry.ended_at) / 3600000
@@ -119,5 +124,5 @@ export function summarizeMonth(weeks: CalendarDay[][]): MonthSummary {
     }
   }
 
-  return { totalHours, pendingHours, daysSubmitted, daysMissed, daysOff, hoursByProject }
+  return { totalHours, pendingHours, daysSubmitted, daysMissed, daysOffPaid, daysOffUnpaid, hoursByProject }
 }

@@ -19,6 +19,13 @@ const STATE_LABELS: Record<CalendarDay['state'], string> = {
   'day-off': 'Day off',
 }
 
+// A day off's label depends on whether it was paid, which STATE_LABELS (keyed only by day state) can't
+// express - so a day-off day looks this up instead of the static map above.
+function dayStateLabel(day: CalendarDay): string {
+  if (day.state === 'day-off') return day.dayOff?.is_paid ? 'Off (paid)' : 'Off (unpaid)'
+  return STATE_LABELS[day.state]
+}
+
 const DAY_OFF_BADGE_LABELS = { pending: 'Day off requested', rejected: 'Day off declined' } as const
 
 function dayHours(day: CalendarDay) {
@@ -86,8 +93,8 @@ function MonthCalendar({ year, month, weeks, selectedDate, onSelectDate, onNavig
             ].filter(Boolean).join(' ')}
           >
             <span className={styles.dayNumber}>{Number(day.date.slice(-2))}</span>
-            {day.inMonth && STATE_LABELS[day.state] && (
-              <span className={styles.dayStateLabel}>{STATE_LABELS[day.state]}</span>
+            {day.inMonth && dayStateLabel(day) && (
+              <span className={styles.dayStateLabel}>{dayStateLabel(day)}</span>
             )}
             {day.inMonth && day.state === 'submitted' && (
               <span className={styles.dayHint}>{dayHours(day)} · {dayProjectHint(day)}</span>

@@ -21,16 +21,20 @@ function MonthSummaryCard({ summary }: Props) {
           )}
         </div>
         <div>
-          <div className="stat-label">Days submitted</div>
+          <div className="stat-label">Days worked</div>
           <div className="stat-value small">{summary.daysSubmitted}</div>
+        </div>
+        <div>
+          <div className="stat-label">Paid days off</div>
+          <div className="stat-value small">{summary.daysOffPaid}</div>
+        </div>
+        <div>
+          <div className="stat-label">Unpaid days off</div>
+          <div className="stat-value small">{summary.daysOffUnpaid}</div>
         </div>
         <div>
           <div className="stat-label">Days missed</div>
           <div className="stat-value small">{summary.daysMissed}</div>
-        </div>
-        <div>
-          <div className="stat-label">Days off</div>
-          <div className="stat-value small">{summary.daysOff}</div>
         </div>
       </div>
 
