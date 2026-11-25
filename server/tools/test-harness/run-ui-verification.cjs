@@ -128,27 +128,46 @@ async function main() {
 
   const PG_BIGINT_OID = 20 // int8
 
+  // 'rowMode'/'array' here is Prisma's @prisma/adapter-pg talking to this Pool - see this file's
+  // README and the TECH-06 PR description for why this shim now forwards rowMode to PGlite and
+  // gives the fake client EventEmitter no-ops (interactive transactions call conn.on('error', ...)).
+  // Plain object-mode queries (the app's own pool.query calls, and everything below that doesn't
+  // set rowMode) behave exactly as before.
   async function adapterQuery(text, params) {
+    let rowMode
     if (text && typeof text === 'object') {
       params = text.values
+      rowMode = text.rowMode
       text = text.text
     }
-    const result = await db.query(text, params ?? [])
+    const result = await db.query(text, params ?? [], rowMode ? { rowMode } : undefined)
     const fields = result.fields ?? []
     // node-postgres (what the real server uses) returns bigint/int8 columns as strings, never JS numbers,
     // to avoid silently losing precision above 2^53. PGlite returns them as numbers instead - stringify
     // here so every id/foreign key behaves exactly as it does against the real production database (this
     // matters: the client compares these ids against <select> values, which are always strings).
     const bigintColumns = fields.filter((f) => f.dataTypeID === PG_BIGINT_OID).map((f) => f.name)
-    const rows = bigintColumns.length
-      ? result.rows.map((row) => {
+    let rows = result.rows
+    if (bigintColumns.length) {
+      if (rowMode === 'array') {
+        const bigintIdx = fields.map((f) => f.dataTypeID === PG_BIGINT_OID)
+        rows = result.rows.map((row) => {
+          const copy = [...row]
+          for (let i = 0; i < copy.length; i++) {
+            if (bigintIdx[i] && copy[i] !== null && copy[i] !== undefined) copy[i] = String(copy[i])
+          }
+          return copy
+        })
+      } else {
+        rows = result.rows.map((row) => {
           const copy = { ...row }
           for (const col of bigintColumns) {
             if (copy[col] !== null && copy[col] !== undefined) copy[col] = String(copy[col])
           }
           return copy
         })
-      : result.rows
+      }
+    }
     return { rows, rowCount: result.affectedRows ?? rows.length, fields }
   }
 
@@ -156,7 +175,11 @@ async function main() {
     return adapterQuery(text, params)
   }
   Pool.prototype.connect = async function () {
-    return { query: adapterQuery, release: () => {} }
+    const client = { query: adapterQuery, release: () => {} }
+    client.on = () => client
+    client.once = () => client
+    client.removeListener = () => client
+    return client
   }
   Pool.prototype.end = async function () {}
 
