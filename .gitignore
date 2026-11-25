@@ -5,6 +5,9 @@ dist/
 *.log
 supabase/.temp/
 
+# Prisma client generated from prisma/schema.prisma by `prisma generate` (part of `npm run build`)
+server/src/generated/
+
 # deployment output and database backups (private)
 deploy/
 backups/

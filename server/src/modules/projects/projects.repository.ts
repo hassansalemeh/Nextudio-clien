@@ -1,19 +1,62 @@
 import type { PoolClient } from 'pg'
-import { pool } from '../../db'
+import type { Prisma } from '../../generated/prisma/client'
+import { pool, prisma } from '../../db'
+
+// pg returns bigint/numeric/date columns as strings (never native bigint or Decimal, which
+// res.json() can't serialize); Prisma returns native BigInt/Decimal/Date instead, so every
+// Prisma-backed read below converts back to the same shape the hand-written SQL produced.
+function bigintOrNull(value: bigint | null): string | null {
+  return value === null ? null : value.toString()
+}
+function decimalOrNull(value: Prisma.Decimal | null): string | null {
+  return value === null ? null : value.toString()
+}
+function decimalToString(value: Prisma.Decimal): string {
+  return value.toString()
+}
+// `to_char(date, 'YYYY-MM-DD')` on a DATE column: pg parses DATE as a UTC-midnight Date for the
+// stored calendar day, so slicing the ISO string reproduces the same text with no timezone math.
+function dateOnly(value: Date | null): string | null {
+  return value === null ? null : value.toISOString().slice(0, 10)
+}
+
+const PROJECT_LIST_SELECT = {
+  id: true,
+  client_id: true,
+  name: true,
+  description: true,
+  location: true,
+  total_fee: true,
+  fee_status: true,
+  source_estimate_id: true,
+  start_date: true,
+  status: true,
+  clients_projects_client_idToclients: { select: { name: true } },
+} satisfies Prisma.projectsSelect
+
+function mapProjectRow(row: Prisma.projectsGetPayload<{ select: typeof PROJECT_LIST_SELECT }>) {
+  return {
+    id: row.id.toString(),
+    client_id: row.client_id.toString(),
+    client_name: row.clients_projects_client_idToclients.name,
+    name: row.name,
+    description: row.description,
+    location: row.location,
+    total_fee: decimalOrNull(row.total_fee),
+    fee_status: row.fee_status,
+    source_estimate_id: bigintOrNull(row.source_estimate_id),
+    start_date: dateOnly(row.start_date),
+    status: row.status,
+  }
+}
 
 export async function selectProjects(organizationId: string) {
-  const result = await pool.query(
-    `SELECT projects.id, projects.client_id, clients.name AS client_name, projects.name,
-            projects.description, projects.location, projects.total_fee, projects.fee_status, projects.source_estimate_id,
-            to_char(projects.start_date, 'YYYY-MM-DD') AS start_date, projects.status,
-            projects.created_at
-     FROM projects
-     JOIN clients ON clients.id = projects.client_id
-     WHERE projects.organization_id = $1
-     ORDER BY projects.created_at DESC`,
-    [organizationId]
-  )
-  return result.rows
+  const rows = await prisma.projects.findMany({
+    where: { organization_id: BigInt(organizationId) },
+    orderBy: { created_at: 'desc' },
+    select: { ...PROJECT_LIST_SELECT, created_at: true },
+  })
+  return rows.map((row) => ({ ...mapProjectRow(row), created_at: row.created_at }))
 }
 
 // Employee-safe project list for "Add Work Manually": names only, no client, fee or financial data,
@@ -54,31 +97,38 @@ export async function selectClientName(organizationId: string, clientId: unknown
 }
 
 export async function selectProjectDetail(organizationId: string, projectId: string) {
-  const result = await pool.query(
-    `SELECT projects.id, projects.client_id, clients.name AS client_name, projects.name,
-            projects.description, projects.location, projects.total_fee, projects.fee_status, projects.source_estimate_id,
-            to_char(projects.start_date, 'YYYY-MM-DD') AS start_date, projects.status
-     FROM projects JOIN clients ON clients.id = projects.client_id
-     WHERE projects.id = $1 AND projects.organization_id = $2`,
-    [projectId, organizationId]
-  )
-  return result.rows[0] ?? null
+  const row = await prisma.projects.findFirst({
+    where: { id: BigInt(projectId), organization_id: BigInt(organizationId) },
+    select: PROJECT_LIST_SELECT,
+  })
+  return row ? mapProjectRow(row) : null
 }
 
 // Everyone assigned to the project, given a task on it, or who recorded time on it. The project itself is
 // already org-checked by the caller (selectProjectDetail), so these child tables are reached safely through it.
+//
+// Kept as raw SQL (via prisma.$queryRaw, still through the same pool/adapter): a 3-way UNION of employee
+// ids feeding an IN(), from three otherwise-unrelated tables, isn't something Prisma's query builder can
+// express as one query - and a translation into three separate Prisma calls plus an in-JS merge would add
+// round trips and risk of behavioral drift for no benefit over the proven SQL below.
 export async function selectProjectEmployees(projectId: string) {
-  const result = await pool.query(
-    `SELECT id, full_name, position, kind, monthly_salary, hourly_rate FROM employees
+  const rows = await prisma.$queryRaw<
+    { id: bigint; full_name: string; position: string; kind: string; monthly_salary: Prisma.Decimal; hourly_rate: Prisma.Decimal | null }[]
+  >`SELECT id, full_name, position, kind, monthly_salary, hourly_rate FROM employees
      WHERE id IN (
-       SELECT employee_id FROM project_assignments WHERE project_id = $1 AND is_active = true
-       UNION SELECT employee_id FROM work_assignments WHERE project_id = $1
-       UNION SELECT employee_id FROM time_entries WHERE project_id = $1 AND status = 'approved'
+       SELECT employee_id FROM project_assignments WHERE project_id = ${BigInt(projectId)} AND is_active = true
+       UNION SELECT employee_id FROM work_assignments WHERE project_id = ${BigInt(projectId)}
+       UNION SELECT employee_id FROM time_entries WHERE project_id = ${BigInt(projectId)} AND status = 'approved'
      )
-     ORDER BY full_name`,
-    [projectId]
-  )
-  return result.rows
+     ORDER BY full_name`
+  return rows.map((row) => ({
+    id: row.id.toString(),
+    full_name: row.full_name,
+    position: row.position,
+    kind: row.kind,
+    monthly_salary: decimalToString(row.monthly_salary),
+    hourly_rate: decimalOrNull(row.hourly_rate),
+  }))
 }
 
 export async function selectProjectTasks(projectId: string) {
