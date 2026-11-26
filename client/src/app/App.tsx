@@ -26,6 +26,7 @@ import ProjectsPage from '../features/projects/pages/ProjectsPage'
 import ReceiptEditorPage from '../features/receipts/pages/ReceiptEditorPage'
 import ReceiptsPage from '../features/receipts/pages/ReceiptsPage'
 import SignaturesAndStampsPage from '../features/signatures-and-stamps/pages/SignaturesAndStampsPage'
+import SiteVisitsPage from '../features/site-visits/pages/SiteVisitsPage'
 import AssignWorkPage from '../features/work-assignments/pages/AssignWorkPage'
 import TimeTrackingPage from '../features/time-tracking/pages/TimeTrackingPage'
 
@@ -50,6 +51,7 @@ const NAV_SECTIONS = [
     { to: '/time-tracking', label: 'Time Tracking' },
     { to: '/pending-work', label: 'Approvals' },
     { to: '/day-off-requests', label: 'Day-off requests' },
+    { to: '/site-visits', label: 'Site visits' },
   ] },
 ]
 
@@ -84,6 +86,7 @@ function App() {
     ? [{ title: 'My work', links: [
         { to: '/', label: 'My Work' },
         { to: '/calendar', label: 'My Calendar' },
+        { to: '/site-visits', label: 'Site visits' },
       ] }]
     : NAV_SECTIONS
 
@@ -157,6 +160,7 @@ function App() {
         {isEmployee ? <Routes>
           <Route path="/" element={<MyWorkPage />} />
           <Route path="/calendar" element={<MyWorkDashboardPage />} />
+          <Route path="/site-visits" element={<SiteVisitsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes> : <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -170,6 +174,7 @@ function App() {
           <Route path="/pending-work" element={<PendingWorkEntriesPage onPendingCountChange={setPendingCount} />} />
           <Route path="/day-off-requests" element={<DayOffRequestsPage onPendingCountChange={setDayOffPendingCount} />} />
           <Route path="/day-off-requests/:id" element={<DayOffRequestsPage onPendingCountChange={setDayOffPendingCount} />} />
+          <Route path="/site-visits" element={<SiteVisitsPage />} />
           <Route path="/estimates" element={<EstimatesPage />} />
           <Route path="/estimates/:id" element={<EstimateEditorPage />} />
           <Route path="/estimates/:id/preview" element={<DocumentPreviewPage kind="estimate" />} />
