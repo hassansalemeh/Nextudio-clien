@@ -98,6 +98,11 @@ const EMPLOYEE_ALLOWED = new Set([
   'GET /api/day-off-requests',
   'POST /api/day-off-requests',
   'POST /api/day-off-requests/cancel',
+  'GET /api/site-visits',
+  'POST /api/site-visits',
+  'GET /api/site-visits/summary',
+  'PATCH /api/site-visits/:id',
+  'DELETE /api/site-visits/:id',
   'GET /api/auth/me',
   'POST /api/auth/logout',
 ])
