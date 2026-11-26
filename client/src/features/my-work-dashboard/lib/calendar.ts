@@ -48,11 +48,12 @@ function classifyDay(
 ): CalendarDayState {
   if (approvedDayOff) return 'day-off'
   if (date > today) return 'future'
+  // A day with hours is always "done", even on a weekend (site workers often work weekends)
+  if (dayEntries.length > 0) return 'submitted'
   const weekday = new Date(`${date}T00:00:00`).getDay()
   if (weekday === 0 || weekday === 6) return 'weekend'
-  if (date === today) return dayEntries.length > 0 ? 'submitted' : 'today-pending'
+  if (date === today) return 'today-pending'
   if (!firstActivityDate || date < firstActivityDate) return 'before-history'
-  if (dayEntries.length > 0) return 'submitted'
   return trackMissedDays ? 'missed' : 'before-history'
 }
 
