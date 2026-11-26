@@ -1,0 +1,220 @@
+/* Site visits is mobile-first: on a phone the "Add visit" button is a fixed full-width bar at the bottom
+   and the form opens as a bottom sheet; from 641px up (desktop/tablet) it becomes a normal pill button and
+   a centered dialog, matching the rest of the app. */
+
+.monthBar {
+  margin-bottom: var(--space-5);
+}
+
+.monthLabel {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.monthLabel input {
+  min-height: 2.4rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.desktopAddButton {
+  display: none;
+}
+
+.mobileAddBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 500;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+
+.mobileAddBar button {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+}
+
+@media (min-width: 641px) {
+  .desktopAddButton {
+    display: inline-flex;
+  }
+  .mobileAddBar {
+    display: none;
+  }
+}
+
+/* Extra breathing room so the fixed bottom bar never covers the last card, phone only. */
+.pageBody {
+  padding-bottom: 5rem;
+}
+@media (min-width: 641px) {
+  .pageBody {
+    padding-bottom: 0;
+  }
+}
+
+.summarySection {
+  margin-bottom: var(--space-5);
+}
+
+.tabBar {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-bottom: var(--space-4);
+  padding: 0.25rem;
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.tab,
+.tabActive {
+  min-height: 44px;
+  padding: 0.45rem 0.9rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.tabActive {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  box-shadow: 0 1px 2px rgba(23, 29, 26, 0.08);
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 641px) {
+  .summaryGrid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+}
+
+.summaryGrid .card {
+  margin-bottom: 0;
+}
+
+.summaryCount {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.visitList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.dateHeading {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.dateGroup .card {
+  margin-bottom: var(--space-3);
+}
+
+.visitCardHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: 0.3rem;
+}
+
+.visitCardHeader strong {
+  font-size: 1rem;
+}
+
+.visitTime {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.visitProject {
+  margin: 0 0 0.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.visitNote {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* ---------- Add/Edit dialog: a dialog on desktop, a bottom sheet on phone ---------- */
+
+.sheetOverlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+@media (min-width: 641px) {
+  .sheetOverlay {
+    align-items: center;
+    padding: 1rem;
+  }
+}
+
+.sheet {
+  max-width: 30rem;
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 641px) {
+  .sheet {
+    max-height: none;
+    border-radius: var(--radius-md);
+    padding-bottom: 1.5rem;
+  }
+}
