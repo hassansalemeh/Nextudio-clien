@@ -861,8 +861,8 @@ model site_visits {
   organizations   organizations @relation(fields: [organization_id], references: [id], onUpdate: NoAction)
   projects        projects      @relation(fields: [project_id], references: [id], onUpdate: NoAction)
 
-  @@index([organization_id, visit_date])
-  @@index([organization_id, employee_id, visit_date])
+  @@index([organization_id, visit_date], map: "site_visits_org_date_idx")
+  @@index([organization_id, employee_id, visit_date], map: "site_visits_org_employee_date_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
