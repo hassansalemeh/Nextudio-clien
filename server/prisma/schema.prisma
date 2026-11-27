@@ -847,21 +847,21 @@ model service_types {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model site_visits {
-  id                    BigInt               @id @default(autoincrement())
-  organization_id       BigInt
-  project_id            BigInt
-  visit_date            DateTime             @db.Date
-  start_time            DateTime             @db.Time(6)
-  end_time              DateTime?            @db.Time(6)
-  note                  String?
-  created_by            BigInt
-  created_at            DateTime             @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime             @default(now()) @db.Timestamptz(6)
-  member_id             BigInt
-  app_users             app_users            @relation(fields: [created_by], references: [id], onUpdate: NoAction)
-  organization_members  organization_members @relation(fields: [organization_id, member_id], references: [organization_id, id], onUpdate: NoAction, map: "site_visits_member_same_org")
-  organizations         organizations        @relation(fields: [organization_id], references: [id], onUpdate: NoAction)
-  projects              projects             @relation(fields: [project_id], references: [id], onUpdate: NoAction)
+  id                   BigInt               @id @default(autoincrement())
+  organization_id      BigInt
+  project_id           BigInt
+  visit_date           DateTime             @db.Date
+  start_time           DateTime             @db.Time(6)
+  end_time             DateTime?            @db.Time(6)
+  note                 String?
+  created_by           BigInt
+  created_at           DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime             @default(now()) @db.Timestamptz(6)
+  member_id            BigInt
+  app_users            app_users            @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  organization_members organization_members @relation(fields: [organization_id, member_id], references: [organization_id, id], onDelete: NoAction, onUpdate: NoAction, map: "site_visits_member_same_org")
+  organizations        organizations        @relation(fields: [organization_id], references: [id], onUpdate: NoAction)
+  projects             projects             @relation(fields: [project_id], references: [id], onUpdate: NoAction)
 
   @@index([organization_id, visit_date], map: "site_visits_org_date_idx")
   @@index([organization_id, member_id, visit_date], map: "site_visits_org_member_date_idx")
