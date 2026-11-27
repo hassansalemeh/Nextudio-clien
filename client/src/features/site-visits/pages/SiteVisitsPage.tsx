@@ -8,11 +8,10 @@ import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { daysBetween, localDateString } from '../../../shared/lib/timeUtils'
 import { Role } from '../../../shared/lib/role'
-import { fetchEmployees } from '../../employees/api'
 import { fetchActiveProjectNames } from '../../time-tracking/api'
 import type { ActiveProject } from '../../time-tracking/types'
-import { deleteSiteVisit, fetchSiteVisits, fetchSiteVisitsSummary } from '../api'
-import type { SiteVisit, SiteVisitSummary } from '../types'
+import { deleteSiteVisit, fetchSiteVisitors, fetchSiteVisits, fetchSiteVisitsSummary } from '../api'
+import type { SiteVisit, SiteVisitor, SiteVisitSummary } from '../types'
 import SiteVisitFormDialog from '../components/SiteVisitFormDialog'
 import styles from '../SiteVisits.module.css'
 
@@ -47,7 +46,7 @@ function SiteVisitsPage() {
   const [month, setMonth] = useState(currentMonth())
   const [visits, setVisits] = useState<SiteVisit[]>([])
   const [summary, setSummary] = useState<SiteVisitSummary | null>(null)
-  const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
+  const [visitors, setVisitors] = useState<SiteVisitor[]>([])
   const [projects, setProjects] = useState<ActiveProject[]>([])
   const [summaryTab, setSummaryTab] = useState<'person' | 'project'>('person')
   const [loading, setLoading] = useState(true)
@@ -61,9 +60,7 @@ function SiteVisitsPage() {
       .then(setProjects)
       .catch(() => undefined)
     if (isAdmin) {
-      fetchEmployees()
-        .then((list) => setEmployees(list.filter((employee) => employee.kind === 'staff' && employee.is_active)))
-        .catch(() => undefined)
+      fetchSiteVisitors().then(setVisitors).catch(() => undefined)
     }
   }, [isAdmin])
 
@@ -102,7 +99,7 @@ function SiteVisitsPage() {
   async function handleDelete(visit: SiteVisit) {
     const ok = await confirm({
       title: 'Delete this visit?',
-      message: `This removes ${visit.employee_name}'s visit to ${visit.project_name} on ${formatGroupHeading(visit.visit_date)}.`,
+      message: `This removes ${visit.visitor_name}'s visit to ${visit.project_name} on ${formatGroupHeading(visit.visit_date)}.`,
       confirmLabel: 'Delete',
       tone: 'danger',
       onConfirm: async () => {
@@ -115,7 +112,7 @@ function SiteVisitsPage() {
   }
 
   const groups = useMemo(() => groupByDate(visits), [visits])
-  const ownSummary = !isAdmin ? summary?.by_employee[0] ?? null : null
+  const ownSummary = !isAdmin ? summary?.by_member[0] ?? null : null
 
   return (
     <>
@@ -160,18 +157,18 @@ function SiteVisitsPage() {
                 </div>
 
                 {summaryTab === 'person' ? (
-                  summary.by_employee.length === 0 ? (
+                  summary.by_member.length === 0 ? (
                     <EmptyState message="No site visits logged yet this month." />
                   ) : (
                     <div className={styles.summaryGrid}>
-                      {summary.by_employee.map((employee) => (
-                        <div className="card" key={employee.employee_id}>
-                          <h2>{employee.employee_name}</h2>
+                      {summary.by_member.map((member) => (
+                        <div className="card" key={member.member_id}>
+                          <h2>{member.visitor_name}</h2>
                           <p className={styles.summaryCount}>
-                            {employee.total_visits} visit{employee.total_visits === 1 ? '' : 's'} this month
+                            {member.total_visits} visit{member.total_visits === 1 ? '' : 's'} this month
                           </p>
                           <div className={styles.chipRow}>
-                            {employee.projects.map((project) => (
+                            {member.projects.map((project) => (
                               <span className={styles.chip} key={project.project_id}>
                                 {project.project_name} · {project.count}
                               </span>
@@ -193,8 +190,8 @@ function SiteVisitsPage() {
                         </p>
                         <div className={styles.chipRow}>
                           {project.visitors.map((visitor) => (
-                            <span className={styles.chip} key={visitor.employee_id}>
-                              {visitor.employee_name} · {visitor.count}
+                            <span className={styles.chip} key={visitor.member_id}>
+                              {visitor.visitor_name} · {visitor.count}
                             </span>
                           ))}
                         </div>
@@ -231,7 +228,7 @@ function SiteVisitsPage() {
                     {group.visits.map((visit) => (
                       <div className="card" key={visit.id}>
                         <div className={styles.visitCardHeader}>
-                          <strong>{visit.employee_name}</strong>
+                          <strong>{visit.visitor_name}</strong>
                           <span className={styles.visitTime}>
                             {visit.start_time}
                             {visit.end_time ? ` – ${visit.end_time}` : ''}
@@ -265,8 +262,16 @@ function SiteVisitsPage() {
         </button>
       </div>
 
-      {formOpen && (
-        <SiteVisitFormDialog isAdmin={isAdmin} employees={employees} projects={projects} visit={editingVisit} onClose={() => setFormOpen(false)} onSaved={load} />
+      {formOpen && user && (
+        <SiteVisitFormDialog
+          isAdmin={isAdmin}
+          visitors={visitors}
+          ownMemberId={user.memberId}
+          projects={projects}
+          visit={editingVisit}
+          onClose={() => setFormOpen(false)}
+          onSaved={load}
+        />
       )}
     </>
   )

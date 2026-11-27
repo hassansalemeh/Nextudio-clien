@@ -13,6 +13,9 @@ export type AuthUser = {
   organizationRole: 'owner' | 'admin' | 'employee'
   organizationId: string
   organizationName: string
+  // This session's own organization_members.id - every member has one (owner, admin or employee
+  // alike), unlike employeeId below which is only set for staff with an employees row.
+  memberId: string
   employeeId: string | null
   employeeName: string | null
 }
@@ -91,6 +94,7 @@ export async function loadUser(token: string): Promise<AuthUser | null> {
     organizationRole: row.role,
     organizationId: row.organization_id,
     organizationName: row.organization_name,
+    memberId: row.member_id,
     employeeId: row.employee_id,
     employeeName: row.employee_name,
   }

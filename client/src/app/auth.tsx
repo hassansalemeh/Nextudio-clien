@@ -10,6 +10,9 @@ export type AuthUser = {
   id: string
   email: string
   role: Role
+  // This session's own organization_members.id - every user has one (an admin/owner included, unlike
+  // employeeId below), used e.g. to pre-select "myself" in the site visits "Add visit" form.
+  memberId: string
   employeeId: string | null
   employeeName: string | null
 }

@@ -13,25 +13,31 @@ function daysSinceInCompanyTimezone(dateString: string): number {
   return Math.round((to - from) / 86400000)
 }
 
-async function assertValidVisit(organizationId: string, employeeId: string, projectId: string, visitDate: string) {
+// A member with no employee record (an owner/admin) is always a valid visitor; one with an employee
+// record only while they're staff and active - a site worker or a deactivated employee is refused.
+async function assertValidVisit(organizationId: string, memberId: string, projectId: string, visitDate: string) {
   if (visitDate > todayInCompanyTimezone()) throw new HttpError(400, 'Choose a date that is not in the future')
 
-  const employee = await siteVisitsRepository.selectStaffEmployee(organizationId, employeeId)
-  if (!employee) throw new HttpError(400, 'Employee does not exist')
-  if (!employee.is_active) throw new HttpError(400, 'This employee is not active')
-  if (employee.kind === 'site_worker') throw new HttpError(400, 'Site workers are not tracked for site visits')
+  const member = await siteVisitsRepository.selectMemberForVisit(organizationId, memberId)
+  if (!member) throw new HttpError(400, 'Member does not exist')
+  if (member.employeeKind === 'site_worker') throw new HttpError(400, 'Site workers are not tracked for site visits')
+  if (member.employeeIsActive === false) throw new HttpError(400, 'This employee is not active')
 
   const project = await siteVisitsRepository.selectProjectForCompany(organizationId, projectId)
   if (!project) throw new HttpError(400, 'Project does not exist')
 }
 
-export async function listVisits(organizationId: string, month: string, employeeId: string | null, projectId: string | null) {
-  return siteVisitsRepository.selectVisits(organizationId, month, employeeId, projectId)
+export async function listVisits(organizationId: string, month: string, memberId: string | null, projectId: string | null) {
+  return siteVisitsRepository.selectVisits(organizationId, month, memberId, projectId)
+}
+
+export async function listVisitors(organizationId: string) {
+  return siteVisitsRepository.selectVisitors(organizationId)
 }
 
 export async function createVisit(
   organizationId: string,
-  employeeId: string,
+  memberId: string,
   projectId: string,
   visitDate: string,
   startTime: string,
@@ -39,66 +45,66 @@ export async function createVisit(
   note: string | null,
   createdBy: string
 ) {
-  await assertValidVisit(organizationId, employeeId, projectId, visitDate)
-  return siteVisitsRepository.insertVisit(organizationId, employeeId, projectId, visitDate, startTime, endTime, note, createdBy)
+  await assertValidVisit(organizationId, memberId, projectId, visitDate)
+  return siteVisitsRepository.insertVisit(organizationId, memberId, projectId, visitDate, startTime, endTime, note, createdBy)
 }
 
 export async function updateVisit(
   organizationId: string,
   id: string,
   requesterRole: Role,
-  requesterEmployeeId: string | null,
+  requesterMemberId: string | null,
   projectId: string,
   visitDate: string,
   startTime: string,
   endTime: string | null,
   note: string | null
 ) {
-  const employeeIdScope = requesterRole === Role.Employee ? requesterEmployeeId : null
-  const existing = await siteVisitsRepository.selectVisitById(organizationId, id, employeeIdScope)
+  const memberIdScope = requesterRole === Role.Employee ? requesterMemberId : null
+  const existing = await siteVisitsRepository.selectVisitById(organizationId, id, memberIdScope)
   if (!existing) throw new HttpError(404, 'Visit not found')
-  if (employeeIdScope && daysSinceInCompanyTimezone(existing.visit_date) > EDIT_WINDOW_DAYS) {
+  if (memberIdScope && daysSinceInCompanyTimezone(existing.visit_date) > EDIT_WINDOW_DAYS) {
     throw new HttpError(400, `This visit can no longer be edited - it is more than ${EDIT_WINDOW_DAYS} days old`)
   }
 
-  await assertValidVisit(organizationId, existing.employee_id, projectId, visitDate)
-  const count = await siteVisitsRepository.updateVisitById(organizationId, id, employeeIdScope, projectId, visitDate, startTime, endTime, note)
+  await assertValidVisit(organizationId, existing.member_id, projectId, visitDate)
+  const count = await siteVisitsRepository.updateVisitById(organizationId, id, memberIdScope, projectId, visitDate, startTime, endTime, note)
   if (count === 0) throw new HttpError(404, 'Visit not found')
 }
 
-export async function deleteVisit(organizationId: string, id: string, requesterRole: Role, requesterEmployeeId: string | null) {
-  const employeeIdScope = requesterRole === Role.Employee ? requesterEmployeeId : null
-  const existing = await siteVisitsRepository.selectVisitById(organizationId, id, employeeIdScope)
+export async function deleteVisit(organizationId: string, id: string, requesterRole: Role, requesterMemberId: string | null) {
+  const memberIdScope = requesterRole === Role.Employee ? requesterMemberId : null
+  const existing = await siteVisitsRepository.selectVisitById(organizationId, id, memberIdScope)
   if (!existing) throw new HttpError(404, 'Visit not found')
-  if (employeeIdScope && daysSinceInCompanyTimezone(existing.visit_date) > EDIT_WINDOW_DAYS) {
+  if (memberIdScope && daysSinceInCompanyTimezone(existing.visit_date) > EDIT_WINDOW_DAYS) {
     throw new HttpError(400, `This visit can no longer be deleted - it is more than ${EDIT_WINDOW_DAYS} days old`)
   }
 
-  const count = await siteVisitsRepository.deleteVisitById(organizationId, id, employeeIdScope)
+  const count = await siteVisitsRepository.deleteVisitById(organizationId, id, memberIdScope)
   if (count === 0) throw new HttpError(404, 'Visit not found')
 }
 
-type VisitForSummary = { employee_id: string; employee_name: string; project_id: string; project_name: string }
+type VisitForSummary = { member_id: string; visitor_name: string; project_id: string; project_name: string }
 
-// Per employee: how many visits this month, and to which projects. Per project: how many visits, and who
-// went. employeeIdScope (set only for an Employee caller) narrows the whole summary to their own visits.
-export async function buildSummary(organizationId: string, month: string, employeeIdScope: string | null) {
-  const visits: VisitForSummary[] = await siteVisitsRepository.selectVisits(organizationId, month, employeeIdScope, null)
+// Per member: how many visits this month, and to which projects. Per project: how many visits, and who
+// went. memberIdScope (set only for an Employee caller) narrows the whole summary to their own visits.
+export async function buildSummary(organizationId: string, month: string, memberIdScope: string | null) {
+  const visits: VisitForSummary[] = await siteVisitsRepository.selectVisits(organizationId, month, memberIdScope, null)
 
-  const byEmployee = new Map<string, { employee_id: string; employee_name: string; total_visits: number; projects: Map<string, { project_id: string; project_name: string; count: number }> }>()
-  const byProject = new Map<string, { project_id: string; project_name: string; total_visits: number; visitors: Map<string, { employee_id: string; employee_name: string; count: number }> }>()
+  const byMember = new Map<string, { member_id: string; visitor_name: string; total_visits: number; projects: Map<string, { project_id: string; project_name: string; count: number }> }>()
+  const byProject = new Map<string, { project_id: string; project_name: string; total_visits: number; visitors: Map<string, { member_id: string; visitor_name: string; count: number }> }>()
 
   for (const visit of visits) {
-    if (!byEmployee.has(visit.employee_id)) {
-      byEmployee.set(visit.employee_id, { employee_id: visit.employee_id, employee_name: visit.employee_name, total_visits: 0, projects: new Map() })
+    if (!byMember.has(visit.member_id)) {
+      byMember.set(visit.member_id, { member_id: visit.member_id, visitor_name: visit.visitor_name, total_visits: 0, projects: new Map() })
     }
-    const employeeSummary = byEmployee.get(visit.employee_id)!
-    employeeSummary.total_visits += 1
-    const employeeProject = employeeSummary.projects.get(visit.project_id)
-    employeeSummary.projects.set(visit.project_id, {
+    const memberSummary = byMember.get(visit.member_id)!
+    memberSummary.total_visits += 1
+    const memberProject = memberSummary.projects.get(visit.project_id)
+    memberSummary.projects.set(visit.project_id, {
       project_id: visit.project_id,
       project_name: visit.project_name,
-      count: (employeeProject?.count ?? 0) + 1,
+      count: (memberProject?.count ?? 0) + 1,
     })
 
     if (!byProject.has(visit.project_id)) {
@@ -106,18 +112,18 @@ export async function buildSummary(organizationId: string, month: string, employ
     }
     const projectSummary = byProject.get(visit.project_id)!
     projectSummary.total_visits += 1
-    const projectVisitor = projectSummary.visitors.get(visit.employee_id)
-    projectSummary.visitors.set(visit.employee_id, {
-      employee_id: visit.employee_id,
-      employee_name: visit.employee_name,
+    const projectVisitor = projectSummary.visitors.get(visit.member_id)
+    projectSummary.visitors.set(visit.member_id, {
+      member_id: visit.member_id,
+      visitor_name: visit.visitor_name,
       count: (projectVisitor?.count ?? 0) + 1,
     })
   }
 
   return {
-    by_employee: [...byEmployee.values()]
-      .map((employee) => ({ ...employee, projects: [...employee.projects.values()] }))
-      .sort((a, b) => a.employee_name.localeCompare(b.employee_name)),
+    by_member: [...byMember.values()]
+      .map((member) => ({ ...member, projects: [...member.projects.values()] }))
+      .sort((a, b) => a.visitor_name.localeCompare(b.visitor_name)),
     by_project: [...byProject.values()]
       .map((project) => ({ ...project, visitors: [...project.visitors.values()] }))
       .sort((a, b) => a.project_name.localeCompare(b.project_name)),

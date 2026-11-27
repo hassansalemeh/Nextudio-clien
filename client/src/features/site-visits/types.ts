@@ -1,7 +1,7 @@
 export type SiteVisit = {
   id: string
-  employee_id: string
-  employee_name: string
+  member_id: string
+  visitor_name: string
   project_id: string
   project_name: string
   visit_date: string
@@ -13,11 +13,11 @@ export type SiteVisit = {
 }
 
 export type SiteVisitSummaryProjectCount = { project_id: string; project_name: string; count: number }
-export type SiteVisitSummaryEmployeeCount = { employee_id: string; employee_name: string; count: number }
+export type SiteVisitSummaryMemberCount = { member_id: string; visitor_name: string; count: number }
 
-export type SiteVisitSummaryEmployee = {
-  employee_id: string
-  employee_name: string
+export type SiteVisitSummaryMember = {
+  member_id: string
+  visitor_name: string
   total_visits: number
   projects: SiteVisitSummaryProjectCount[]
 }
@@ -26,16 +26,24 @@ export type SiteVisitSummaryProject = {
   project_id: string
   project_name: string
   total_visits: number
-  visitors: SiteVisitSummaryEmployeeCount[]
+  visitors: SiteVisitSummaryMemberCount[]
 }
 
 export type SiteVisitSummary = {
-  by_employee: SiteVisitSummaryEmployee[]
+  by_member: SiteVisitSummaryMember[]
   by_project: SiteVisitSummaryProject[]
 }
 
+// A member who can validly be picked as a visitor (GET /api/site-visits/visitors) - a site worker or a
+// deactivated employee is never offered here, since logging a visit for one would only fail validation.
+export type SiteVisitor = {
+  id: string
+  name: string
+  role: 'owner' | 'admin' | 'employee'
+}
+
 export type CreateSiteVisitInput = {
-  employee_id: string | null
+  member_id: string | null
   project_id: string
   visit_date: string
   start_time: string

@@ -5,27 +5,27 @@ import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
 import { createSiteVisit, updateSiteVisit } from '../api'
-import type { SiteVisit } from '../types'
+import type { SiteVisit, SiteVisitor } from '../types'
 import styles from '../SiteVisits.module.css'
 
-type EmployeeOption = { id: string; full_name: string }
 type ProjectOption = { id: string; name: string }
 
 type Props = {
   isAdmin: boolean
-  employees: EmployeeOption[]
+  visitors: SiteVisitor[]
+  ownMemberId: string
   projects: ProjectOption[]
   visit?: SiteVisit | null
   onClose: () => void
   onSaved: () => void
 }
 
-// Shared by "Add visit" (create) and editing a card - editing never reassigns the employee, so that field
-// only ever appears for an admin creating a visit on someone else's behalf.
-function SiteVisitFormDialog({ isAdmin, employees, projects, visit, onClose, onSaved }: Props) {
+// Shared by "Add visit" (create) and editing a card - editing never reassigns the visitor, so that field
+// only ever appears for an admin creating a visit, pre-selected on themselves.
+function SiteVisitFormDialog({ isAdmin, visitors, ownMemberId, projects, visit, onClose, onSaved }: Props) {
   const toast = useToast()
   const isEdit = !!visit
-  const [employeeId, setEmployeeId] = useState('')
+  const [memberId, setMemberId] = useState(ownMemberId)
   const [projectId, setProjectId] = useState(visit?.project_id ?? '')
   const [date, setDate] = useState(visit?.visit_date ?? localDateString())
   const [startTime, setStartTime] = useState(visit?.start_time ?? '')
@@ -38,7 +38,7 @@ function SiteVisitFormDialog({ isAdmin, employees, projects, visit, onClose, onS
     event.preventDefault()
     setError('')
 
-    if (isAdmin && !isEdit && !employeeId) return setError('Choose an employee.')
+    if (isAdmin && !isEdit && !memberId) return setError('Choose a visitor.')
     if (!projectId) return setError('Choose a project.')
     if (!date) return setError('Choose a date.')
     if (date > localDateString()) return setError('Choose a date that is not in the future.')
@@ -57,7 +57,7 @@ function SiteVisitFormDialog({ isAdmin, employees, projects, visit, onClose, onS
         })
       } else {
         await createSiteVisit({
-          employee_id: isAdmin ? employeeId : null,
+          member_id: isAdmin ? memberId : null,
           project_id: projectId,
           visit_date: date,
           start_time: startTime,
@@ -91,12 +91,12 @@ function SiteVisitFormDialog({ isAdmin, employees, projects, visit, onClose, onS
           {isAdmin && !isEdit && (
             <div className="form-grid">
               <label className="form-field">
-                Employee
-                <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-                  <option value="">Choose an employee...</option>
-                  {employees.map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.full_name}
+                Visitor
+                <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+                  <option value="">Choose a visitor...</option>
+                  {visitors.map((visitor) => (
+                    <option key={visitor.id} value={visitor.id}>
+                      {visitor.name}
                     </option>
                   ))}
                 </select>

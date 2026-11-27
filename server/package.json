@@ -18,6 +18,7 @@
     "create-user": "node dist/scripts/create-user.js",
     "reset-password": "node dist/scripts/reset-password.js",
     "remove-login": "node dist/scripts/remove-login.js",
+    "set-name": "node dist/scripts/set-name.js",
     "lint": "eslint ."
   },
   "dependencies": {
