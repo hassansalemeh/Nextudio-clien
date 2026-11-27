@@ -4,14 +4,26 @@ Requested by Jalal: foreign keys, indexes, and UUID vs sequential ids. **Review 
 document has been applied. Based on `server/prisma/schema.prisma` (the introspected source of truth) and
 every file in `supabase/migrations/`, cross-checked against the actual queries in `server/src/modules`.
 
+*Revision note:* every factual claim below (every "no index", "duplicate index", "no FK", and "ON DELETE"
+statement) was re-verified line-by-line against both `schema.prisma` and the migration files after the
+first draft got one finding wrong — `work_assignments` does have an index (on `project_id`), it just needed
+a different one (on `employee_id`). That correction, two wrong migration-file attributions in the
+duplicate-index table, a missed seventh duplicate index (`estimates`), and one inaccurate summary line (not
+every table uses a `bigint` id — `auth_sessions` doesn't) are fixed in this version, and a `file:line`
+citation has been added next to each finding so it can be checked directly.
+
 ## 1. Summary
 
-- **42 tables** in `schema.prisma`, 41 of which are application data; the 42nd (`schema_migrations`) is just
-  the ledger `npm run migrate` uses to track which `.sql` files have run.
-- **Ids today**: every table uses `bigint generated always as identity` (Postgres identity columns, mapped
-  by Prisma as `BigInt @id @default(autoincrement())`). Ids are sequential per table, start at 1, and are
-  never reused. The one exception is `money_movements.group_id`, a `uuid` used only to tie a transfer's two
-  rows (money out of one location, into another) together — not a primary key.
+- **42 tables** in `schema.prisma` (counted directly from the file), 41 of which are application data; the
+  42nd (`schema_migrations`) is just the ledger `npm run migrate` uses to track which `.sql` files have run.
+- **Ids today**: every table except two uses `bigint generated always as identity` (Postgres identity
+  columns, mapped by Prisma as `BigInt @id @default(autoincrement())`) — sequential per table, starting at
+  1, never reused. The two exceptions: `auth_sessions`, whose primary key is `token_hash text primary key`
+  (a session token hash, not a counter — `supabase/migrations/20260924000000_create_auth.sql:19`,
+  `schema.prisma:69`), and the `schema_migrations` ledger itself, keyed by `filename` (`schema.prisma:830`).
+  Separately, `money_movements.group_id` is a `uuid` column used only to tie a transfer's two rows (money
+  out of one location, into another) together (`schema.prisma:489`) — not a primary key, and not part of
+  either exception above.
 - **Company isolation** ("multi-tenant") is enforced two ways today:
   1. Almost every table carries an `organization_id` column, and every repository query filters by it
      (`WHERE ... AND organization_id = $1`) — this is **application-level** enforcement: the database does
@@ -30,17 +42,30 @@ every file in `supabase/migrations/`, cross-checked against the actual queries i
 
 ### 2.1 Columns that look like a reference but have no foreign key
 
-None found. Every `_id` column that points at another table's primary key does carry a real foreign key
-constraint — this codebase is disciplined about that. (`money_movements.group_id` is not a reference, so it
-correctly has no FK.)
+None found. Checked every `_id`/`_by` column in all 42 models in `schema.prisma` against its relations —
+every one that points at another table's primary key carries a real foreign key constraint. (Verification
+method: every model was read in full; a column is only "missing" an FK if no `@relation(fields: [that
+column], ...)` exists anywhere in the file. `money_movements.group_id` — `schema.prisma:489` — is not a
+reference, so it correctly has no FK.)
 
 ### 2.2 `ON DELETE` behaviour — what happens when the parent is deleted
 
-| Behaviour | Where | Effect |
-|---|---|---|
-| **CASCADE** | `auth_sessions.user_id`, `estimate_items/estimate_emails.estimate_id`, `invoice_items/invoice_emails.invoice_id`, `letter_emails.letter_id`, `receipt_emails.receipt_id`, `money_movement_revisions.money_movement_id`, `payment_revisions.payment_id` | Deleting the parent silently deletes these children too. |
-| **CASCADE (flagged)** | `invoice_disbursements.invoice_id` | Same mechanism, different consequence — see below. |
-| **RESTRICT** or **NO ACTION** (the default when a migration gives no `on delete` clause — Postgres blocks the delete either way) | Everything else: `employees`→`organization_members`, `app_users`→`employees`, and the whole chain of things that can reference a `client`/`project`/`invoice`/`estimate`/`payment`/`money_location` | The database refuses the delete outright (a plain Postgres error) while any child row still exists. |
+Every `CASCADE` below is explicit in `schema.prisma` (Prisma only emits `onDelete: Cascade` when the actual
+database constraint says so — it is never the default), so each is independently confirmed against the file:
+
+| Behaviour | Where | Source | Effect |
+|---|---|---|---|
+| **CASCADE** | `auth_sessions.user_id` | `schema.prisma:75` | Deleting the parent silently deletes these children too. |
+| **CASCADE** | `estimate_emails.estimate_id` | `schema.prisma:205` | — |
+| **CASCADE** | `estimate_items.estimate_id` | `schema.prisma:223` | — |
+| **CASCADE** | `invoice_emails.invoice_id` | `schema.prisma:313` | — |
+| **CASCADE** | `invoice_items.invoice_id` | `schema.prisma:331` | — |
+| **CASCADE** | `letter_emails.letter_id` | `schema.prisma:408` | — |
+| **CASCADE** | `receipt_emails.receipt_id` | `schema.prisma:764` | — |
+| **CASCADE** | `money_movement_revisions.money_movement_id` | `schema.prisma:470` | — |
+| **CASCADE** | `payment_revisions.payment_id` | `schema.prisma:596` | — |
+| **CASCADE (flagged)** | `invoice_disbursements.invoice_id` | `schema.prisma:294`, migration below | Same mechanism, different consequence — see below. |
+| **RESTRICT** or **NO ACTION** (no `on delete` clause, or an explicit `Restrict`/`NoAction` — Postgres blocks the delete either way) | Everything else: `app_users.employee_id` (`schema.prisma:36`), `employees.organization_member_id` (`schema.prisma:181`), and the whole chain of things that can reference a `client`/`project`/`invoice`/`estimate`/`payment`/`money_location` (e.g. `estimates.client_id:268`, `invoices.project_id:384`, `letters.client_id:431`/`project_id:433`, `money_movements.*:499-511`, `payments.invoice_id:620`, `receipts.client_id:800`/`payment_id:803`/`project_id:804`) | — | The database refuses the delete outright (a plain Postgres error) while any child row still exists. |
 
 **The one worth flagging**: `invoice_disbursements` is the only child of `invoices` that is **not**
 protected the way `payments`, `receipts`, `invoice_payments`-via-`payments`, and
@@ -48,15 +73,17 @@ protected the way `payments`, `receipts`, `invoice_payments`-via-`payments`, and
 `invoices` or out of `projects` uses `RESTRICT`/`NO ACTION` specifically so a project or invoice can't be
 deleted while financial records about it still exist. `invoice_disbursements` — a record of money actually
 paid out against a Client Funds invoice — instead uses `CASCADE`
-(`supabase/migrations/20261010000000_client_funds_invoices.sql:46`), so deleting an invoice would silently
-wipe out the disbursement history for it.
+(`supabase/migrations/20261010000000_client_funds_invoices.sql:46`: `invoice_id bigint not null references
+invoices(id) on delete cascade`, matching `schema.prisma:294`), so deleting an invoice would silently wipe
+out the disbursement history for it.
 
-In today's app this is **not yet reachable**: there is no `DELETE /api/invoices/:id` route anywhere in
-`server/src/modules` — only estimates, projects, letters, day-off-requests, and site-visits can be deleted
-through the API, and none of those cascades into financial data the same way. So this is a **landmine for
-later**, not a live bug: the day someone adds an "undo"/delete feature for invoices (or runs a manual
-`DELETE FROM invoices` in a support situation), disbursement history disappears with it, with no warning.
-Recommended fix in §5 (HIGH).
+In today's app this is **not yet reachable**: grepping `server/src/modules` for `app.delete(` finds only six
+routes — `day-off-requests.routes.ts:105`, `disbursements.routes.ts:48` (deletes one disbursement row, not an
+invoice), `estimates.routes.ts:104`, `letters.routes.ts:68`, `projects.routes.ts:61`, and
+`site-visits.routes.ts:94`. There is no `DELETE /api/invoices/:id` (or `/api/payments/:id`,
+`/api/receipts/:id`) route at all. So this is a **landmine for later**, not a live bug: the day someone adds
+an "undo"/delete feature for invoices (or runs a manual `DELETE FROM invoices` in a support situation),
+disbursement history disappears with it, with no warning. Recommended fix in §5 (HIGH).
 
 Every other `CASCADE` in the schema is a child whose only reason to exist is to describe or log its parent
 (line items, sent-email records, revision history) — cascading those is correct and intentional.
@@ -67,32 +94,35 @@ The composite-FK pattern from §1 is applied inconsistently. These columns point
 table but the database does **not** check that the two rows belong to the same company — only the
 application's `WHERE organization_id = ...` on every query does:
 
-| Table.column | Points at | Risk if the app ever gets this wrong (a bug, a bad migration, a manual `UPDATE`) |
-|---|---|---|
-| `money_movements.client_id` | `clients.id` | A money movement could be attributed to another company's client |
-| `money_movements.employee_id` | `employees.id` | ...or another company's employee |
-| `money_movements.invoice_id` | `invoices.id` | ...or another company's invoice |
-| `money_movements.payment_id` | `payments.id` | ...or another company's payment |
-| `payments.invoice_id` | `invoices.id` | A payment could be linked to another company's invoice |
-| `letters.client_id`, `letters.project_id` | `clients.id`, `projects.id` | A letter could reference another company's client/project |
-| `receipts.client_id`, `receipts.project_id`, `receipts.payment_id` | same | Same risk, on receipts |
-| `day_off_requests.reviewed_by` | `app_users.id` | A different company's admin could end up recorded as the reviewer (low risk: the app always sets this to the current session's own user) |
+| Table.column | Points at | Source (confirms no composite `(organization_id, X)` FK exists) | Risk if the app ever gets this wrong (a bug, a bad migration, a manual `UPDATE`) |
+|---|---|---|---|
+| `money_movements.client_id` | `clients.id` | `schema.prisma:499` — only a plain `fields: [client_id]` relation | A money movement could be attributed to another company's client |
+| `money_movements.employee_id` | `employees.id` | `schema.prisma:501` | ...or another company's employee |
+| `money_movements.invoice_id` | `invoices.id` | `schema.prisma:502` | ...or another company's invoice |
+| `money_movements.payment_id` | `payments.id` | `schema.prisma:506` | ...or another company's payment |
+| `payments.invoice_id` | `invoices.id` | `schema.prisma:620` | A payment could be linked to another company's invoice |
+| `letters.client_id`, `letters.project_id` | `clients.id`, `projects.id` | `schema.prisma:431`, `:433` | A letter could reference another company's client/project |
+| `receipts.client_id`, `receipts.project_id`, `receipts.payment_id` | same | `schema.prisma:800`, `:804`, `:803` | Same risk, on receipts |
+| `day_off_requests.reviewed_by` | `app_users.id` | `schema.prisma:136`; `day_off_requests` has no `organization_id` column at all | A different company's admin could end up recorded as the reviewer (low risk: the app always sets this to the current session's own user) |
 
 Notably, `money_movements` is the table where this matters most — it's the one place every dollar in the
 system eventually gets recorded — and it's also the table with the *most* columns missing this check
-(4 of its 9 FK columns). By contrast, `category_id`, `location_id`, `project_id`, `supplier_id`, and
-`to_location_id` on the very same table **do** have the composite check. This looks like the pattern was
-adopted partway through `money_movements`'s life and never finished, rather than a deliberate choice.
+(4 of its 9 FK columns: `client_id`, `employee_id`, `invoice_id`, `payment_id` — `schema.prisma:499-506`).
+By contrast, `category_id` (`:498`), `location_id` (`:504`), `project_id` (`:508`), `supplier_id` (`:510`),
+and `to_location_id` (`:512`) on the very same table **do** have the composite check. This looks like the
+pattern was adopted partway through `money_movements`'s life and never finished, rather than a deliberate
+choice.
 
 Separately, five tables link an `employee_id` to a `project_id` with **no company check at all**, because
-neither column has a sibling `organization_id` on that table to compose a check from:
-`project_assignments`, `work_assignments`, `work_entries`, `time_entries`, `supplier_agreements`. Today
-this is mitigated by every repository query reaching these tables by joining through `employees` or
-`projects` and filtering on *their* `organization_id` — but the tables themselves would accept an
-employee from company A assigned to a project from company B. Fixing this properly means giving these
-tables their own `organization_id` column (the same "expand" migration pattern already used in
-`20261026000000_organization_id_on_main_tables.sql`), then compositing against both parents. See §5
-(MEDIUM).
+neither column has a sibling `organization_id` on that table to compose a check from — confirmed by reading
+each model in full and finding no `organization_id` field: `project_assignments` (`schema.prisma:634-644`),
+`work_assignments` (`:926-938`), `work_entries` (`:942-953`), `time_entries` (`:906-922`),
+`supplier_agreements` (`:872-881`). Today this is mitigated by every repository query reaching these tables
+by joining through `employees` or `projects` and filtering on *their* `organization_id` — but the tables
+themselves would accept an employee from company A assigned to a project from company B. Fixing this
+properly means giving these tables their own `organization_id` column (the same "expand" migration pattern
+already used in `20261026000000_organization_id_on_main_tables.sql:40-44`), then compositing against both
+parents. See §5 (MEDIUM).
 
 ## 3. Indexes
 
@@ -101,67 +131,103 @@ time-tracking/assignments/payments/reminders/project-financials; Prisma for site
 Jalal's growth list:
 
 ### `time_entries` — grows with every clock-in/clock-out and manual entry
-- `WHERE employee_id = $1 AND started_at >= ... AND started_at < ...` (time-tracking.repository.ts) → covered by `time_entries_employee_started_idx (employee_id, started_at)`. Good.
-- `WHERE employee_id = $1 AND ended_at IS NULL` → covered by the partial unique index `time_entries_one_active_per_employee`. Good.
-- `WHERE status IN ('pending','rejected')` (pending-work.repository.ts) → covered by the partial index `@@index([status], where: status <> 'approved')`. Good.
-- **Gap**: `WHERE project_id = $1 AND status = 'approved'` (projects.repository.ts:121) and
-  `WHERE time_entries.status = 'approved' AND projects.organization_id = $1 [AND time_entries.project_id = $2]`
-  (project-financials.repository.ts:34-36, the per-project/per-company labor-cost rollup) — **`project_id`
+- `WHERE employee_id = $1 AND started_at >= ... AND started_at < ...` (time-tracking.repository.ts) → covered by `time_entries_employee_started_idx (employee_id, started_at)` (`schema.prisma:920`). Good.
+- `WHERE employee_id = $1 AND ended_at IS NULL` → covered by the partial unique index `time_entries_one_active_per_employee` (`schema.prisma:908`). Good.
+- `WHERE status IN ('pending','rejected')` (pending-work.repository.ts) → covered by the partial index `@@index([status], where: status <> 'approved')` (`schema.prisma:921`). Good.
+- **Gap**: `WHERE project_id = $1 AND status = 'approved'` (`projects.repository.ts:121`, inside a
+  `UNION` of employee ids on a project) and `WHERE time_entries.status = 'approved' AND
+  projects.organization_id = $1 [AND time_entries.project_id = $2]`
+  (`project-financials.repository.ts:34-36`, the per-project/per-company labor-cost rollup) — checked every
+  `@@index`/`@@unique` on the `time_entries` model (`schema.prisma:906-922`) and confirmed **`project_id`
   has no index at all** on this table. Every cost summary for a project or a whole company currently does a
   full scan of `time_entries` filtered by `status`. This is the single biggest index gap on the busiest
   table. **HIGH priority**, see §5.
 
 ### `work_assignments` — grows with every admin-scheduled task
-- `WHERE employee_id = $1 AND project_id = $2 AND start_date <= $3 AND end_date >= $3` (the overlap check, used in both `pending-work.repository.ts` and `time-tracking.repository.ts`)
-- `WHERE projects.organization_id = $1 [AND work_assignments.project_id = ...] [AND work_assignments.employee_id = ...] ORDER BY start_date DESC, created_at DESC` (assignments.repository.ts)
-- `WHERE project_id = $1 ORDER BY start_date` (projects.repository.ts:138)
-- **This table has zero indexes beyond its primary key.** Every query above does a full table scan. It's
-  one of the five tables Jalal specifically called out, and currently the worst-indexed one in the schema.
-  **HIGH priority**, see §5.
+- `WHERE employee_id = $1 AND project_id = $2 AND start_date <= $3 AND end_date >= $3` — the overlap check,
+  in both `pending-work.repository.ts:60-61` and `time-tracking.repository.ts:105-106`.
+- `WHERE projects.organization_id = $1 [AND work_assignments.project_id = ...] [AND
+  work_assignments.employee_id = ...] ORDER BY start_date DESC, created_at DESC` —
+  `assignments.repository.ts:70-71`, built from `assignments.service.ts:34-46`.
+- `WHERE project_id = $1 ORDER BY start_date` — `projects.repository.ts:138`.
+- **Correction from the previous draft**: this table is *not* unindexed. `project_id` already has an index
+  — created by `supabase/migrations/20260922000000_create_work_assignments.sql:15`
+  (`create index work_assignments_project_id_idx on work_assignments(project_id)`) and confirmed in
+  `schema.prisma:937` (`@@index([project_id])`). That covers the `projects.repository.ts:138` query and the
+  project-only branch of the listing query well.
+  The real gap is **`employee_id`**, which has no index at all: the overlap check filters on `employee_id`
+  first (and `project_id` is a secondary, more selective filter, so Postgres would still have to scan every
+  row for that employee without one), and the listing query's employee-only branch
+  (`work_assignments.employee_id = $n` with no `project_id`) has nothing to use either. **HIGH priority**,
+  see §5 (revised).
 
 ### `site_visits` — new table (FEAT-04/04B/04C), will grow with every logged visit
 - `WHERE organization_id = $1 AND visit_date BETWEEN ... [AND member_id = $2] [AND project_id = $3]` → the
-  `(organization_id, visit_date)` and `(organization_id, member_id, visit_date)` indexes cover the
-  month-only and month+person cases well. **Gap**: filtering "by project" (the `project_id` query param, and
-  the FEAT-04C "By project" tab) has no matching index — it falls back to the `(organization_id,
-  visit_date)` index plus a row-by-row filter on `project_id`. Low risk today (the table is brand new and
-  small) but worth adding proactively since it's explicitly called out as a growth table. **LOW/MEDIUM**,
-  see §5.
+  `(organization_id, visit_date)` (`schema.prisma:866`, map `site_visits_org_date_idx`) and
+  `(organization_id, member_id, visit_date)` (`schema.prisma:867`, map `site_visits_org_member_date_idx`)
+  indexes cover the month-only and month+person cases well. **Gap**: filtering "by project" (the
+  `project_id` query param, and the FEAT-04C "By project" tab) has no matching index — checked the full
+  `site_visits` model (`schema.prisma:849-868`) and found no index with `project_id` in it; it falls back to
+  the `(organization_id, visit_date)` index plus a row-by-row filter on `project_id`. Low risk today (the
+  table is brand new and small) but worth adding proactively since it's explicitly called out as a growth
+  table. **LOW/MEDIUM**, see §5.
 
 ### `payments` — grows with every recorded payment
-- `WHERE organization_id = $1 [AND project_id = $2] ORDER BY payment_date DESC, id DESC` (payments.repository.ts) → when a project filter is given, `payments_project_id_idx (project_id, payment_date)` covers it well. **Gap**: the plain "all of this company's payments" listing (no project filter) only has `@@index([organization_id])` — the `organization_id` filter is covered, but the `ORDER BY payment_date` is not, so Postgres must sort the matching rows itself instead of walking an index in order. **MEDIUM**, see §5.
-- `WHERE invoice_id = $1 AND cancelled_at IS NULL` (the "amount already paid" check) → covered by `invoice_payments_invoice_id_idx (invoice_id, payment_date)`. Good.
+- `WHERE organization_id = $1 [AND project_id = $2] ORDER BY payment_date DESC, id DESC` —
+  `payments.repository.ts:23-24` → when a project filter is given, `payments_project_id_idx (project_id,
+  payment_date)` (`schema.prisma:630`) covers it well. **Gap**: the plain "all of this company's payments"
+  listing (no project filter) only has `@@index([organization_id])` (`schema.prisma:629`) — the
+  `organization_id` filter is covered, but the `ORDER BY payment_date` is not, so Postgres must sort the
+  matching rows itself instead of walking an index in order. **MEDIUM**, see §5.
+- `WHERE invoice_id = $1 AND cancelled_at IS NULL` (the "amount already paid" check) → covered by `invoice_payments_invoice_id_idx (invoice_id, payment_date)` (`schema.prisma:627`). Good.
 
 ### `reminder_runs` — Jalal's list, but turns out to need nothing
-- The only queries are an `INSERT` and an `UPDATE ... WHERE organization_id = $1 AND run_date = $2`
-  (reminders.repository.ts). The existing `@@unique([organization_id, run_date])` already covers both
-  perfectly, and this table is naturally capped at **one row per company per day** — it will never become
-  large. No action needed.
+- The only queries against this table are an `INSERT` and an `UPDATE ... WHERE organization_id = $1 AND
+  run_date = $2` (`reminders.repository.ts`). The existing `@@unique([organization_id, run_date])`
+  (`schema.prisma:825`) already covers both perfectly, and this table is naturally capped at **one row per
+  company per day** — it will never become large. No action needed.
 
 ### Duplicate indexes (found by reading every migration, not just the current schema)
-Six tables carry a plain `<table>_organization_id_idx` that is now fully redundant, because a *later*
-migration gave the same table a composite index/constraint whose leading column is also `organization_id`
-— and a multi-column index already serves any query that filters on just its first column:
+
+**Correction from the previous draft**: the previous version of this section listed six tables and got two
+of the seven's migration attributions wrong (it credited `categories_name_key` and `suppliers_org_id_key`
+to the wrong migration file). Re-checked by grepping every `supabase/migrations/*.sql` file for `unique
+(organization_id` / `unique index ... organization_id` and matching each hit against the 11 tables that got
+a plain `create index %I on %I (organization_id)` from the bulk loop in
+`20261026000000_organization_id_on_main_tables.sql:35-45` (`clients, projects, employees, estimates,
+invoices, payments, suppliers, categories, money_locations, money_movements, auth_sessions`). Of those 11,
+**seven** turn out to have a later composite index/constraint whose *leading* column is also
+`organization_id` — which, by Postgres's leftmost-prefix rule, makes the plain single-column index fully
+redundant for any query that only filters on `organization_id`. `employees`, `money_movements`, and
+`auth_sessions` do **not** have such a composite and are correctly not flagged.
 
 | Table | Redundant index | Made redundant by | Added in |
 |---|---|---|---|
-| `categories` | `categories_organization_id_idx` | `categories_org_id_key` unique `(organization_id, id)`, `categories_name_key` unique `(organization_id, name)` | both in `20261027000000` |
-| `clients` | `clients_organization_id_idx` | `clients_org_id_key` unique `(organization_id, id)` | `20261027000000` |
-| `invoices` | `invoices_organization_id_idx` | `invoices_invoice_number_key` unique `(organization_id, invoice_number)` | same migration, `20261026000000` |
-| `money_locations` | `money_locations_organization_id_idx` | `money_locations_org_id_key` unique `(organization_id, id)` | `20261027000000` |
-| `projects` | `projects_organization_id_idx` | `projects_org_id_key` unique `(organization_id, id)` | `20261027000000` |
-| `suppliers` | `suppliers_organization_id_idx` | `suppliers_org_id_key` unique `(organization_id, id)`, `suppliers_unique_name` unique `(organization_id, lower(trim(name)))` | same migration, `20261026000000` |
+| `categories` | `categories_organization_id_idx` | `categories_org_id_key` unique `(organization_id, id)` | `20261027000000_project_teams_and_service_types.sql:20` |
+| `categories` | (same index, second reason) | `categories_name_key` unique `(organization_id, name)` | `20261026000000_organization_id_on_main_tables.sql:65-67` (same file as the bulk loop, not `20261027000000` as the previous draft said) |
+| `clients` | `clients_organization_id_idx` | `clients_org_id_key` unique `(organization_id, id)` | `20261027000000_project_teams_and_service_types.sql:16` |
+| `estimates` | `estimates_organization_id_idx` | `estimates_number_key` unique index `(organization_id, lower(estimate_number))` — missed in the previous draft because it's an expression index Prisma can't render as `@@unique` (see the "expression index" comment on the `estimates` model, `schema.prisma:230`) | `20261026000000_organization_id_on_main_tables.sql:55-57`, same file as the bulk loop |
+| `invoices` | `invoices_organization_id_idx` | `invoices_invoice_number_key` unique `(organization_id, invoice_number)` | `20261026000000_organization_id_on_main_tables.sql:60-62`, same file as the bulk loop |
+| `money_locations` | `money_locations_organization_id_idx` | `money_locations_org_id_key` unique `(organization_id, id)` | `20261027000000_project_teams_and_service_types.sql:18` |
+| `projects` | `projects_organization_id_idx` | `projects_org_id_key` unique `(organization_id, id)` | `20261027000000_project_teams_and_service_types.sql:17` |
+| `suppliers` | `suppliers_organization_id_idx` | `suppliers_org_id_key` unique `(organization_id, id)` | `20261027000000_project_teams_and_service_types.sql:19` (the previous draft wrongly credited this to `20261026000000`) |
+| `suppliers` | (same index, second reason) | `suppliers_unique_name` unique index `(organization_id, lower(trim(name)))` | `20261026000000_organization_id_on_main_tables.sql:70-72`, same file as the bulk loop |
 
-All six plain indexes were created in one bulk loop
-(`supabase/migrations/20261026000000_organization_id_on_main_tables.sql:44`); the composite indexes/constraints
-that superseded them were added the very next migration (or, for `invoices`/`suppliers`, in that same file a
-few lines later) — this reads like an oversight rather than a deliberate choice. Dropping them costs
+All seven plain indexes were created in the same bulk loop
+(`supabase/migrations/20261026000000_organization_id_on_main_tables.sql:44`:
+`create index %I on %I (organization_id)`, run once per table in the `foreach` array at lines 35-38); the
+composite indexes/constraints that superseded them were added either later in that same file or in the
+very next migration — this reads like an oversight rather than a deliberate choice. Dropping them costs
 nothing in query performance and saves Postgres a write (and disk page) on every `INSERT`/`UPDATE`/`DELETE`
-to these six tables. **LOW priority** (pure cleanup), see §5.
+to these seven tables. **LOW priority** (pure cleanup), see §5.
 
 Every other table's indexing matches its queries reasonably well; `money_movements` (8 single-column
-indexes, one per FK) and `estimates`/`invoices`/`letters`/`receipts` (indexed on every column a detail page
-or list filters by) are in good shape and weren't flagged above.
+indexes, one per FK — `schema.prisma:514-522`) and `letters`/`receipts` (indexed on every column a detail
+page or list filters by — `schema.prisma:435-436`, `:807-809`) are in good shape and weren't flagged above.
+`employees`, `auth_sessions`, and `money_movements` keep their plain `organization_id` index because none of
+the three has a composite constraint/index that leads with `organization_id` today (if recommendation M1 in
+§5 is ever applied, it adds `employees_org_id_key unique (organization_id, id)`, which would make
+`employees_organization_id_idx` redundant too — worth revisiting L1 at that point, not before).
 
 ## 4. UUID vs sequential ids
 
@@ -173,12 +239,15 @@ databases without collision. Checked against this app specifically:
 
 - **Ids do appear in URLs** (`/api/projects/:projectId`, `/api/site-visits/:id`, etc.), but **every one of
   those routes is already behind authentication and an `organization_id` scope check** on the query itself
-  (`WHERE id = $1 AND organization_id = $2`, everywhere). There is no unauthenticated/"public" route in the
-  codebase that relies on an id being hard to guess as its *only* protection. Guessing another company's
-  bigint id today just gets a 404 from the existing org check — switching to UUID would not change what's
-  actually protecting that data. (If a public, token-based share link is ever added — e.g. "email this
-  invoice as a public link" — that should use its own random token column, not a UUID primary key, the same
-  way a password-reset token works.)
+  (`WHERE id = $1 AND organization_id = $2`, everywhere). Verified by grepping every `app.get/post/put/patch/
+  delete(` call across all of `server/src/modules` (over 90 routes): every single one carries an
+  `allow(Role...)` middleware argument except `POST /api/auth/login` (`auth.routes.ts:25`, the login
+  endpoint itself, which by necessity can't require auth to reach it and doesn't expose any id-keyed data).
+  There is no unauthenticated/"public" route in the codebase that relies on an id being hard to guess as its
+  *only* protection. Guessing another company's bigint id today just gets a 404 from the existing org check
+  — switching to UUID would not change what's actually protecting that data. (If a public, token-based share
+  link is ever added — e.g. "email this invoice as a public link" — that should use its own random token
+  column, not a UUID primary key, the same way a password-reset token works.)
 - **Multi-company**: company isolation is already handled by the `organization_id` column, not by id
   shape. UUIDs wouldn't add isolation that doesn't already exist, and bigint ids being sequential per table
   (not globally) is not a problem here since nothing merges rows across companies by id.
@@ -216,10 +285,12 @@ cost rollups):
 create index time_entries_project_status_idx on time_entries (project_id, status);
 ```
 
-**H2 — Index `work_assignments`** (currently has no index at all beyond its primary key):
+**H2 — Index `work_assignments.employee_id`** (corrected: `project_id` is already indexed —
+`work_assignments_project_id_idx`, `supabase/migrations/20260922000000_create_work_assignments.sql:15`,
+`schema.prisma:937` — so only `employee_id` needs one, for the overlap check and the employee-filtered
+assignments list; this does **not** duplicate the existing index):
 ```sql
 create index work_assignments_employee_dates_idx on work_assignments (employee_id, start_date, end_date);
-create index work_assignments_project_dates_idx on work_assignments (project_id, start_date);
 ```
 
 **H3 — Stop `invoice_disbursements` from being silently deleted with its invoice:**
@@ -291,10 +362,12 @@ This is a bigger, five-table change — worth scheduling deliberately rather tha
 
 ### LOW
 
-**L1 — Drop the six redundant `organization_id`-only indexes** (see §3's duplicate-index table):
+**L1 — Drop the seven redundant `organization_id`-only indexes** (see §3's duplicate-index table; `estimates`
+was missed in the first draft of this review):
 ```sql
 drop index categories_organization_id_idx;
 drop index clients_organization_id_idx;
+drop index estimates_organization_id_idx;
 drop index invoices_organization_id_idx;
 drop index money_locations_organization_id_idx;
 drop index projects_organization_id_idx;
@@ -314,8 +387,9 @@ harmless. Worth a separate conversation about dropping the table entirely rather
 
 ## Top findings (short version)
 
-1. **`work_assignments` has no index at all** — every query against it (including the employee/project
-   overlap check run on every new assignment) is a full table scan. Easy, safe fix (H2).
+1. **`work_assignments.employee_id` has no index** — `project_id` already has one (this was wrong in the
+   first draft of this review), but the employee/project overlap check run on every new assignment, and the
+   employee-filtered assignments list, both still do a full table scan today. Easy, safe fix (H2).
 2. **`time_entries.project_id` has no index**, so the per-project and per-company labor-cost rollups scan
    the whole table. This is the table that will grow fastest. Easy, safe fix (H1).
 3. **`invoice_disbursements` cascade-deletes with its invoice**, while every comparable financial child
@@ -324,8 +398,10 @@ harmless. Worth a separate conversation about dropping the table entirely rather
 4. **`money_movements` enforces "same company" for 5 of its 9 relations but not the other 4** — the
    client/employee/invoice/payment links on this table aren't checked by the database at all, only by the
    app's `WHERE organization_id = ...` on every query (M1).
-5. **Six indexes are pure dead weight** — `categories`, `clients`, `invoices`, `money_locations`, `projects`,
-   and `suppliers` each carry a duplicate index that a later migration superseded and never removed (L1).
+5. **Seven indexes are pure dead weight** — `categories`, `clients`, `estimates`, `invoices`,
+   `money_locations`, `projects`, and `suppliers` each carry a duplicate index that a later migration
+   superseded and never removed. (`estimates` was missed in the first draft; its duplicate is an expression
+   index Prisma doesn't surface as a normal `@@unique`.) (L1)
 6. **UUID vs sequential ids**: recommend staying with `bigint`. Every route is already auth + company
    scoped, so id-guessing isn't actually a live risk here, and a re-key would be a large, risky project with
    no dev database to rehearse it in, for a problem this app doesn't have.
