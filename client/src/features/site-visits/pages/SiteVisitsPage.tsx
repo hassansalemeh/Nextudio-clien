@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../../app/auth'
-import { useConfirm } from '../../../shared/components/ConfirmDialog'
 import EmptyState from '../../../shared/components/EmptyState'
 import PageHeader from '../../../shared/components/PageHeader'
 import PageLoader from '../../../shared/components/PageLoader'
-import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { daysBetween, localDateString } from '../../../shared/lib/timeUtils'
 import { Role } from '../../../shared/lib/role'
 import { fetchActiveProjectNames } from '../../time-tracking/api'
 import type { ActiveProject } from '../../time-tracking/types'
-import { deleteSiteVisit, fetchSiteVisitors, fetchSiteVisits, fetchSiteVisitsSummary } from '../api'
+import { fetchSiteVisitors, fetchSiteVisits, fetchSiteVisitsSummary } from '../api'
 import type { SiteVisit, SiteVisitor, SiteVisitSummary } from '../types'
 import SiteVisitFormDialog from '../components/SiteVisitFormDialog'
+import SiteVisitCard, { type SiteVisitCardChip, type SiteVisitCardRow } from '../components/SiteVisitCard'
 import styles from '../SiteVisits.module.css'
 
 const EDIT_WINDOW_DAYS = 7
@@ -21,26 +20,30 @@ function currentMonth() {
   return localDateString().slice(0, 7)
 }
 
-function formatGroupHeading(dateString: string) {
+// weekday + day number for a row's date block - visits already arrive newest-date-first, and grouping
+// by key below preserves that order within each group.
+function splitDateBlock(dateString: string): { weekday: string; day: number } {
   const [year, month, day] = dateString.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const date = new Date(year, month - 1, day)
+  return { weekday: date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(), day }
 }
 
-// visits already arrive newest-date-first from the API, so grouping by run preserves that order.
-function groupByDate(visits: SiteVisit[]): { date: string; visits: SiteVisit[] }[] {
-  const groups: { date: string; visits: SiteVisit[] }[] = []
-  for (const visit of visits) {
-    const current = groups[groups.length - 1]
-    if (current && current.date === visit.visit_date) current.visits.push(visit)
-    else groups.push({ date: visit.visit_date, visits: [visit] })
+function formatTimeRange(visit: SiteVisit): string {
+  return visit.end_time ? `${visit.start_time} – ${visit.end_time}` : visit.start_time
+}
+
+function groupByKey<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>()
+  for (const item of items) {
+    const list = map.get(key(item))
+    if (list) list.push(item)
+    else map.set(key(item), [item])
   }
-  return groups
+  return map
 }
 
 function SiteVisitsPage() {
   const { user } = useAuth()
-  const toast = useToast()
-  const confirm = useConfirm()
   const isAdmin = user?.role !== Role.Employee
 
   const [month, setMonth] = useState(currentMonth())
@@ -96,22 +99,23 @@ function SiteVisitsPage() {
     setFormOpen(true)
   }
 
-  async function handleDelete(visit: SiteVisit) {
-    const ok = await confirm({
-      title: 'Delete this visit?',
-      message: `This removes ${visit.visitor_name}'s visit to ${visit.project_name} on ${formatGroupHeading(visit.visit_date)}.`,
-      confirmLabel: 'Delete',
-      tone: 'danger',
-      onConfirm: async () => {
-        await deleteSiteVisit(visit.id)
-      },
+  const visitsById = useMemo(() => new Map(visits.map((visit) => [visit.id, visit])), [visits])
+  const visitsByMember = useMemo(() => groupByKey(visits, (visit) => visit.member_id), [visits])
+  const visitsByProject = useMemo(() => groupByKey(visits, (visit) => visit.project_id), [visits])
+
+  function rowsFor(groupVisits: SiteVisit[], titleOf: (visit: SiteVisit) => string): SiteVisitCardRow[] {
+    return groupVisits.map((visit) => {
+      const { weekday, day } = splitDateBlock(visit.visit_date)
+      const meta = visit.note ? `${formatTimeRange(visit)} · ${visit.note}` : formatTimeRange(visit)
+      return { id: visit.id, weekday, day, title: titleOf(visit), meta, pressable: canEdit(visit) }
     })
-    if (!ok) return
-    toast.success('Visit deleted.')
-    load()
   }
 
-  const groups = useMemo(() => groupByDate(visits), [visits])
+  function handleRowClick(id: string) {
+    const visit = visitsById.get(id)
+    if (visit) openEdit(visit)
+  }
+
   const ownSummary = !isAdmin ? summary?.by_member[0] ?? null : null
 
   return (
@@ -135,124 +139,87 @@ function SiteVisitsPage() {
 
         {loading ? (
           <PageLoader label="Loading site visits..." />
-        ) : (
-          <>
-            {isAdmin && summary && (
-              <div className={styles.summarySection}>
-                <div className={styles.tabBar}>
-                  <button
-                    type="button"
-                    className={summaryTab === 'person' ? styles.tabActive : styles.tab}
-                    onClick={() => setSummaryTab('person')}
-                  >
-                    By person
-                  </button>
-                  <button
-                    type="button"
-                    className={summaryTab === 'project' ? styles.tabActive : styles.tab}
-                    onClick={() => setSummaryTab('project')}
-                  >
-                    By project
-                  </button>
-                </div>
+        ) : isAdmin ? (
+          <div className={styles.summarySection}>
+            <div className={styles.tabBar}>
+              <button
+                type="button"
+                className={summaryTab === 'person' ? styles.tabActive : styles.tab}
+                onClick={() => setSummaryTab('person')}
+              >
+                By person
+              </button>
+              <button
+                type="button"
+                className={summaryTab === 'project' ? styles.tabActive : styles.tab}
+                onClick={() => setSummaryTab('project')}
+              >
+                By project
+              </button>
+            </div>
 
-                {summaryTab === 'person' ? (
-                  summary.by_member.length === 0 ? (
-                    <EmptyState message="No site visits logged yet this month." />
-                  ) : (
-                    <div className={styles.summaryGrid}>
-                      {summary.by_member.map((member) => (
-                        <div className="card" key={member.member_id}>
-                          <h2>{member.visitor_name}</h2>
-                          <p className={styles.summaryCount}>
-                            {member.total_visits} visit{member.total_visits === 1 ? '' : 's'} this month
-                          </p>
-                          <div className={styles.chipRow}>
-                            {member.projects.map((project) => (
-                              <span className={styles.chip} key={project.project_id}>
-                                {project.project_name} · {project.count}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                ) : summary.by_project.length === 0 ? (
-                  <EmptyState message="No site visits logged yet this month." />
-                ) : (
-                  <div className={styles.summaryGrid}>
-                    {summary.by_project.map((project) => (
-                      <div className="card" key={project.project_id}>
-                        <h2>{project.project_name}</h2>
-                        <p className={styles.summaryCount}>
-                          {project.total_visits} visit{project.total_visits === 1 ? '' : 's'} this month
-                        </p>
-                        <div className={styles.chipRow}>
-                          {project.visitors.map((visitor) => (
-                            <span className={styles.chip} key={visitor.member_id}>
-                              {visitor.visitor_name} · {visitor.count}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!isAdmin && ownSummary && (
-              <div className="card">
-                <h2>This month</h2>
-                <p className={styles.summaryCount}>
-                  {ownSummary.total_visits} visit{ownSummary.total_visits === 1 ? '' : 's'}
-                </p>
-                <div className={styles.chipRow}>
-                  {ownSummary.projects.map((project) => (
-                    <span className={styles.chip} key={project.project_id}>
-                      {project.project_name} · {project.count}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className={styles.visitList}>
-              {groups.length === 0 ? (
+            {summaryTab === 'person' ? (
+              !summary || summary.by_member.length === 0 ? (
                 <EmptyState message="No site visits logged yet this month." />
               ) : (
-                groups.map((group) => (
-                  <div key={group.date} className={styles.dateGroup}>
-                    <h3 className={styles.dateHeading}>{formatGroupHeading(group.date)}</h3>
-                    {group.visits.map((visit) => (
-                      <div className="card" key={visit.id}>
-                        <div className={styles.visitCardHeader}>
-                          <strong>{visit.visitor_name}</strong>
-                          <span className={styles.visitTime}>
-                            {visit.start_time}
-                            {visit.end_time ? ` – ${visit.end_time}` : ''}
-                          </span>
-                        </div>
-                        <p className={styles.visitProject}>{visit.project_name}</p>
-                        {visit.note && <p className={styles.visitNote}>{visit.note}</p>}
-                        {canEdit(visit) && (
-                          <div className="edit-actions">
-                            <button type="button" className="btn-sm btn-ghost" onClick={() => openEdit(visit)}>
-                              Edit
-                            </button>
-                            <button type="button" className="btn-sm btn-ghost-danger" onClick={() => handleDelete(visit)}>
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ))
-              )}
-            </div>
-          </>
+                <div className={styles.cardsGrid}>
+                  {summary.by_member.map((member) => {
+                    const chips: SiteVisitCardChip[] = member.projects.map((project) => ({
+                      key: project.project_id,
+                      label: project.project_name,
+                      count: project.count,
+                    }))
+                    const rows = rowsFor(visitsByMember.get(member.member_id) ?? [], (visit) => visit.project_name)
+                    return (
+                      <SiteVisitCard
+                        key={member.member_id}
+                        name={member.visitor_name}
+                        totalVisits={member.total_visits}
+                        chips={chips}
+                        rows={rows}
+                        onRowClick={handleRowClick}
+                      />
+                    )
+                  })}
+                </div>
+              )
+            ) : !summary || summary.by_project.length === 0 ? (
+              <EmptyState message="No site visits logged yet this month." />
+            ) : (
+              <div className={styles.cardsGrid}>
+                {summary.by_project.map((project) => {
+                  const chips: SiteVisitCardChip[] = project.visitors.map((visitor) => ({
+                    key: visitor.member_id,
+                    label: visitor.visitor_name,
+                    count: visitor.count,
+                  }))
+                  const rows = rowsFor(visitsByProject.get(project.project_id) ?? [], (visit) => visit.visitor_name)
+                  return (
+                    <SiteVisitCard
+                      key={project.project_id}
+                      name={project.project_name}
+                      totalVisits={project.total_visits}
+                      chips={chips}
+                      rows={rows}
+                      onRowClick={handleRowClick}
+                    />
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : !ownSummary ? (
+          <EmptyState message="No site visits logged yet this month." />
+        ) : (
+          <div className={styles.cardsGrid}>
+            <SiteVisitCard
+              name={ownSummary.visitor_name}
+              totalVisits={ownSummary.total_visits}
+              chips={ownSummary.projects.map((project) => ({ key: project.project_id, label: project.project_name, count: project.count }))}
+              rows={rowsFor(visitsByMember.get(ownSummary.member_id) ?? [], (visit) => visit.project_name)}
+              onRowClick={handleRowClick}
+            />
+          </div>
         )}
       </div>
 

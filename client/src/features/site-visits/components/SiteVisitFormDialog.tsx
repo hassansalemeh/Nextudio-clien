@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { CloseIcon } from '../../../shared/components/icons'
 import Spinner from '../../../shared/components/Spinner'
+import { useConfirm } from '../../../shared/components/ConfirmDialog'
 import { useToast } from '../../../shared/components/Toast'
 import { getErrorMessage } from '../../../shared/lib/apiError'
 import { localDateString } from '../../../shared/lib/timeUtils'
-import { createSiteVisit, updateSiteVisit } from '../api'
+import { createSiteVisit, deleteSiteVisit, updateSiteVisit } from '../api'
 import type { SiteVisit, SiteVisitor } from '../types'
 import styles from '../SiteVisits.module.css'
 
@@ -24,6 +25,7 @@ type Props = {
 // only ever appears for an admin creating a visit, pre-selected on themselves.
 function SiteVisitFormDialog({ isAdmin, visitors, ownMemberId, projects, visit, onClose, onSaved }: Props) {
   const toast = useToast()
+  const confirm = useConfirm()
   const isEdit = !!visit
   const [memberId, setMemberId] = useState(ownMemberId)
   const [projectId, setProjectId] = useState(visit?.project_id ?? '')
@@ -75,6 +77,23 @@ function SiteVisitFormDialog({ isAdmin, visitors, ownMemberId, projects, visit, 
     } finally {
       setBusy(false)
     }
+  }
+
+  async function handleDelete() {
+    if (!visit) return
+    const ok = await confirm({
+      title: 'Delete this visit?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+      onConfirm: async () => {
+        await deleteSiteVisit(visit.id)
+      },
+    })
+    if (!ok) return
+    toast.success('Visit deleted.')
+    onSaved()
+    onClose()
   }
 
   return (
@@ -145,13 +164,20 @@ function SiteVisitFormDialog({ isAdmin, visitors, ownMemberId, projects, visit, 
 
           {error && <p className="error-message">{error}</p>}
 
-          <div className="modal-actions" style={{ marginTop: '1rem' }}>
-            <button type="button" className="btn-sm btn-ghost" onClick={onClose} disabled={busy}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-sm btn-solid" disabled={busy}>
-              {busy && <Spinner />} {isEdit ? 'Save changes' : 'Log visit'}
-            </button>
+          <div className={`modal-actions ${styles.formActions}`} style={{ marginTop: '1rem' }}>
+            {isEdit && (
+              <button type="button" className="btn-sm btn-ghost-danger" onClick={handleDelete} disabled={busy}>
+                Delete visit
+              </button>
+            )}
+            <div className={styles.formActionsRight}>
+              <button type="button" className="btn-sm btn-ghost" onClick={onClose} disabled={busy}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-sm btn-solid" disabled={busy}>
+                {busy && <Spinner />} {isEdit ? 'Save changes' : 'Log visit'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

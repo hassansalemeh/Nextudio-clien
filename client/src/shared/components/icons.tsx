@@ -105,3 +105,9 @@ export const LogoutIcon = (p: IconProps) => (
     <path d="M21 12H9" />
   </Svg>
 )
+
+export const ChevronRightIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m9 6 6 6-6 6" />
+  </Svg>
+)
