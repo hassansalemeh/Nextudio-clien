@@ -17,11 +17,12 @@ function monthString(label = 'month') {
   return z.string({ error: `${label} is required` }).regex(MONTH_RE, `${label} must be in YYYY-MM format`)
 }
 
-// employee_id is optional here for the same reason as day-off-requests: an Employee's own calls always get it
-// filled in afterward regardless of what they send (see resolveEmployeeId); an Admin may omit it to see everyone.
+// member_id is optional here for the same reason as day-off-requests' employee_id: an Employee's own calls
+// always get it filled in afterward regardless of what they send (see resolveMemberId); an Admin may omit
+// it to see everyone.
 export const siteVisitListQuery = z.object({
   month: monthString(),
-  employee_id: optionalIdString('employee_id'),
+  member_id: optionalIdString('member_id'),
   project_id: optionalIdString('project_id'),
 })
 
@@ -39,7 +40,7 @@ function withTimeOrder<T extends { start_time: string; end_time: string | null }
 
 export const createSiteVisitBody = withTimeOrder(
   z.object({
-    employee_id: optionalIdString('employee_id'),
+    member_id: optionalIdString('member_id'),
     project_id: idString('project_id'),
     visit_date: isoDate('visit_date'),
     start_time: timeOfDay('start_time'),
@@ -48,7 +49,7 @@ export const createSiteVisitBody = withTimeOrder(
   })
 )
 
-// Reassigning a visit to another employee isn't supported - only its project/date/time/note can be corrected.
+// Reassigning a visit to another member isn't supported - only its project/date/time/note can be corrected.
 export const updateSiteVisitBody = withTimeOrder(
   z.object({
     project_id: idString('project_id'),

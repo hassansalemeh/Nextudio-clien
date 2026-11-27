@@ -86,6 +86,15 @@ export function resolveEmployeeId(req: Request, supplied: unknown): unknown {
   return req.user?.role === Role.Employee ? req.user.employeeId : supplied
 }
 
+// Same idea as resolveEmployeeId, but for organization_members.id - every member has one (an admin
+// or owner included, unlike employeeId), so this covers routes an admin can also act on behalf of
+// someone else in. An employee is always pinned to their own membership; an admin's supplied value
+// (possibly absent) passes through unchanged - a route that wants "default to the admin themselves"
+// applies that default itself, since not every such route wants the same default.
+export function resolveMemberId(req: Request, supplied: unknown): unknown {
+  return req.user?.role === Role.Employee ? req.user.memberId : supplied
+}
+
 // The company the current request works in (set by authenticate from the session).
 // Every query that reads or writes company data must use this.
 export function organizationIdOf(req: Request): string {

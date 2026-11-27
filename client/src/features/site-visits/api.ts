@@ -1,5 +1,5 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '../../shared/api/client'
-import type { CreateSiteVisitInput, SiteVisit, SiteVisitSummary, UpdateSiteVisitInput } from './types'
+import type { CreateSiteVisitInput, SiteVisit, SiteVisitor, SiteVisitSummary, UpdateSiteVisitInput } from './types'
 
 // An employee gets only their own visits; an admin gets the whole organization's for that month.
 export async function fetchSiteVisits(month: string): Promise<SiteVisit[]> {
@@ -11,6 +11,13 @@ export async function fetchSiteVisits(month: string): Promise<SiteVisit[]> {
 export async function fetchSiteVisitsSummary(month: string): Promise<SiteVisitSummary> {
   const response = await apiGet(`/api/site-visits/summary?month=${encodeURIComponent(month)}`)
   if (!response.ok) throw new Error('Could not load the site visits summary.')
+  return response.json()
+}
+
+// Admin only - who can be picked as a visitor in the "Add visit" form.
+export async function fetchSiteVisitors(): Promise<SiteVisitor[]> {
+  const response = await apiGet('/api/site-visits/visitors')
+  if (!response.ok) throw new Error('Could not load the list of visitors.')
   return response.json()
 }
 

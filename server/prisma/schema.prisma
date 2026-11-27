@@ -181,7 +181,6 @@ model employees {
   organization_members   organization_members? @relation(fields: [organization_member_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
   money_movements        money_movements[]
   project_assignments    project_assignments[]
-  site_visits            site_visits[]
   time_entries           time_entries?
   work_assignments       work_assignments[]
   work_entries           work_entries[]
@@ -525,16 +524,19 @@ model money_movements {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model organization_members {
   id              BigInt            @id @default(autoincrement())
   organization_id BigInt
   user_id         BigInt
   role            String
   created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  display_name    String?
   employees       employees?
   organizations   organizations     @relation(fields: [organization_id], references: [id], onUpdate: NoAction)
   app_users       app_users         @relation(fields: [user_id], references: [id], onUpdate: NoAction)
   project_members project_members[]
+  site_visits     site_visits[]
 
   @@unique([organization_id, id], map: "organization_members_org_id_key")
   @@unique([organization_id, user_id])
@@ -845,24 +847,24 @@ model service_types {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model site_visits {
-  id              BigInt        @id @default(autoincrement())
-  organization_id BigInt
-  employee_id     BigInt
-  project_id      BigInt
-  visit_date      DateTime      @db.Date
-  start_time      DateTime      @db.Time(6)
-  end_time        DateTime?     @db.Time(6)
-  note            String?
-  created_by      BigInt
-  created_at      DateTime      @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime      @default(now()) @db.Timestamptz(6)
-  app_users       app_users     @relation(fields: [created_by], references: [id], onUpdate: NoAction)
-  employees       employees     @relation(fields: [employee_id], references: [id], onUpdate: NoAction)
-  organizations   organizations @relation(fields: [organization_id], references: [id], onUpdate: NoAction)
-  projects        projects      @relation(fields: [project_id], references: [id], onUpdate: NoAction)
+  id                    BigInt               @id @default(autoincrement())
+  organization_id       BigInt
+  project_id            BigInt
+  visit_date            DateTime             @db.Date
+  start_time            DateTime             @db.Time(6)
+  end_time              DateTime?            @db.Time(6)
+  note                  String?
+  created_by            BigInt
+  created_at            DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime             @default(now()) @db.Timestamptz(6)
+  member_id             BigInt
+  app_users             app_users            @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  organization_members  organization_members @relation(fields: [organization_id, member_id], references: [organization_id, id], onUpdate: NoAction, map: "site_visits_member_same_org")
+  organizations         organizations        @relation(fields: [organization_id], references: [id], onUpdate: NoAction)
+  projects              projects             @relation(fields: [project_id], references: [id], onUpdate: NoAction)
 
   @@index([organization_id, visit_date], map: "site_visits_org_date_idx")
-  @@index([organization_id, employee_id, visit_date], map: "site_visits_org_employee_date_idx")
+  @@index([organization_id, member_id, visit_date], map: "site_visits_org_member_date_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
