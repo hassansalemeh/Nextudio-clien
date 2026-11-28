@@ -208,7 +208,12 @@ export async function correctTimeEntry(organizationId: string, id: string, body:
     throw new HttpError(404, 'Time entry not found')
   }
 }
-
+export async function deleteTimeEntry(organizationId: string, id: string) {
+  const deletedCount = await timeTrackingRepository.deleteFinishedTimeEntry(organizationId, id)
+  if (deletedCount === 0) {
+    throw new HttpError(404, 'Time entry not found, or it is still running (stop it first)')
+  }
+}
 export async function correctAttendanceSession(organizationId: string, id: string, body: { start: string; end: string | null }) {
   const { start, end } = checkCorrection(body.start, body.end)
   const rowCount = await timeTrackingRepository.updateAttendanceTimes(organizationId, id, start, end)

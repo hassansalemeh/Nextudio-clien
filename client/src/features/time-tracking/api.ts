@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '../../shared/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost } from '../../shared/api/client'
 import type { DayData } from '../../shared/lib/timeUtils'
 import type { Editing, Employee } from './types'
 
@@ -21,6 +21,13 @@ export async function saveTimeEdit(editing: Editing, start: string, end: string)
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     throw new Error(body?.error || 'Failed to save')
+  }
+}
+export async function deleteTimeEntry(id: string): Promise<void> {
+  const response = await apiDelete(`/api/time/entries/${id}`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error || 'Failed to delete')
   }
 }
 
