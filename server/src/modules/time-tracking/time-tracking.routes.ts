@@ -154,6 +154,14 @@ export function registerTimeTrackingRoutes(app: Express) {
       timeTrackingService.sendTimeError(res, err, 'Failed to update time entry')
     }
   })
+    app.delete('/api/time/entries/:id', allow(Role.Admin), validate({ params: timeCorrectionParams }), async (req, res) => {
+    try {
+      await timeTrackingService.deleteTimeEntry(organizationIdOf(req), req.params.id)
+      res.json({ ok: true })
+    } catch (err) {
+      timeTrackingService.sendTimeError(res, err, 'Failed to delete time entry')
+    }
+  })
 
   app.patch(
     '/api/time/sessions/:id',

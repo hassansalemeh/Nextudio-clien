@@ -3,7 +3,9 @@ import {
   CheckIcon,
   CloseIcon,
   PencilIcon,
+  TrashIcon,
 } from "../../../shared/components/icons";
+import { useConfirm } from "../../../shared/components/ConfirmDialog";
 import Spinner from "../../../shared/components/Spinner";
 import EmptyState from "../../../shared/components/EmptyState";
 import { useToast } from "../../../shared/components/Toast";
@@ -17,7 +19,7 @@ import {
   toLocalInput,
 } from "../../../shared/lib/timeUtils";
 import type { DayData } from "../../../shared/lib/timeUtils";
-import { fetchEmployeeDay, saveTimeEdit } from "../api";
+import { deleteTimeEntry, fetchEmployeeDay, saveTimeEdit } from "../api";
 import type { Editing } from "../types";
 
 type TimeReviewProps = {
@@ -28,6 +30,7 @@ type TimeReviewProps = {
 
 function TimeReview({ employeeId, date, onSaved }: TimeReviewProps) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [data, setData] = useState<DayData>({ sessions: [], entries: [] });
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -78,6 +81,22 @@ function TimeReview({ employeeId, date, onSaved }: TimeReviewProps) {
     } finally {
       setSaving(false);
     }
+  }
+    async function handleDelete(entry: DayData["entries"][number]) {
+    const ok = await confirm({
+      title: "Delete these hours?",
+      message: `${formatDuration(durationMs(entry.started_at, entry.ended_at))} on ${entry.project_name}. This can't be undone.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+      onConfirm: async () => {
+        await deleteTimeEntry(entry.id);
+      },
+    });
+    if (!ok) return;
+    setEditing(null);
+    await load();
+    onSaved?.();
+    toast.success("Hours deleted.");
   }
 
   function startEdit(
@@ -207,6 +226,7 @@ function TimeReview({ employeeId, date, onSaved }: TimeReviewProps) {
                       >
                         {formatTime(session.clock_in)}
                       </button>
+                      
                     </td>
                     <td data-label="Clock Out">
                       {session.clock_out
@@ -234,6 +254,7 @@ function TimeReview({ employeeId, date, onSaved }: TimeReviewProps) {
                       >
                         <PencilIcon /> Edit
                       </button>
+                      
                     </td>
                   </tr>
                 ))}
@@ -327,6 +348,18 @@ function TimeReview({ employeeId, date, onSaved }: TimeReviewProps) {
                       >
                         <PencilIcon /> Edit
                       </button>
+                                            {entry.ended_at && (
+                        <button
+                          type="button"
+                          className="btn-sm btn-ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDelete(entry);
+                          }}
+                        >
+                          <TrashIcon /> Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

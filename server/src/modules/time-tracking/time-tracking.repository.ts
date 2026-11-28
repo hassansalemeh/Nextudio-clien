@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg'
-import { pool } from '../../db'
+import { pool,prisma } from '../../db'
 
 // Neither attendance nor time_entries carries its own organization_id, so every query here reaches them
 // through employees (and, for time entries, projects), which do.
@@ -204,6 +204,20 @@ export async function updateTimeEntryTimes(organizationId: string, id: string, s
     [id, start, end, organizationId]
   )
   return result.rowCount ?? 0
+}
+
+// Deletes one FINISHED time entry of this company. A running timer (ended_at null) is never deleted,
+// it must be stopped first. Written with Prisma, as Jalal asked for new code.
+// time_entries has no organization_id, so the company check goes through the employee.
+export async function deleteFinishedTimeEntry(organizationId: string, id: string) {
+  const result = await prisma.time_entries.deleteMany({
+    where: {
+      id: BigInt(id),
+      ended_at: { not: null },
+      employees: { organization_id: BigInt(organizationId) },
+    },
+  })
+  return result.count
 }
 
 export async function updateAttendanceTimes(organizationId: string, id: string, start: Date, end: Date | null) {
