@@ -291,7 +291,7 @@ model invoice_disbursements {
   created_by_user_id BigInt?
   created_at         DateTime   @default(now()) @db.Timestamptz(6)
   app_users          app_users? @relation(fields: [created_by_user_id], references: [id], onUpdate: NoAction)
-  invoices           invoices   @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  invoices           invoices   @relation(fields: [invoice_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@index([invoice_id, disbursement_date], map: "invoice_disbursements_invoice_id_idx")
 }
@@ -919,6 +919,7 @@ model time_entries {
 
   @@index([employee_id, started_at], map: "time_entries_employee_started_idx")
   @@index([status], where: raw("(status <> 'approved'::text)"))
+  @@index([project_id, status], map: "time_entries_project_status_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -935,6 +936,7 @@ model work_assignments {
   projects    projects  @relation(fields: [project_id], references: [id], onUpdate: NoAction)
 
   @@index([project_id])
+  @@index([employee_id, start_date, end_date], map: "work_assignments_employee_dates_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

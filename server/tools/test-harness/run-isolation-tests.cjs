@@ -260,6 +260,23 @@ async function main() {
     })
     record('company A records a disbursement', disbursementA.status === 201, `status=${disbursementA.status}`)
 
+    // H3 (TECH-05 db review): invoice_disbursements.invoice_id is ON DELETE RESTRICT (not CASCADE), so
+    // the database itself must refuse to delete an invoice while a disbursement against it still exists -
+    // there's no DELETE /api/invoices/:id route today, so this goes straight at the database.
+    let deleteInvoiceWithDisbursementRejected = false
+    let deleteInvoiceWithDisbursementDetail = 'no error thrown'
+    try {
+      await db.query('delete from invoices where id = $1', [clientFundsInvoiceIdA])
+    } catch (err) {
+      deleteInvoiceWithDisbursementRejected = true
+      deleteInvoiceWithDisbursementDetail = String(err?.message ?? err)
+    }
+    record(
+      'deleting an invoice with a disbursement is refused by the database',
+      deleteInvoiceWithDisbursementRejected,
+      deleteInvoiceWithDisbursementDetail
+    )
+
     const assignmentA = await a.post(`/api/projects/${projectIdA}/assignments`, { employee_id: employeeIdA })
     record('company A assigns its employee to its project', assignmentA.status === 201, `status=${assignmentA.status}`)
 
